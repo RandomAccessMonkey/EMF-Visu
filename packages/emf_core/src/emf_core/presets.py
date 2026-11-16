@@ -7,7 +7,15 @@ from __future__ import annotations
 from pydantic import BaseModel
 
 from .i18n import L, LocalizedText
-from .scene.models import PointChargeSource, PointPrimitive, Role, Scene, SceneObject, Transform
+from .scene.models import (
+    GroupPrimitive,
+    PointChargeSource,
+    PointPrimitive,
+    Role,
+    Scene,
+    SceneObject,
+    Transform,
+)
 
 
 class Preset(BaseModel):
@@ -22,12 +30,27 @@ class Preset(BaseModel):
     scene: Scene | None = None
 
 
-def _charge(oid: str, name: str, q: float, pos: tuple[float, float, float]) -> SceneObject:
+def _charge(oid: str, name: str, q: float, pos: tuple[float, float, float],
+            parent_id: str | None = None) -> SceneObject:
     return SceneObject(id=oid, name=name, primitive=PointPrimitive(), role=Role.CHARGE_SOURCE,
-                       source=PointChargeSource(charge_C=q), transform=Transform(position_m=pos))
+                       source=PointChargeSource(charge_C=q), transform=Transform(position_m=pos),
+                       parent_id=parent_id)
 
 
-_EQ = ["coulomb_field", "coulomb_potential", "e_from_potential", "gauss_electric_vacuum"]
+def dipole_objects(group_id: str, name: str, q: float, d: float,
+                   pos: tuple[float, float, float] = (0.0, 0.0, 0.0)) -> list[SceneObject]:
+    """A dipole as two real point charges: +q at local (−d/2, 0, 0) and −q at (+d/2, 0, 0),
+    children of a group whose transform positions and orients the pair."""
+    return [
+        SceneObject(id=group_id, name=name, primitive=GroupPrimitive(kind="dipole"),
+                    transform=Transform(position_m=pos)),
+        _charge(f"{group_id}_pos", "q₊", abs(q), (-d / 2, 0.0, 0.0), group_id),
+        _charge(f"{group_id}_neg", "q₋", -abs(q), (d / 2, 0.0, 0.0), group_id),
+    ]
+
+
+_EQ = ["coulomb_field", "coulomb_potential", "superposition", "e_from_potential",
+       "gauss_electric_vacuum", "constitutive_d_linear"]
 
 _AVAILABLE = [
     Preset(
@@ -55,14 +78,15 @@ _AVAILABLE = [
     Preset(
         id="electric_dipole", number=3, available=True, equation_ids=_EQ,
         name=L("Electric dipole", "Elektromos dipólus"),
-        description=L("Charges of +1 nC and −1 nC separated by 1 m along x.",
-                      "+1 nC és −1 nC töltés egymástól 1 m távolságra az x tengely mentén."),
+        description=L("Two point charges, +1 nC and −1 nC, separated by d = 1 m along x. Select "
+                      "the dipole to change q and d together.",
+                      "Két ponttöltés, +1 nC és −1 nC, egymástól d = 1 m távolságra az x tengely "
+                      "mentén. A dipólust kijelölve q és d együtt módosítható."),
         expected_behavior=L("The field leaves the positive charge and enters the negative one; "
                             "φ = 0 on the symmetry plane x = 0; far away |E| falls off as 1/r³.",
                             "A mező a pozitív töltésből indul és a negatívba érkezik; az x = 0 "
                             "szimmetriasíkon φ = 0; nagy távolságban |E| 1/r³ szerint csökken."),
-        scene=Scene(objects=[_charge("q1", "q₊", 1e-9, (-0.5, 0, 0)),
-                             _charge("q2", "q₋", -1e-9, (0.5, 0, 0))]),
+        scene=Scene(objects=dipole_objects("dipole", "Dipole", 1e-9, 1.0)),
     ),
     Preset(
         id="multiple_charges", number=4, available=True, equation_ids=_EQ,

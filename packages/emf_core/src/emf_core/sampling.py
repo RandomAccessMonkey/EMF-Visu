@@ -11,6 +11,9 @@ from pydantic import Field, model_validator
 from .scene.models import StrictModel, Vec3
 
 MAX_POINTS_PER_REQUEST = 2_000_000
+Quantity = Literal["E", "phi", "D"]
+# Optional per-sampling override of the request's quantity list (Phase 2A, additive).
+Quantities = Annotated[list[Quantity] | None, Field(default=None, min_length=1)]
 SamplingId = Annotated[str, Field(min_length=1, max_length=40, pattern=r"^[A-Za-z0-9_]+$")]
 
 
@@ -22,6 +25,7 @@ class PlaneGridSampling(StrictModel):
 
     kind: Literal["plane_grid"] = "plane_grid"
     id: SamplingId
+    quantities: Quantities
     center_m: Vec3 = (0.0, 0.0, 0.0)
     u_dir: Vec3 = (1.0, 0.0, 0.0)
     v_dir: Vec3 = (0.0, 1.0, 0.0)
@@ -43,6 +47,11 @@ class PlaneGridSampling(StrictModel):
     def shape(self) -> tuple[int, ...]:
         return (self.nv, self.nu)
 
+    @property
+    def cell_m(self) -> float:
+        """Smaller of the two grid spacings."""
+        return min(self.u_extent_m / (self.nu - 1), self.v_extent_m / (self.nv - 1))
+
     def points(self) -> NDArray[np.float64]:
         us = np.linspace(-self.u_extent_m / 2, self.u_extent_m / 2, self.nu)
         vs = np.linspace(-self.v_extent_m / 2, self.v_extent_m / 2, self.nv)
@@ -60,6 +69,7 @@ class LatticeSampling(StrictModel):
 
     kind: Literal["lattice"] = "lattice"
     id: SamplingId
+    quantities: Quantities
     min_m: Vec3
     max_m: Vec3
     nx: int = Field(ge=2, le=256)
@@ -76,6 +86,11 @@ class LatticeSampling(StrictModel):
     def shape(self) -> tuple[int, ...]:
         return (self.nz, self.ny, self.nx)
 
+    @property
+    def cell_m(self) -> float:
+        return min((hi - lo) / (n - 1) for lo, hi, n in
+                   zip(self.min_m, self.max_m, (self.nx, self.ny, self.nz), strict=True))
+
     def points(self) -> NDArray[np.float64]:
         xs = np.linspace(self.min_m[0], self.max_m[0], self.nx)
         ys = np.linspace(self.min_m[1], self.max_m[1], self.ny)
@@ -87,6 +102,7 @@ class LatticeSampling(StrictModel):
 class PointsSampling(StrictModel):
     kind: Literal["points"] = "points"
     id: SamplingId
+    quantities: Quantities
     points_m: list[Vec3] = Field(min_length=1, max_length=100_000)
 
     @property

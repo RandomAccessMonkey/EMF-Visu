@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Response
 
 from emf_core.presets import PRESETS, Preset
 from emf_core.solvers import SolveRequest, SolverError, UnsupportedSceneError
+from emf_core.solvers.analytical import electrostatics as es
 
 from ..deps import api_error, get_orchestrator
 from ..orchestrator import Orchestrator, RequestTooLargeError
@@ -15,6 +16,7 @@ from ..schemas import (
     EquationsResponse,
     ErrorBody,
     ProbeBody,
+    ProbeContribution,
     ProbeResponse,
     ProbeValue,
     SimulationBody,
@@ -81,9 +83,29 @@ def probe(body: ProbeBody, orch: Orch) -> ProbeResponse:
         else:
             values.append(ProbeValue(quantity=entry.quantity, symbol=entry.symbol,
                                      unit=entry.unit, value=float(a)))
+    # Individual terms of the superposition, from the same solver module.
+    ids, positions, charges = es.point_charge_table(body.scene)
+    r_min = es.COINCIDENCE_FACTOR * body.scene.domain.diagonal_m
+    point = np.asarray([body.point_m], dtype=np.float64)
+    e_i, phi_i = es.contributions(point, positions, charges, r_min)
+    names = {o.id: o.name or o.id for o in body.scene.objects}
+    contributions: list[ProbeContribution] = []
+    singular_id: str | None = None
+    for k, oid in enumerate(ids):
+        ok = bool(np.isfinite(phi_i[k, 0]))
+        if not ok:
+            singular_id = oid
+        contributions.append(ProbeContribution(
+            object_id=oid, name=names[oid], charge_C=float(charges[k]),
+            distance_m=float(np.linalg.norm(point[0] - positions[k])),
+            E_V_per_m=[float(x) for x in e_i[k, 0]] if ok else None,
+            E_magnitude_V_per_m=float(np.linalg.norm(e_i[k, 0])) if ok else None,
+            phi_V=float(phi_i[k, 0]) if ok else None,
+        ))
     return ProbeResponse(point_m=body.point_m, solver_id=solver.id, solver_version=solver.version,
                          classification=result.header.classification, defined=defined,
-                         values=values)
+                         singular_tolerance_m=r_min, singular_object_id=singular_id,
+                         values=values, contributions=contributions)
 
 
 @router.post("/equations/evaluate")

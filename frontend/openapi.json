@@ -809,6 +809,15 @@
             "type": "integer",
             "title": "Components"
           },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "field",
+              "geometry"
+            ],
+            "title": "Kind",
+            "default": "field"
+          },
           "stats": {
             "$ref": "#/components/schemas/ArrayStats"
           },
@@ -1228,6 +1237,18 @@
           "evaluated_by_solver": {
             "type": "boolean",
             "title": "Evaluated By Solver"
+          },
+          "usage": {
+            "type": "string",
+            "enum": [
+              "evaluated",
+              "satisfied",
+              "not_used"
+            ],
+            "title": "Usage"
+          },
+          "usage_note": {
+            "$ref": "#/components/schemas/LocalizedText"
           }
         },
         "type": "object",
@@ -1247,7 +1268,9 @@
           "used_by",
           "status",
           "status_reason",
-          "evaluated_by_solver"
+          "evaluated_by_solver",
+          "usage",
+          "usage_note"
         ],
         "title": "EquationView",
         "description": "An equation resolved against a model context: what the frontend displays."
@@ -1305,6 +1328,77 @@
         ],
         "title": "EquationsResponse"
       },
+      "EquipotentialRequest": {
+        "properties": {
+          "sampling_id": {
+            "type": "string",
+            "title": "Sampling Id"
+          },
+          "levels_V": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array",
+                "maxItems": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Levels V"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "sampling_id"
+        ],
+        "title": "EquipotentialRequest",
+        "description": "Equipotential contour lines on a plane-grid sampling."
+      },
+      "EquipotentialSet": {
+        "properties": {
+          "array": {
+            "type": "string",
+            "title": "Array"
+          },
+          "sampling_id": {
+            "type": "string",
+            "title": "Sampling Id"
+          },
+          "levels": {
+            "items": {
+              "$ref": "#/components/schemas/LevelRange"
+            },
+            "type": "array",
+            "title": "Levels"
+          },
+          "field_classification": {
+            "type": "string",
+            "enum": [
+              "exact_analytical",
+              "numerical_approximation",
+              "idealized_model",
+              "visualization_aid"
+            ],
+            "title": "Field Classification"
+          },
+          "method": {
+            "$ref": "#/components/schemas/MethodInfo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "array",
+          "sampling_id",
+          "levels",
+          "field_classification",
+          "method"
+        ],
+        "title": "EquipotentialSet"
+      },
       "ErrorBody": {
         "properties": {
           "code": {
@@ -1338,6 +1432,232 @@
           "message"
         ],
         "title": "ErrorBody"
+      },
+      "FieldLineInfo": {
+        "properties": {
+          "start": {
+            "type": "integer",
+            "title": "Start"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "level": {
+            "type": "integer",
+            "title": "Level"
+          },
+          "start_reason": {
+            "type": "string",
+            "enum": [
+              "positive_charge",
+              "negative_charge",
+              "domain_boundary",
+              "stagnation_point",
+              "max_length",
+              "integration_failure"
+            ],
+            "title": "Start Reason"
+          },
+          "end_reason": {
+            "type": "string",
+            "enum": [
+              "positive_charge",
+              "negative_charge",
+              "domain_boundary",
+              "stagnation_point",
+              "max_length",
+              "integration_failure"
+            ],
+            "title": "End Reason"
+          },
+          "start_object_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Object Id"
+          },
+          "end_object_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Object Id"
+          },
+          "steps": {
+            "type": "integer",
+            "title": "Steps"
+          }
+        },
+        "type": "object",
+        "required": [
+          "start",
+          "count",
+          "level",
+          "start_reason",
+          "end_reason",
+          "steps"
+        ],
+        "title": "FieldLineInfo"
+      },
+      "FieldLineRequest": {
+        "properties": {
+          "seeding": {
+            "type": "string",
+            "enum": [
+              "planar",
+              "spherical"
+            ],
+            "title": "Seeding"
+          },
+          "sampling_id": {
+            "type": "string",
+            "title": "Sampling Id"
+          },
+          "base_lines": {
+            "type": "integer",
+            "maximum": 64.0,
+            "minimum": 1.0,
+            "title": "Base Lines",
+            "default": 8
+          },
+          "levels": {
+            "type": "integer",
+            "maximum": 4.0,
+            "minimum": 1.0,
+            "title": "Levels",
+            "default": 3
+          },
+          "guard_cells": {
+            "type": "number",
+            "maximum": 4.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Guard Cells",
+            "default": 0.5
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "seeding",
+          "sampling_id"
+        ],
+        "title": "FieldLineRequest",
+        "description": "Ask for field lines. All density levels are computed at once so that changing the\ndisplayed density is a visual-only operation.\n\n``planar``: seeds on a circle in the plane of the referenced plane-grid sampling, around\nevery source lying in that plane. ``spherical``: seeds on a sphere around every source."
+      },
+      "FieldLineSet": {
+        "properties": {
+          "array": {
+            "type": "string",
+            "title": "Array"
+          },
+          "seeding": {
+            "type": "string",
+            "enum": [
+              "planar",
+              "spherical"
+            ],
+            "title": "Seeding"
+          },
+          "levels": {
+            "type": "integer",
+            "title": "Levels"
+          },
+          "guard_radius_m": {
+            "type": "number",
+            "title": "Guard Radius M"
+          },
+          "lines_stay_in_plane": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lines Stay In Plane"
+          },
+          "unseeded_object_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unseeded Object Ids",
+            "default": []
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/FieldLineInfo"
+            },
+            "type": "array",
+            "title": "Lines"
+          },
+          "end_reason_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "End Reason Counts"
+          },
+          "field_classification": {
+            "type": "string",
+            "enum": [
+              "exact_analytical",
+              "numerical_approximation",
+              "idealized_model",
+              "visualization_aid"
+            ],
+            "title": "Field Classification"
+          },
+          "method": {
+            "$ref": "#/components/schemas/MethodInfo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "array",
+          "seeding",
+          "levels",
+          "guard_radius_m",
+          "lines",
+          "end_reason_counts",
+          "field_classification",
+          "method"
+        ],
+        "title": "FieldLineSet"
+      },
+      "GroupPrimitive": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "group",
+            "title": "Type",
+            "default": "group"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "generic",
+              "dipole"
+            ],
+            "title": "Kind",
+            "default": "generic"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "GroupPrimitive",
+        "description": "A container with no geometry of its own: its transform applies to its children.\n\n``kind = \"dipole\"`` marks a pair of child point charges +q and \u2212q (two real point charges at\na finite separation, not an ideal point dipole). The kind is an editing aid for the UI; the\nphysics always comes from the child charges themselves. Added in Phase 2A (additive: scenes\nwithout groups are unchanged, schema_version stays 1)."
       },
       "HTTPValidationError": {
         "properties": {
@@ -1381,6 +1701,82 @@
           "redis"
         ],
         "title": "Health"
+      },
+      "IsosurfaceRequest": {
+        "properties": {
+          "lattice": {
+            "$ref": "#/components/schemas/LatticeSampling"
+          },
+          "levels_V": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array",
+                "maxItems": 16
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Levels V"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "lattice"
+        ],
+        "title": "IsosurfaceRequest",
+        "description": "Equipotential surfaces extracted on a lattice (the lattice samples are not transported)."
+      },
+      "IsosurfaceSet": {
+        "properties": {
+          "array": {
+            "type": "string",
+            "title": "Array"
+          },
+          "normals_array": {
+            "type": "string",
+            "title": "Normals Array"
+          },
+          "lattice": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Lattice"
+          },
+          "levels": {
+            "items": {
+              "$ref": "#/components/schemas/LevelRange"
+            },
+            "type": "array",
+            "title": "Levels"
+          },
+          "field_classification": {
+            "type": "string",
+            "enum": [
+              "exact_analytical",
+              "numerical_approximation",
+              "idealized_model",
+              "visualization_aid"
+            ],
+            "title": "Field Classification"
+          },
+          "method": {
+            "$ref": "#/components/schemas/MethodInfo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "array",
+          "normals_array",
+          "lattice",
+          "levels",
+          "field_classification",
+          "method"
+        ],
+        "title": "IsosurfaceSet"
       },
       "JobCreated": {
         "properties": {
@@ -1471,6 +1867,26 @@
             "pattern": "^[A-Za-z0-9_]+$",
             "title": "Id"
           },
+          "quantities": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "E",
+                    "phi",
+                    "D"
+                  ]
+                },
+                "type": "array",
+                "minItems": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantities"
+          },
           "min_m": {
             "prefixItems": [
               {
@@ -1536,6 +1952,29 @@
         ],
         "title": "LatticeSampling",
         "description": "Regular axis-aligned 3D lattice, inclusive of both ends. Shape (nz, ny, nx[, 3])."
+      },
+      "LevelRange": {
+        "properties": {
+          "value_V": {
+            "type": "number",
+            "title": "Value V"
+          },
+          "start": {
+            "type": "integer",
+            "title": "Start"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "value_V",
+          "start",
+          "count"
+        ],
+        "title": "LevelRange"
       },
       "LinePrimitive": {
         "properties": {
@@ -1629,6 +2068,58 @@
         ],
         "title": "MaterialModel"
       },
+      "MethodInfo": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "numerical_integration",
+              "numerical_extraction"
+            ],
+            "title": "Kind"
+          },
+          "name": {
+            "$ref": "#/components/schemas/LocalizedText"
+          },
+          "description": {
+            "$ref": "#/components/schemas/LocalizedText"
+          },
+          "parameters": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Parameters"
+          },
+          "limitations": {
+            "items": {
+              "$ref": "#/components/schemas/LocalizedText"
+            },
+            "type": "array",
+            "title": "Limitations"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "name",
+          "description",
+          "parameters",
+          "limitations"
+        ],
+        "title": "MethodInfo",
+        "description": "How a derived product was obtained. Kept separate from the physical classification of the\nfield it was derived from: a numerically integrated line of an exact field is still a line\nof an exact field."
+      },
       "ModelContext": {
         "properties": {
           "regime": {
@@ -1684,6 +2175,11 @@
             "title": "Computes Magnetic Field",
             "default": false
           },
+          "source_count": {
+            "type": "integer",
+            "title": "Source Count",
+            "default": 0
+          },
           "solver_id": {
             "type": "string",
             "title": "Solver Id"
@@ -1722,6 +2218,26 @@
             "minLength": 1,
             "pattern": "^[A-Za-z0-9_]+$",
             "title": "Id"
+          },
+          "quantities": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "E",
+                    "phi",
+                    "D"
+                  ]
+                },
+                "type": "array",
+                "minItems": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantities"
           },
           "center_m": {
             "prefixItems": [
@@ -1897,6 +2413,26 @@
             "pattern": "^[A-Za-z0-9_]+$",
             "title": "Id"
           },
+          "quantities": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "E",
+                    "phi",
+                    "D"
+                  ]
+                },
+                "type": "array",
+                "minItems": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantities"
+          },
           "points_m": {
             "items": {
               "prefixItems": [
@@ -2034,6 +2570,74 @@
         ],
         "title": "ProbeBody"
       },
+      "ProbeContribution": {
+        "properties": {
+          "object_id": {
+            "type": "string",
+            "title": "Object Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "charge_C": {
+            "type": "number",
+            "title": "Charge C"
+          },
+          "distance_m": {
+            "type": "number",
+            "title": "Distance M"
+          },
+          "E_V_per_m": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "E V Per M"
+          },
+          "E_magnitude_V_per_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "E Magnitude V Per M"
+          },
+          "phi_V": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phi V"
+          }
+        },
+        "type": "object",
+        "required": [
+          "object_id",
+          "name",
+          "charge_C",
+          "distance_m",
+          "E_V_per_m",
+          "E_magnitude_V_per_m",
+          "phi_V"
+        ],
+        "title": "ProbeContribution",
+        "description": "Field of one source at the probe point (one term of the superposition sums)."
+      },
       "ProbeResponse": {
         "properties": {
           "point_m": {
@@ -2075,12 +2679,34 @@
             "type": "boolean",
             "title": "Defined"
           },
+          "singular_tolerance_m": {
+            "type": "number",
+            "title": "Singular Tolerance M"
+          },
+          "singular_object_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Singular Object Id"
+          },
           "values": {
             "items": {
               "$ref": "#/components/schemas/ProbeValue"
             },
             "type": "array",
             "title": "Values"
+          },
+          "contributions": {
+            "items": {
+              "$ref": "#/components/schemas/ProbeContribution"
+            },
+            "type": "array",
+            "title": "Contributions"
           }
         },
         "type": "object",
@@ -2090,7 +2716,9 @@
           "solver_version",
           "classification",
           "defined",
-          "values"
+          "singular_tolerance_m",
+          "values",
+          "contributions"
         ],
         "title": "ProbeResponse"
       },
@@ -2388,6 +3016,36 @@
             "title": "Equation Status",
             "default": []
           },
+          "field_lines": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FieldLineSet"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "equipotentials": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EquipotentialSet"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "isosurfaces": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IsosurfaceSet"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "arrays": {
             "items": {
               "$ref": "#/components/schemas/ArrayEntry"
@@ -2520,6 +3178,9 @@
           "primitive": {
             "oneOf": [
               {
+                "$ref": "#/components/schemas/GroupPrimitive"
+              },
+              {
                 "$ref": "#/components/schemas/PointPrimitive"
               },
               {
@@ -2547,6 +3208,7 @@
               "mapping": {
                 "box": "#/components/schemas/BoxPrimitive",
                 "cylinder": "#/components/schemas/CylinderPrimitive",
+                "group": "#/components/schemas/GroupPrimitive",
                 "line": "#/components/schemas/LinePrimitive",
                 "plane": "#/components/schemas/PlanePrimitive",
                 "point": "#/components/schemas/PointPrimitive",
@@ -2703,6 +3365,36 @@
             ],
             "title": "Quality",
             "default": "normal"
+          },
+          "field_lines": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FieldLineRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "equipotentials": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EquipotentialRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "isosurfaces": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IsosurfaceRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,

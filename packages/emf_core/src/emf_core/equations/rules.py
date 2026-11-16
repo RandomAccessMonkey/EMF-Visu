@@ -61,11 +61,31 @@ def _e_from_phi(c: ModelContext) -> Out:
 
 def _coulomb(c: ModelContext) -> Out:
     if c.regime == "electrostatic" and c.medium == "vacuum" and not c.has_conductors:
+        if c.source_count == 0:
+            return ("applicable_under_assumptions",
+                    L("The scene contains no charge, so the field and the potential are zero "
+                      "everywhere.",
+                      "A jelenetben nincs töltés, ezért a térerősség és a potenciál mindenütt "
+                      "nulla."))
         return OK
     return ("not_applicable",
             L("Requires point charges in unbounded vacuum without conductors or dielectrics.",
               "Végtelen vákuumban lévő ponttöltéseket feltételez, vezetők és dielektrikumok "
               "nélkül."))
+
+
+def _superposition(c: ModelContext) -> Out:
+    if c.medium not in ("vacuum", "homogeneous_linear", "inhomogeneous_linear"):
+        return ("not_applicable", L("The medium is not linear.", "A közeg nem lineáris."))
+    if c.source_count == 0:
+        return ("applicable_under_assumptions",
+                L("No sources: every term of the sum is zero.",
+                  "Nincs forrás: az összeg minden tagja nulla."))
+    if c.source_count == 1:
+        return ("applicable_under_assumptions",
+                L("Only one charge is present, so each sum has a single term.",
+                  "Csak egy töltés van jelen, így mindkét összeg egyetlen tagból áll."))
+    return OK
 
 
 def _poisson_general(c: ModelContext) -> Out:
@@ -159,6 +179,7 @@ RULES: dict[str, Rule] = {
     "e_from_potential": _e_from_phi,
     "coulomb_field": _coulomb,
     "coulomb_potential": _coulomb,
+    "superposition": _superposition,
     "poisson_general": _poisson_general,
     "poisson_homogeneous": _poisson_homog,
     "laplace": _laplace,

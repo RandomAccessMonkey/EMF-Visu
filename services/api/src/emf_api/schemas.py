@@ -37,13 +37,29 @@ class ProbeValue(BaseModel):
     magnitude: float | None = None
 
 
+class ProbeContribution(BaseModel):
+    """Field of one source at the probe point (one term of the superposition sums)."""
+
+    object_id: str
+    name: str
+    charge_C: float
+    distance_m: float
+    E_V_per_m: list[float] | None
+    E_magnitude_V_per_m: float | None
+    phi_V: float | None
+
+
 class ProbeResponse(BaseModel):
     point_m: Vec3
     solver_id: str
     solver_version: str
     classification: Classification
     defined: bool
+    # Position tolerance below which the probe is considered to sit *on* a point charge.
+    singular_tolerance_m: float
+    singular_object_id: str | None = None
     values: list[ProbeValue]
+    contributions: list[ProbeContribution]
 
 
 class EquationsBody(BaseModel):

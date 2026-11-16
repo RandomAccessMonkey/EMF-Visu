@@ -231,6 +231,12 @@ export interface components {
             unit: string;
             /** Components */
             components: number;
+            /**
+             * Kind
+             * @default field
+             * @enum {string}
+             */
+            kind: "field" | "geometry";
             stats: components["schemas"]["ArrayStats"];
             /**
              * Dtype
@@ -428,6 +434,12 @@ export interface components {
             status_reason: components["schemas"]["LocalizedText"] | null;
             /** Evaluated By Solver */
             evaluated_by_solver: boolean;
+            /**
+             * Usage
+             * @enum {string}
+             */
+            usage: "evaluated" | "satisfied" | "not_used";
+            usage_note: components["schemas"]["LocalizedText"];
         };
         /** EquationsBody */
         EquationsBody: {
@@ -444,6 +456,31 @@ export interface components {
             /** Equations */
             equations: components["schemas"]["EquationView"][];
         };
+        /**
+         * EquipotentialRequest
+         * @description Equipotential contour lines on a plane-grid sampling.
+         */
+        EquipotentialRequest: {
+            /** Sampling Id */
+            sampling_id: string;
+            /** Levels V */
+            levels_V?: number[] | null;
+        };
+        /** EquipotentialSet */
+        EquipotentialSet: {
+            /** Array */
+            array: string;
+            /** Sampling Id */
+            sampling_id: string;
+            /** Levels */
+            levels: components["schemas"]["LevelRange"][];
+            /**
+             * Field Classification
+             * @enum {string}
+             */
+            field_classification: "exact_analytical" | "numerical_approximation" | "idealized_model" | "visualization_aid";
+            method: components["schemas"]["MethodInfo"];
+        };
         /** ErrorBody */
         ErrorBody: {
             /**
@@ -458,6 +495,118 @@ export interface components {
              * @default []
              */
             reasons: components["schemas"]["LocalizedText"][];
+        };
+        /** FieldLineInfo */
+        FieldLineInfo: {
+            /** Start */
+            start: number;
+            /** Count */
+            count: number;
+            /** Level */
+            level: number;
+            /**
+             * Start Reason
+             * @enum {string}
+             */
+            start_reason: "positive_charge" | "negative_charge" | "domain_boundary" | "stagnation_point" | "max_length" | "integration_failure";
+            /**
+             * End Reason
+             * @enum {string}
+             */
+            end_reason: "positive_charge" | "negative_charge" | "domain_boundary" | "stagnation_point" | "max_length" | "integration_failure";
+            /** Start Object Id */
+            start_object_id?: string | null;
+            /** End Object Id */
+            end_object_id?: string | null;
+            /** Steps */
+            steps: number;
+        };
+        /**
+         * FieldLineRequest
+         * @description Ask for field lines. All density levels are computed at once so that changing the
+         *     displayed density is a visual-only operation.
+         *
+         *     ``planar``: seeds on a circle in the plane of the referenced plane-grid sampling, around
+         *     every source lying in that plane. ``spherical``: seeds on a sphere around every source.
+         */
+        FieldLineRequest: {
+            /**
+             * Seeding
+             * @enum {string}
+             */
+            seeding: "planar" | "spherical";
+            /** Sampling Id */
+            sampling_id: string;
+            /**
+             * Base Lines
+             * @default 8
+             */
+            base_lines: number;
+            /**
+             * Levels
+             * @default 3
+             */
+            levels: number;
+            /**
+             * Guard Cells
+             * @default 0.5
+             */
+            guard_cells: number;
+        };
+        /** FieldLineSet */
+        FieldLineSet: {
+            /** Array */
+            array: string;
+            /**
+             * Seeding
+             * @enum {string}
+             */
+            seeding: "planar" | "spherical";
+            /** Levels */
+            levels: number;
+            /** Guard Radius M */
+            guard_radius_m: number;
+            /** Lines Stay In Plane */
+            lines_stay_in_plane?: boolean | null;
+            /**
+             * Unseeded Object Ids
+             * @default []
+             */
+            unseeded_object_ids: string[];
+            /** Lines */
+            lines: components["schemas"]["FieldLineInfo"][];
+            /** End Reason Counts */
+            end_reason_counts: {
+                [key: string]: number;
+            };
+            /**
+             * Field Classification
+             * @enum {string}
+             */
+            field_classification: "exact_analytical" | "numerical_approximation" | "idealized_model" | "visualization_aid";
+            method: components["schemas"]["MethodInfo"];
+        };
+        /**
+         * GroupPrimitive
+         * @description A container with no geometry of its own: its transform applies to its children.
+         *
+         *     ``kind = "dipole"`` marks a pair of child point charges +q and −q (two real point charges at
+         *     a finite separation, not an ideal point dipole). The kind is an editing aid for the UI; the
+         *     physics always comes from the child charges themselves. Added in Phase 2A (additive: scenes
+         *     without groups are unchanged, schema_version stays 1).
+         */
+        GroupPrimitive: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "group";
+            /**
+             * Kind
+             * @default generic
+             * @enum {string}
+             */
+            kind: "generic" | "dipole";
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -475,6 +624,34 @@ export interface components {
             version: string;
             database: components["schemas"]["ComponentHealth"];
             redis: components["schemas"]["ComponentHealth"];
+        };
+        /**
+         * IsosurfaceRequest
+         * @description Equipotential surfaces extracted on a lattice (the lattice samples are not transported).
+         */
+        IsosurfaceRequest: {
+            lattice: components["schemas"]["LatticeSampling"];
+            /** Levels V */
+            levels_V?: number[] | null;
+        };
+        /** IsosurfaceSet */
+        IsosurfaceSet: {
+            /** Array */
+            array: string;
+            /** Normals Array */
+            normals_array: string;
+            /** Lattice */
+            lattice: {
+                [key: string]: unknown;
+            };
+            /** Levels */
+            levels: components["schemas"]["LevelRange"][];
+            /**
+             * Field Classification
+             * @enum {string}
+             */
+            field_classification: "exact_analytical" | "numerical_approximation" | "idealized_model" | "visualization_aid";
+            method: components["schemas"]["MethodInfo"];
         };
         /** JobCreated */
         JobCreated: {
@@ -518,6 +695,8 @@ export interface components {
             kind: "lattice";
             /** Id */
             id: string;
+            /** Quantities */
+            quantities?: ("E" | "phi" | "D")[] | null;
             /** Min M */
             min_m: [
                 number,
@@ -536,6 +715,15 @@ export interface components {
             ny: number;
             /** Nz */
             nz: number;
+        };
+        /** LevelRange */
+        LevelRange: {
+            /** Value V */
+            value_V: number;
+            /** Start */
+            start: number;
+            /** Count */
+            count: number;
         };
         /**
          * LinePrimitive
@@ -593,6 +781,27 @@ export interface components {
          */
         MaterialModel: "vacuum" | "linear_dielectric" | "linear_magnetic" | "ohmic_conductor" | "perfect_conductor";
         /**
+         * MethodInfo
+         * @description How a derived product was obtained. Kept separate from the physical classification of the
+         *     field it was derived from: a numerically integrated line of an exact field is still a line
+         *     of an exact field.
+         */
+        MethodInfo: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "numerical_integration" | "numerical_extraction";
+            name: components["schemas"]["LocalizedText"];
+            description: components["schemas"]["LocalizedText"];
+            /** Parameters */
+            parameters: {
+                [key: string]: number | string;
+            };
+            /** Limitations */
+            limitations: components["schemas"]["LocalizedText"][];
+        };
+        /**
          * ModelContext
          * @description What physical model produced a result. The equation registry derives every equation's
          *     applicability status from this, so statuses are computed rather than hard-coded.
@@ -638,6 +847,11 @@ export interface components {
              * @default false
              */
             computes_magnetic_field: boolean;
+            /**
+             * Source Count
+             * @default 0
+             */
+            source_count: number;
             /** Solver Id */
             solver_id: string;
             /**
@@ -661,6 +875,8 @@ export interface components {
             kind: "plane_grid";
             /** Id */
             id: string;
+            /** Quantities */
+            quantities?: ("E" | "phi" | "D")[] | null;
             /**
              * Center M
              * @default [
@@ -763,6 +979,8 @@ export interface components {
             kind: "points";
             /** Id */
             id: string;
+            /** Quantities */
+            quantities?: ("E" | "phi" | "D")[] | null;
             /** Points M */
             points_m: [
                 number,
@@ -800,6 +1018,26 @@ export interface components {
                 number
             ];
         };
+        /**
+         * ProbeContribution
+         * @description Field of one source at the probe point (one term of the superposition sums).
+         */
+        ProbeContribution: {
+            /** Object Id */
+            object_id: string;
+            /** Name */
+            name: string;
+            /** Charge C */
+            charge_C: number;
+            /** Distance M */
+            distance_m: number;
+            /** E V Per M */
+            E_V_per_m: number[] | null;
+            /** E Magnitude V Per M */
+            E_magnitude_V_per_m: number | null;
+            /** Phi V */
+            phi_V: number | null;
+        };
         /** ProbeResponse */
         ProbeResponse: {
             /** Point M */
@@ -819,8 +1057,14 @@ export interface components {
             classification: "exact_analytical" | "numerical_approximation" | "idealized_model" | "visualization_aid";
             /** Defined */
             defined: boolean;
+            /** Singular Tolerance M */
+            singular_tolerance_m: number;
+            /** Singular Object Id */
+            singular_object_id?: string | null;
             /** Values */
             values: components["schemas"]["ProbeValue"][];
+            /** Contributions */
+            contributions: components["schemas"]["ProbeContribution"][];
         };
         /** ProbeValue */
         ProbeValue: {
@@ -967,6 +1211,9 @@ export interface components {
              * @default []
              */
             equation_status: components["schemas"]["EquationStatusEntry"][];
+            field_lines?: components["schemas"]["FieldLineSet"] | null;
+            equipotentials?: components["schemas"]["EquipotentialSet"] | null;
+            isosurfaces?: components["schemas"]["IsosurfaceSet"] | null;
             /**
              * Arrays
              * @default []
@@ -1050,7 +1297,7 @@ export interface components {
              */
             name: string;
             /** Primitive */
-            primitive: components["schemas"]["PointPrimitive"] | components["schemas"]["SpherePrimitive"] | components["schemas"]["BoxPrimitive"] | components["schemas"]["CylinderPrimitive"] | components["schemas"]["RingPrimitive"] | components["schemas"]["PlanePrimitive"] | components["schemas"]["LinePrimitive"];
+            primitive: components["schemas"]["GroupPrimitive"] | components["schemas"]["PointPrimitive"] | components["schemas"]["SpherePrimitive"] | components["schemas"]["BoxPrimitive"] | components["schemas"]["CylinderPrimitive"] | components["schemas"]["RingPrimitive"] | components["schemas"]["PlanePrimitive"] | components["schemas"]["LinePrimitive"];
             /**
              * @default {
              *       "position_m": [
@@ -1102,6 +1349,9 @@ export interface components {
              * @enum {string}
              */
             quality: "preview" | "normal" | "high";
+            field_lines?: components["schemas"]["FieldLineRequest"] | null;
+            equipotentials?: components["schemas"]["EquipotentialRequest"] | null;
+            isosurfaces?: components["schemas"]["IsosurfaceRequest"] | null;
         };
         /** SolverDescriptor */
         SolverDescriptor: {

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from typing import Literal
+
+from ..i18n import L
 from ..solvers.base import EquationStatusEntry, ModelContext
 from .data import EQUATIONS, SYMBOLS
 from .models import Equation, EquationView, Rule, SymbolDef
@@ -30,11 +33,28 @@ class EquationRegistry:
             status, reason = self._rules[e.id](ctx)
             if status != "applicable" and reason is None:
                 raise ValueError(f"rule for '{e.id}' returned '{status}' without a reason")
+            evaluated = e.id in ctx.evaluated_equation_ids
+            usage: Literal["evaluated", "satisfied", "not_used"]
+            if evaluated:
+                usage, note = "evaluated", L(
+                    "Evaluated directly by the active solver to produce the displayed fields.",
+                    "Az aktív megoldó közvetlenül kiértékeli a megjelenített mezők előállításához.")
+            elif status in ("applicable", "applicable_under_assumptions"):
+                usage, note = "satisfied", L(
+                    "A law or relation that the computed field satisfies. The active solver does "
+                    "not solve this equation: no boundary-value problem is solved and no "
+                    "independent numerical solution of it is produced.",
+                    "Olyan törvény vagy összefüggés, amelyet a számított mező kielégít. Az aktív "
+                    "megoldó ezt az egyenletet nem oldja meg: nem old meg peremérték-feladatot, "
+                    "és nem állít elő hozzá független numerikus megoldást.")
+            else:
+                usage, note = "not_used", L(
+                    "Not used by the active model.", "Az aktív modell nem használja.")
             views.append(EquationView(
                 **e.model_dump(exclude={"symbols"}),
                 symbols=[self._symbols[s] for s in e.symbols],
                 status=status, status_reason=reason,
-                evaluated_by_solver=e.id in ctx.evaluated_equation_ids,
+                evaluated_by_solver=evaluated, usage=usage, usage_note=note,
             ))
         return views
 

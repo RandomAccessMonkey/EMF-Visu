@@ -2,6 +2,9 @@ from .base import (
     ArrayEntry,
     ArrayStats,
     Classification,
+    EquipotentialRequest,
+    FieldLineRequest,
+    IsosurfaceRequest,
     ModelContext,
     ResultHeader,
     SimulationResult,
@@ -14,7 +17,8 @@ from .base import (
 from .catalog import SolverCatalog, SolverDescriptor, UnsupportedSceneError, default_catalog
 
 __all__ = [
-    "ArrayEntry", "ArrayStats", "Classification", "ModelContext", "ResultHeader",
+    "ArrayEntry", "ArrayStats", "EquipotentialRequest", "FieldLineRequest",
+    "IsosurfaceRequest", "Classification", "ModelContext", "ResultHeader",
     "SimulationResult", "SolveRequest", "Solver", "SolverCancelledError", "SolverError", "Support",
     "SolverCatalog", "SolverDescriptor", "UnsupportedSceneError", "default_catalog",
 ]

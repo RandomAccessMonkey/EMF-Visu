@@ -78,7 +78,8 @@ def test_container_round_trip_and_alignment():
 
 def _ctx(**kw):
     base = dict(regime="electrostatic", dimensionality="3d", medium="vacuum",
-                has_free_charge=True, solver_id="analytical.electrostatics.point_charges",
+                has_free_charge=True, source_count=2,
+                solver_id="analytical.electrostatics.point_charges",
                 evaluated_equation_ids=["coulomb_field"])
     return ModelContext(**{**base, **kw})
 
@@ -108,8 +109,8 @@ def test_statuses_follow_the_model_context():
     assert st["biot_savart"].status == "not_applicable"
     assert st["ohm_local"].status == "not_applicable"
     # The same rules give different answers for a different model: computed, not hard-coded.
-    assert {v.id: v for v in reg.evaluate(_ctx(has_free_charge=False))}["laplace"].status == \
-        "applicable"
+    empty = {v.id: v for v in reg.evaluate(_ctx(has_free_charge=False, source_count=0))}
+    assert empty["laplace"].status == "applicable"
     inhom = {v.id: v.status for v in reg.evaluate(_ctx(medium="inhomogeneous_linear"))}
     assert inhom["poisson_general"] == "applicable"
     assert inhom["poisson_homogeneous"] == "not_applicable"

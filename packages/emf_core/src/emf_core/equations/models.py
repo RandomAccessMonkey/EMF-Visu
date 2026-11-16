@@ -60,3 +60,10 @@ class EquationView(BaseModel):
     status: EquationStatus
     status_reason: LocalizedText | None
     evaluated_by_solver: bool
+    # How the active solver relates to this equation, computed from the model context:
+    #   evaluated      - its formula is evaluated directly to produce the displayed fields;
+    #   satisfied      - it applies and the computed field obeys it, but the solver does not
+    #                    solve it (no boundary-value problem or independent check is performed);
+    #   not_used       - it does not apply to, or is not evaluated in, the active model.
+    usage: Literal["evaluated", "satisfied", "not_used"]
+    usage_note: LocalizedText

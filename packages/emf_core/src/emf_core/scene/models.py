@@ -89,9 +89,21 @@ class LinePrimitive(StrictModel):
     length_m: PositiveFloat = 1.0
 
 
+class GroupPrimitive(StrictModel):
+    """A container with no geometry of its own: its transform applies to its children.
+
+    ``kind = "dipole"`` marks a pair of child point charges +q and −q (two real point charges at
+    a finite separation, not an ideal point dipole). The kind is an editing aid for the UI; the
+    physics always comes from the child charges themselves. Added in Phase 2A (additive: scenes
+    without groups are unchanged, schema_version stays 1)."""
+
+    type: Literal["group"] = "group"
+    kind: Literal["generic", "dipole"] = "generic"
+
+
 Primitive = Annotated[
-    PointPrimitive | SpherePrimitive | BoxPrimitive | CylinderPrimitive | RingPrimitive
-    | PlanePrimitive | LinePrimitive,
+    GroupPrimitive | PointPrimitive | SpherePrimitive | BoxPrimitive | CylinderPrimitive
+    | RingPrimitive | PlanePrimitive | LinePrimitive,
     Field(discriminator="type"),
 ]
 

@@ -144,38 +144,64 @@ EQUATIONS: list[Equation] = [
     ),
     Equation(
         id="coulomb_field", category="electrostatics",
-        name=L("Coulomb field of point charges (superposition)",
-               "Ponttöltések Coulomb-tere (szuperpozíció)"),
-        latex=r"\mathbf{E}(\mathbf{r}) = \frac{1}{4\pi\varepsilon_0}\sum_i q_i\,\frac{\mathbf{r}-\mathbf{r}_i}{|\mathbf{r}-\mathbf{r}_i|^3}",
-        meaning=L("The field of several point charges is the vector sum of their individual "
-                  "inverse-square fields.",
-                  "Több ponttöltés tere az egyes töltések fordított négyzetes tereinek vektori "
-                  "összege."),
-        intuition=L("Each charge pushes a positive test charge directly away from itself (or "
-                    "pulls it in, if negative); the pushes simply add.",
-                    "Minden töltés egyenesen eltaszítja a pozitív próbatöltést (vagy vonzza, ha "
-                    "negatív); a hatások egyszerűen összeadódnak."),
+        name=L("Coulomb field of a point charge", "Ponttöltés Coulomb-tere"),
+        latex=r"\mathbf{E}(\mathbf{r}) = \frac{q}{4\pi\varepsilon_0}\,\frac{\mathbf{r}-\mathbf{r}_0}{|\mathbf{r}-\mathbf{r}_0|^3}",
+        meaning=L("The electric field of a point charge q at r₀ is radial and falls off with the "
+                  "square of the distance.",
+                  "Az r₀ helyen lévő q ponttöltés elektromos tere sugárirányú, és a távolság "
+                  "négyzetével csökken."),
+        intuition=L("A positive charge pushes a positive test charge directly away from itself; "
+                    "a negative charge pulls it in. Doubling the distance quarters the field.",
+                    "A pozitív töltés egyenesen eltaszítja a pozitív próbatöltést, a negatív "
+                    "vonzza. Kétszeres távolságban a térerősség a negyedére csökken."),
         symbols=["E", "q", "r", "eps0"],
-        assumptions=[L("Ideal point charges at rest in unbounded vacuum.",
-                       "Ideális, nyugvó ponttöltések végtelen vákuumban.")],
-        limitations=[L("Singular at the charge positions. Not valid when conductors or "
-                       "dielectrics are present (induced and bound charges are not included).",
-                       "A töltések helyén szinguláris. Vezetők vagy dielektrikumok jelenlétében "
-                       "nem érvényes (az influált és kötött töltéseket nem tartalmazza).")],
+        assumptions=[L("Ideal point charge at rest in unbounded vacuum.",
+                       "Ideális, nyugvó ponttöltés végtelen vákuumban.")],
+        limitations=[L("Singular at the charge position r = r₀, where E is undefined. Not valid "
+                       "when conductors or dielectrics are present (induced and bound charges "
+                       "are not included).",
+                       "A töltés helyén (r = r₀) szinguláris, ott E nem értelmezett. Vezetők vagy "
+                       "dielektrikumok jelenlétében nem érvényes (az influált és kötött "
+                       "töltéseket nem tartalmazza).")],
         used_by=[PC],
     ),
     Equation(
         id="coulomb_potential", category="electrostatics",
-        name=L("Potential of point charges", "Ponttöltések potenciálja"),
-        latex=r"\varphi(\mathbf{r}) = \frac{1}{4\pi\varepsilon_0}\sum_i \frac{q_i}{|\mathbf{r}-\mathbf{r}_i|}",
-        meaning=L("Scalar potential of point charges, with zero potential at infinity.",
-                  "Ponttöltések skalárpotenciálja, a végtelenben nulla potenciállal."),
-        intuition=L("Potentials are plain numbers, so they add without any vector bookkeeping.",
-                    "A potenciál skalár, ezért vektoros számolás nélkül összeadható."),
+        name=L("Potential of a point charge", "Ponttöltés potenciálja"),
+        latex=r"\varphi(\mathbf{r}) = \frac{q}{4\pi\varepsilon_0\,|\mathbf{r}-\mathbf{r}_0|}",
+        meaning=L("Scalar potential of a point charge, with zero potential at infinity.",
+                  "Ponttöltés skalárpotenciálja, a végtelenben nulla potenciállal."),
+        intuition=L("The potential is positive around a positive charge and negative around a "
+                    "negative one; it falls off as 1/r, more slowly than the field.",
+                    "A potenciál pozitív töltés körül pozitív, negatív körül negatív; 1/r szerint "
+                    "csökken, lassabban, mint a térerősség."),
         symbols=["phi", "q", "r", "eps0"],
-        assumptions=[L("Ideal point charges at rest in unbounded vacuum.",
-                       "Ideális, nyugvó ponttöltések végtelen vákuumban.")],
+        assumptions=[L("Ideal point charge at rest in unbounded vacuum.",
+                       "Ideális, nyugvó ponttöltés végtelen vákuumban.")],
+        limitations=[L("Singular at the charge position r = r₀.",
+                       "A töltés helyén (r = r₀) szinguláris.")],
         conditions=[L("Reference: φ → 0 as |r| → ∞.", "Vonatkoztatás: φ → 0, ha |r| → ∞.")],
+        used_by=[PC],
+    ),
+    Equation(
+        id="superposition", category="electrostatics",
+        name=L("Superposition principle", "Szuperpozíció elve"),
+        latex=r"\mathbf{E}_{\text{total}} = \sum_i \mathbf{E}_i,\qquad \varphi_{\text{total}} = \sum_i \varphi_i",
+        meaning=L("The field of several charges is the vector sum of their individual fields; "
+                  "the potential is the plain sum of their potentials.",
+                  "Több töltés tere az egyes töltések tereinek vektori összege; a potenciál az "
+                  "egyes potenciálok skaláris összege."),
+        intuition=L("Each charge acts as if the others were not there. Vectors can cancel: |E| "
+                    "of the sum is not the sum of the magnitudes.",
+                    "Minden töltés úgy hat, mintha a többi ott sem volna. A vektorok ki is "
+                    "olthatják egymást: az összeg |E| nagysága nem a nagyságok összege."),
+        symbols=["E", "phi"],
+        assumptions=[L("Linear medium (here: vacuum), so Maxwell's equations are linear in the "
+                       "sources.",
+                       "Lineáris közeg (itt: vákuum), így a Maxwell-egyenletek a forrásokban "
+                       "lineárisak.")],
+        limitations=[L("Does not hold for the field in nonlinear materials.",
+                       "Nemlineáris anyagokban a mezőre nem érvényes.")],
         used_by=[PC],
     ),
     Equation(

@@ -3,6 +3,7 @@ from .models import (
     BoxPrimitive,
     CylinderPrimitive,
     Domain,
+    GroupPrimitive,
     LinePrimitive,
     Material,
     MaterialModel,
@@ -20,7 +21,8 @@ from .models import (
 from .transforms import world_matrix, world_position
 
 __all__ = [
-    "BoundaryCondition", "BoxPrimitive", "CylinderPrimitive", "Domain", "LinePrimitive",
+    "BoundaryCondition", "BoxPrimitive", "CylinderPrimitive", "Domain", "GroupPrimitive",
+    "LinePrimitive",
     "Material", "MaterialModel", "PlanePrimitive", "PointChargeSource", "PointPrimitive",
     "Primitive", "RingPrimitive", "Role", "Scene", "SceneObject", "SpherePrimitive",
     "Transform", "world_matrix", "world_position",
