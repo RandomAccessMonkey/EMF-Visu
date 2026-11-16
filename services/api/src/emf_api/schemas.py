@@ -6,9 +6,11 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from emf_core.equations import EquationView
+from emf_core.geometry.surfaces import GaussSurface
 from emf_core.i18n import LocalizedText
 from emf_core.scene.models import Scene, Vec3
 from emf_core.solvers import SolverDescriptor, SolveRequest
+from emf_core.solvers.analytical.gauss import FluxRequest
 from emf_core.solvers.base import Classification
 
 
@@ -98,6 +100,13 @@ class ProbeResponse(BaseModel):
 
 class EquationsBody(BaseModel):
     scene: Scene
+    # Gaussian surfaces, so that flux equations get statuses for the actual configuration.
+    surfaces: list[GaussSurface] = Field(default=[], max_length=16)
+
+
+class FluxBody(BaseModel):
+    scene: Scene
+    flux: FluxRequest
 
 
 class EquationsResponse(BaseModel):
@@ -134,6 +143,9 @@ class ProjectIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     scene: Scene
     view: dict[str, Any] = {}
+    # Gaussian surfaces (Phase 2B-2). Stored inside the view JSON column, so no database
+    # migration is needed; projects saved earlier simply have none.
+    surfaces: list[GaussSurface] = Field(default=[], max_length=16)
 
 
 class ProjectSummary(BaseModel):
@@ -146,3 +158,4 @@ class ProjectSummary(BaseModel):
 class ProjectOut(ProjectSummary):
     scene: Scene
     view: dict[str, Any]
+    surfaces: list[GaussSurface] = []

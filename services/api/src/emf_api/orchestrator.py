@@ -8,8 +8,9 @@ from threading import Lock
 
 import numpy as np
 
-from emf_core import engine
+from emf_core import engine, wire
 from emf_core.equations import EquationRegistry, EquationView, default_registry
+from emf_core.geometry.surfaces import GaussSurface
 from emf_core.i18n import LocalizedText
 from emf_core.scene.models import Scene
 from emf_core.solvers import (
@@ -19,6 +20,8 @@ from emf_core.solvers import (
     UnsupportedSceneError,
     default_catalog,
 )
+from emf_core.solvers.analytical import gauss
+from emf_core.solvers.analytical.gauss import FluxRequest
 from emf_core.solvers.base import ModelContext, Solver
 
 
@@ -64,7 +67,24 @@ class Orchestrator:
                 self._cache.popitem(last=False)
         return blob, False
 
-    def equations(self, scene: Scene) -> tuple[list[EquationView], list[LocalizedText], str | None]:
+    def solve_flux(self, scene: Scene, request: FluxRequest) -> tuple[bytes, bool]:
+        """Closed-surface flux as an EMF1 container (cached separately from field solves)."""
+        key = engine.flux_fingerprint(scene, request)
+        with self._lock:
+            hit = self._cache.get(key)
+            if hit is not None:
+                self._cache.move_to_end(key)
+                return hit, True
+        header, arrays = engine.run_flux(scene, request, catalog=self.catalog)
+        blob = wire.encode(header.model_dump(mode="json"), arrays)
+        with self._lock:
+            self._cache[key] = blob
+            while len(self._cache) > self._cache_entries:
+                self._cache.popitem(last=False)
+        return blob, False
+
+    def equations(self, scene: Scene, surfaces: list[GaussSurface] | None = None
+                  ) -> tuple[list[EquationView], list[LocalizedText], str | None]:
         """Equation views for the model that would be used for this scene. If no solver
         supports the scene, return no equations plus the reasons."""
         probe = SolveRequest.model_validate({
@@ -76,4 +96,14 @@ class Orchestrator:
         except UnsupportedSceneError as exc:
             return [], exc.reasons, None
         ctx: ModelContext = solver.solve(scene, probe).header.model_context
+        if surfaces:
+            count, ambiguous, invalid = gauss.surface_context(scene, surfaces)
+            ctx = ctx.model_copy(update={
+                "gauss_surfaces": count, "gauss_boundary_ambiguous": ambiguous,
+                "gauss_invalid": invalid,
+                "evaluated_equation_ids": [*ctx.evaluated_equation_ids, "electric_flux",
+                                           "displacement_flux"],
+                "checked_equation_ids": ["gauss_integral_E", "gauss_integral_D",
+                                         "divergence_theorem_E", "divergence_theorem_D"],
+            })
         return self.registry.evaluate(ctx), [], solver.id

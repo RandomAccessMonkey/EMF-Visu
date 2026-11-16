@@ -5,6 +5,7 @@ from typing import Annotated
 import numpy as np
 from fastapi import APIRouter, Depends, Response
 
+from emf_core.gauss_situations import SITUATIONS, GaussSituation
 from emf_core.postprocess import differential
 from emf_core.presets import PRESETS, Preset
 from emf_core.solvers import SolveRequest, SolverError, UnsupportedSceneError
@@ -17,6 +18,7 @@ from ..schemas import (
     EquationsBody,
     EquationsResponse,
     ErrorBody,
+    FluxBody,
     ProbeBody,
     ProbeContribution,
     ProbeDiagnostic,
@@ -163,9 +165,34 @@ def _diagnostics(point: np.ndarray, positions: np.ndarray, charges: np.ndarray, 
 @router.post("/equations/evaluate")
 def evaluate_equations(body: EquationsBody, orch: Orch) -> EquationsResponse:
     """Equations with their applicability status for the model that this scene resolves to."""
-    views, reasons, solver_id = orch.equations(body.scene)
+    views, reasons, solver_id = orch.equations(body.scene, body.surfaces)
     return EquationsResponse(supported=solver_id is not None, solver_id=solver_id,
                              unsupported_reasons=reasons, equations=views)
+
+
+@router.post(
+    "/flux",
+    response_class=Response,
+    responses={200: {"content": {RESULT_MEDIA_TYPE: {}},
+                     "description": "EMF1 container with a FluxHeader (see docs/architecture.md)"},
+               **_ERRORS},
+)
+def flux(body: FluxBody, orch: Orch) -> Response:
+    """Flux through closed Gaussian surfaces: surface integral (solid angles over the
+    represented mesh) and volume integral (enclosed distributional source weights), computed
+    independently and compared."""
+    try:
+        blob, hit = orch.solve_flux(body.scene, body.flux)
+    except UnsupportedSceneError as exc:
+        raise api_error(422, "unsupported", "no available solver supports this configuration",
+                        exc.reasons) from exc
+    return Response(blob, media_type=RESULT_MEDIA_TYPE,
+                    headers={"X-EMF-Cache": "hit" if hit else "miss"})
+
+
+@router.get("/gauss/situations")
+def gauss_situations() -> list[GaussSituation]:
+    return SITUATIONS
 
 
 @router.get("/presets")

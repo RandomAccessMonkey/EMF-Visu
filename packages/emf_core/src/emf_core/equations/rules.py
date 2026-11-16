@@ -130,6 +130,52 @@ def _curl_d_vacuum(c: ModelContext) -> Out:
     return OK
 
 
+_NO_SURFACE = L("No Gaussian surface is defined; add one to compute the flux.",
+                "Nincs Gauss-felület megadva; adjon hozzá egyet a fluxus kiszámításához.")
+_ON_SURFACE = L("A point charge lies on a Gaussian surface: the field is singular there and the "
+                "flux through that surface is undefined.",
+                "Egy ponttöltés egy Gauss-felületen fekszik: ott a mező szinguláris, és az adott "
+                "felületen átmenő fluxus nem értelmezett.")
+_INVALID_SURFACE = L("A Gaussian surface failed validation (not a closed, consistently oriented "
+                     "surface); no flux is computed for it.",
+                     "Egy Gauss-felület nem felelt meg az ellenőrzésen (nem zárt, következetesen "
+                     "irányított felület); arra nem számol fluxust a program.")
+
+
+def _flux_def(c: ModelContext) -> Out:
+    if c.gauss_surfaces == 0:
+        return ("not_evaluated", _NO_SURFACE)
+    if c.gauss_boundary_ambiguous:
+        return ("applicable_under_assumptions", _ON_SURFACE)
+    if c.gauss_invalid:
+        return ("applicable_under_assumptions", _INVALID_SURFACE)
+    return OK
+
+
+def _gauss_integral(c: ModelContext) -> Out:
+    if c.regime != "electrostatic" or c.medium != "vacuum":
+        return ("not_applicable", L("Requires electrostatics in vacuum.",
+                                    "Vákuumbeli elektrosztatikát feltételez."))
+    if c.gauss_surfaces == 0:
+        return ("applicable_under_assumptions",
+                L("Holds for every closed surface that has no charge on it; none is defined yet.",
+                  "Minden olyan zárt felületre teljesül, amelyen nincs töltés; még nincs ilyen "
+                  "felület megadva."))
+    if c.gauss_boundary_ambiguous:
+        return ("applicable_under_assumptions", _ON_SURFACE)
+    return OK
+
+
+def _divergence_theorem(c: ModelContext) -> Out:
+    if c.source_count > 0:
+        return ("applicable_under_assumptions",
+                L("The point charges make div E a distribution: the theorem holds in the "
+                  "distributional sense, provided no charge lies on the surface.",
+                  "A ponttöltések miatt div E disztribúció: a tétel disztribúciós értelemben "
+                  "teljesül, feltéve, hogy egy töltés sem fekszik a felületen."))
+    return OK
+
+
 def _poisson_general(c: ModelContext) -> Out:
     if c.regime != "electrostatic":
         return ("not_applicable", L("Not an electrostatic model.", "Nem elektrosztatikus modell."))
@@ -220,6 +266,13 @@ RULES: dict[str, Rule] = {
     "div_D_point_charges": _div_point_charges,
     "curl_E_electrostatic": _curl_e_static,
     "curl_D_vacuum": _curl_d_vacuum,
+    "electric_flux": _flux_def,
+    "displacement_flux": _flux_def,
+    "gauss_integral_E": _gauss_integral,
+    "gauss_integral_D": _gauss_integral,
+    "divergence_theorem": _divergence_theorem,
+    "divergence_theorem_E": _gauss_integral,
+    "divergence_theorem_D": _gauss_integral,
     "gauss_magnetic": _needs_b,
     "faraday": _faraday,
     "ampere_maxwell": _ampere_maxwell,

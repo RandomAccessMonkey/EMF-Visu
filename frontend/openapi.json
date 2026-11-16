@@ -214,6 +214,89 @@
         }
       }
     },
+    "/api/v1/flux": {
+      "post": {
+        "tags": [
+          "simulation"
+        ],
+        "summary": "Flux",
+        "description": "Flux through closed Gaussian surfaces: surface integral (solid angles over the\nrepresented mesh) and volume integral (enclosed distributional source weights), computed\nindependently and compared.",
+        "operationId": "flux_api_v1_flux_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FluxBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "EMF1 container with a FluxHeader (see docs/architecture.md)",
+            "content": {
+              "application/vnd.emf.result": {}
+            }
+          },
+          "413": {
+            "description": "Request Entity Too Large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/gauss/situations": {
+      "get": {
+        "tags": [
+          "simulation"
+        ],
+        "summary": "Gauss Situations",
+        "operationId": "gauss_situations_api_v1_gauss_situations_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/GaussSituation"
+                  },
+                  "type": "array",
+                  "title": "Response Gauss Situations Api V1 Gauss Situations Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/presets": {
       "get": {
         "tags": [
@@ -983,6 +1066,45 @@
         "type": "object",
         "title": "BoxPrimitive"
       },
+      "BoxShape": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "box",
+            "title": "Type",
+            "default": "box"
+          },
+          "size_m": {
+            "prefixItems": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Size M",
+            "default": [
+              1.0,
+              1.0,
+              1.0
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "BoxShape",
+        "description": "Width (local x), depth (local y), height (local z)."
+      },
       "ComponentHealth": {
         "properties": {
           "ok": {
@@ -1006,6 +1128,25 @@
           "ok"
         ],
         "title": "ComponentHealth"
+      },
+      "CubeShape": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "cube",
+            "title": "Type",
+            "default": "cube"
+          },
+          "side_m": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Side M",
+            "default": 1.0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "CubeShape"
       },
       "CylinderPrimitive": {
         "properties": {
@@ -1032,6 +1173,32 @@
         "type": "object",
         "title": "CylinderPrimitive",
         "description": "Axis along local z."
+      },
+      "CylinderShape": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "cylinder",
+            "title": "Type",
+            "default": "cylinder"
+          },
+          "radius_m": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Radius M",
+            "default": 0.5
+          },
+          "height_m": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Height M",
+            "default": 1.0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "CylinderShape",
+        "description": "Axis along local z; orient it with the surface rotation."
       },
       "Domain": {
         "properties": {
@@ -1242,6 +1409,7 @@
             "type": "string",
             "enum": [
               "evaluated",
+              "checked",
               "satisfied",
               "not_used"
             ],
@@ -1279,6 +1447,15 @@
         "properties": {
           "scene": {
             "$ref": "#/components/schemas/Scene"
+          },
+          "surfaces": {
+            "items": {
+              "$ref": "#/components/schemas/GaussSurface"
+            },
+            "type": "array",
+            "maxItems": 16,
+            "title": "Surfaces",
+            "default": []
           }
         },
         "type": "object",
@@ -1635,6 +1812,236 @@
           "method"
         ],
         "title": "FieldLineSet"
+      },
+      "FluxBody": {
+        "properties": {
+          "scene": {
+            "$ref": "#/components/schemas/Scene"
+          },
+          "flux": {
+            "$ref": "#/components/schemas/FluxRequest"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scene",
+          "flux"
+        ],
+        "title": "FluxBody"
+      },
+      "FluxRequest": {
+        "properties": {
+          "surfaces": {
+            "items": {
+              "$ref": "#/components/schemas/GaussSurface"
+            },
+            "type": "array",
+            "maxItems": 16,
+            "minItems": 1,
+            "title": "Surfaces"
+          },
+          "quality": {
+            "type": "string",
+            "enum": [
+              "preview",
+              "final"
+            ],
+            "title": "Quality",
+            "default": "final"
+          },
+          "patch_details": {
+            "type": "boolean",
+            "title": "Patch Details",
+            "default": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "surfaces"
+        ],
+        "title": "FluxRequest"
+      },
+      "GaussSituation": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "number": {
+            "type": "integer",
+            "title": "Number"
+          },
+          "name": {
+            "$ref": "#/components/schemas/LocalizedText"
+          },
+          "description": {
+            "$ref": "#/components/schemas/LocalizedText"
+          },
+          "expectation": {
+            "$ref": "#/components/schemas/LocalizedText"
+          },
+          "scene": {
+            "$ref": "#/components/schemas/Scene"
+          },
+          "surfaces": {
+            "items": {
+              "$ref": "#/components/schemas/GaussSurface"
+            },
+            "type": "array",
+            "title": "Surfaces"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "number",
+          "name",
+          "description",
+          "expectation",
+          "scene",
+          "surfaces"
+        ],
+        "title": "GaussSituation"
+      },
+      "GaussSurface": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "default": ""
+          },
+          "shape": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SphereShape"
+              },
+              {
+                "$ref": "#/components/schemas/CubeShape"
+              },
+              {
+                "$ref": "#/components/schemas/BoxShape"
+              },
+              {
+                "$ref": "#/components/schemas/CylinderShape"
+              },
+              {
+                "$ref": "#/components/schemas/MeshShape"
+              }
+            ],
+            "title": "Shape",
+            "discriminator": {
+              "propertyName": "type",
+              "mapping": {
+                "box": "#/components/schemas/BoxShape",
+                "cube": "#/components/schemas/CubeShape",
+                "cylinder": "#/components/schemas/CylinderShape",
+                "mesh": "#/components/schemas/MeshShape",
+                "sphere": "#/components/schemas/SphereShape"
+              }
+            }
+          },
+          "center_m": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Center M",
+            "default": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          },
+          "rotation_euler_xyz_rad": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Rotation Euler Xyz Rad",
+            "default": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          },
+          "orientation": {
+            "type": "string",
+            "enum": [
+              "outward",
+              "inward"
+            ],
+            "title": "Orientation",
+            "default": "outward"
+          },
+          "subdivision": {
+            "anyOf": [
+              {
+                "prefixItems": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ],
+                "type": "array",
+                "maxItems": 3,
+                "minItems": 3
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subdivision"
+          },
+          "display": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SurfaceDisplay"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "shape"
+        ],
+        "title": "GaussSurface"
       },
       "GroupPrimitive": {
         "properties": {
@@ -2072,6 +2479,68 @@
         ],
         "title": "MaterialModel"
       },
+      "MeshShape": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "mesh",
+            "title": "Type",
+            "default": "mesh"
+          },
+          "vertices_m": {
+            "items": {
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array",
+              "maxItems": 3,
+              "minItems": 3
+            },
+            "type": "array",
+            "maxItems": 20000,
+            "minItems": 4,
+            "title": "Vertices M"
+          },
+          "triangles": {
+            "items": {
+              "prefixItems": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "type": "array",
+              "maxItems": 3,
+              "minItems": 3
+            },
+            "type": "array",
+            "maxItems": 40000,
+            "minItems": 4,
+            "title": "Triangles"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "vertices_m",
+          "triangles"
+        ],
+        "title": "MeshShape",
+        "description": "A custom closed triangulated surface in local coordinates (engine-level for now)."
+      },
       "MethodInfo": {
         "properties": {
           "kind": {
@@ -2183,6 +2652,29 @@
             "type": "integer",
             "title": "Source Count",
             "default": 0
+          },
+          "gauss_surfaces": {
+            "type": "integer",
+            "title": "Gauss Surfaces",
+            "default": 0
+          },
+          "gauss_boundary_ambiguous": {
+            "type": "boolean",
+            "title": "Gauss Boundary Ambiguous",
+            "default": false
+          },
+          "gauss_invalid": {
+            "type": "boolean",
+            "title": "Gauss Invalid",
+            "default": false
+          },
+          "checked_equation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Checked Equation Ids",
+            "default": []
           },
           "solver_id": {
             "type": "string",
@@ -3032,6 +3524,15 @@
             "type": "object",
             "title": "View",
             "default": {}
+          },
+          "surfaces": {
+            "items": {
+              "$ref": "#/components/schemas/GaussSurface"
+            },
+            "type": "array",
+            "maxItems": 16,
+            "title": "Surfaces",
+            "default": []
           }
         },
         "type": "object",
@@ -3068,6 +3569,14 @@
             "additionalProperties": true,
             "type": "object",
             "title": "View"
+          },
+          "surfaces": {
+            "items": {
+              "$ref": "#/components/schemas/GaussSurface"
+            },
+            "type": "array",
+            "title": "Surfaces",
+            "default": []
           }
         },
         "type": "object",
@@ -3781,6 +4290,55 @@
         "additionalProperties": false,
         "type": "object",
         "title": "SpherePrimitive"
+      },
+      "SphereShape": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "sphere",
+            "title": "Type",
+            "default": "sphere"
+          },
+          "radius_m": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Radius M",
+            "default": 1.0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "SphereShape"
+      },
+      "SurfaceDisplay": {
+        "properties": {
+          "visible": {
+            "type": "boolean",
+            "title": "Visible",
+            "default": true
+          },
+          "opacity": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Opacity",
+            "default": 0.3
+          },
+          "show_normals": {
+            "type": "boolean",
+            "title": "Show Normals",
+            "default": false
+          },
+          "color_by_flux": {
+            "type": "boolean",
+            "title": "Color By Flux",
+            "default": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "SurfaceDisplay",
+        "description": "Visualization metadata. Ignored by the engine and excluded from every cache key."
       },
       "SymbolDef": {
         "properties": {

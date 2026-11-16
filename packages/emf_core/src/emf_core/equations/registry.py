@@ -34,8 +34,17 @@ class EquationRegistry:
             if status != "applicable" and reason is None:
                 raise ValueError(f"rule for '{e.id}' returned '{status}' without a reason")
             evaluated = e.id in ctx.evaluated_equation_ids
-            usage: Literal["evaluated", "satisfied", "not_used"]
-            if evaluated:
+            usage: Literal["evaluated", "checked", "satisfied", "not_used"]
+            checked = e.id in ctx.checked_equation_ids
+            if checked and status in ("applicable", "applicable_under_assumptions"):
+                usage, note = "checked", L(
+                    "Both sides are computed by independent methods (the surface integral from the "
+                    "field over the oriented surface, the other side from the enclosed charges) "
+                    "and compared in the flux results.",
+                    "Mindkét oldalt független módszerrel számítja a program (a felületi integrált "
+                    "a mezőből az irányított felületen, a másik oldalt a bezárt töltésekből), és "
+                    "a fluxuseredményekben összeveti őket.")
+            elif evaluated:
                 usage, note = "evaluated", L(
                     "Evaluated directly by the active solver to produce the displayed fields.",
                     "Az aktív megoldó közvetlenül kiértékeli a megjelenített mezők előállításához.")

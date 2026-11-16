@@ -6,6 +6,9 @@ from fastapi import APIRouter, Depends, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from emf_core.geometry.surfaces import GaussSurface
+from emf_core.scene.models import Scene
+
 from ..db import ProjectRow
 from ..deps import api_error, get_session
 from ..schemas import ErrorBody, ProjectIn, ProjectOut, ProjectSummary
@@ -23,8 +26,19 @@ def _get(db: Session, project_id: str) -> ProjectRow:
     return row
 
 
+SURFACES_KEY = "gauss_surfaces"
+
+
 def _out(row: ProjectRow) -> ProjectOut:
-    return ProjectOut.model_validate(row, from_attributes=True)
+    view = dict(row.view or {})
+    surfaces = view.pop(SURFACES_KEY, [])
+    return ProjectOut(id=row.id, name=row.name, created_at=row.created_at,
+                      updated_at=row.updated_at, scene=Scene.model_validate(row.scene), view=view,
+                      surfaces=[GaussSurface.model_validate(s) for s in surfaces])
+
+
+def _view(body: ProjectIn) -> dict[str, object]:
+    return {**body.view, SURFACES_KEY: [s.model_dump(mode="json") for s in body.surfaces]}
 
 
 @router.get("", responses=_ERR)
@@ -37,7 +51,7 @@ def list_projects(db: Db) -> list[ProjectSummary]:
 @router.post("", status_code=201, responses=_ERR)
 def create_project(body: ProjectIn, db: Db) -> ProjectOut:
     row = ProjectRow(owner_id=OWNER, name=body.name, scene=body.scene.model_dump(mode="json"),
-                     view=body.view)
+                     view=_view(body))
     db.add(row)
     db.commit()
     return _out(row)
@@ -51,7 +65,7 @@ def get_project(project_id: str, db: Db) -> ProjectOut:
 @router.put("/{project_id}", responses=_ERR)
 def update_project(project_id: str, body: ProjectIn, db: Db) -> ProjectOut:
     row = _get(db, project_id)
-    row.name, row.scene, row.view = body.name, body.scene.model_dump(mode="json"), body.view
+    row.name, row.scene, row.view = body.name, body.scene.model_dump(mode="json"), _view(body)
     db.commit()
     return _out(row)
 

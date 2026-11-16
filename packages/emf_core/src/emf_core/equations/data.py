@@ -70,6 +70,23 @@ SYMBOLS: dict[str, SymbolDef] = {
     "Qenc": SymbolDef(latex=r"Q_{\text{enc}}", unit="C",
                       meaning=L("total charge inside the volume V", "a V térfogaton belüli "
                                 "összes töltés")),
+    "dA": SymbolDef(latex=r"d\mathbf{A}", unit="m^2",
+                    meaning=L("oriented surface element n dA (n: unit normal, outward by default)",
+                              "irányított felületelem, n dA (n: egységnyi normális, alapértelmezés "
+                              "szerint kifelé mutat)")),
+    "PhiE": SymbolDef(latex=r"\Phi_E", unit="V*m",
+                      meaning=L("electric flux of E through the surface", "E elektromos fluxusa a "
+                                "felületen át")),
+    "PhiD": SymbolDef(latex=r"\Phi_D", unit="C",
+                      meaning=L("flux of D through the surface", "D fluxusa a felületen át")),
+    "Fvec": SymbolDef(latex=r"\mathbf{F}", unit="",
+                   meaning=L("any continuously differentiable vector field (or, for point "
+                             "charges, a field whose divergence is a distribution)",
+                             "tetszőleges folytonosan differenciálható vektormező (ponttöltéseknél "
+                             "olyan mező, amelynek divergenciája disztribúció)")),
+    "V": SymbolDef(latex=r"V,\ \partial V", unit="m^3",
+                   meaning=L("a volume and its closed boundary surface ∂V", "egy térfogat és "
+                             "annak zárt határfelülete, ∂V")),
     "t": SymbolDef(latex=r"t", unit="s", meaning=L("time", "idő")),
 }
 
@@ -368,6 +385,136 @@ EQUATIONS: list[Equation] = [
                        "material interfaces even though ∇×E = 0.",
                        "Nem érvényes, ahol ε helyfüggő: anyaghatárokon ∇×(εE) = ∇ε × E nem nulla "
                        "lehet, noha ∇×E = 0.")],
+        used_by=[PC],
+    ),
+    Equation(
+        id="electric_flux", category="electrostatics",
+        name=L("Electric flux", "Elektromos fluxus"),
+        latex=r"\Phi_E = \oint_S \mathbf{E}\cdot d\mathbf{A}",
+        meaning=L("The net amount of E crossing a closed surface, counted positive outward.",
+                  "Az E zárt felületen átlépő nettó mennyisége, kifelé pozitív előjellel."),
+        intuition=L("Only the normal component E·n crosses the surface; a strong field running along the "
+                  "surface contributes nothing locally. External charges make field enter and "
+                  "leave, adding positive and negative patches that cancel in the total.",
+                  "Csak a normális irányú E·n komponens lép át a felületen; a felülettel párhuzamos "
+                  "erős mező helyben semmit sem ad. A külső töltések miatt a mező be- és kilép, "
+                  "pozitív és negatív részeket adva, amelyek az összegben kiejtik egymást."),
+        symbols=["PhiE", "E", "dA"],
+        assumptions=[L("S is a closed, consistently oriented surface on which E is defined.",
+                       "S zárt, következetesen irányított felület, amelyen E értelmezett.")],
+        limitations=[L("Undefined when a point charge lies on S: E is singular there.",
+                       "Nem értelmezett, ha egy ponttöltés S-en fekszik: ott E szinguláris.")],
+        derivation=[L("For a point charge and a flat triangle the integral is exact: "
+                      "∫_T E·dA = q/(4πε₀) · Ω_T, with Ω_T the signed solid angle of T seen from "
+                      "the charge. The application sums this over all triangles and charges.",
+                      "Ponttöltésre és sík háromszögre az integrál egzakt: ∫_T E·dA = "
+                      "q/(4πε₀) · Ω_T, ahol Ω_T a T töltésből látszó előjeles térszöge. A "
+                      "program ezt összegzi minden háromszögre és töltésre.")],
+        used_by=[PC],
+    ),
+    Equation(
+        id="displacement_flux", category="electrostatics",
+        name=L("Displacement flux", "Eltolási fluxus"),
+        latex=r"\Phi_D = \oint_S \mathbf{D}\cdot d\mathbf{A}",
+        meaning=L("The flux of D, measured in coulombs; in vacuum Φ_D = ε₀Φ_E.",
+                  "D fluxusa, coulombban mérve; vákuumban Φ_D = ε₀Φ_E."),
+        intuition=L("Through a closed surface it counts the enclosed free charge directly.",
+                    "Zárt felületen át közvetlenül a bezárt szabad töltést méri."),
+        symbols=["PhiD", "D", "dA"],
+        assumptions=[L("Vacuum (D = ε₀E).", "Vákuum (D = ε₀E).")],
+        limitations=[L("Undefined when a point charge lies on S.",
+                       "Nem értelmezett, ha egy ponttöltés S-en fekszik.")],
+        used_by=[PC],
+    ),
+    Equation(
+        id="gauss_integral_E", category="maxwell",
+        name=L("Gauss's law (closed surface, E)", "Gauss-törvény (zárt felület, E)"),
+        latex=r"\oint_S \mathbf{E}\cdot d\mathbf{A} = \frac{Q_{\text{enc}}}{\varepsilon_0}",
+        meaning=L("The net outward flux of E depends only on the charge enclosed by S.",
+                  "E nettó kifelé irányuló fluxusa csak az S által bezárt töltéstől függ."),
+        intuition=L("Change the shape or size of S, or move charges outside it, and the local flux "
+                    "pattern changes but the total stays Q_enc/ε₀.",
+                    "Ha S alakja vagy mérete változik, vagy a külső töltések mozognak, a helyi "
+                    "fluxuseloszlás változik, de az összeg Q_enc/ε₀ marad."),
+        symbols=["E", "dA", "Qenc", "eps0"],
+        assumptions=[L("Vacuum; S closed and outward-oriented (reversed orientation flips the "
+                       "sign); no charge on S.",
+                       "Vákuum; S zárt és kifelé irányított (fordított irányítás az előjelet "
+                       "megfordítja); nincs töltés S-en.")],
+        limitations=[L("A charge exactly on S makes both sides ill-defined.",
+                       "Egy S-en fekvő töltés mindkét oldalt értelmezhetetlenné teszi.")],
+        used_by=[PC],
+    ),
+    Equation(
+        id="gauss_integral_D", category="maxwell",
+        name=L("Gauss's law (closed surface, D)", "Gauss-törvény (zárt felület, D)"),
+        latex=r"\oint_S \mathbf{D}\cdot d\mathbf{A} = Q_{\text{enc}}",
+        meaning=L("The net outward flux of D equals the enclosed (free) charge.",
+                  "D nettó kifelé irányuló fluxusa egyenlő a bezárt (szabad) töltéssel."),
+        intuition=L("Same law as for E without the factor ε₀.",
+                    "Ugyanaz a törvény, mint E-re, az ε₀ szorzó nélkül."),
+        symbols=["D", "dA", "Qenc"],
+        assumptions=[L("Vacuum: all charge is free charge.", "Vákuum: minden töltés szabad.")],
+        limitations=[L("A charge exactly on S makes both sides ill-defined.",
+                       "Egy S-en fekvő töltés mindkét oldalt értelmezhetetlenné teszi.")],
+        used_by=[PC],
+    ),
+    Equation(
+        id="divergence_theorem", category="additional",
+        name=L("Gauss–Ostrogradsky (divergence) theorem", "Gauss–Osztrogradszkij-tétel"),
+        latex=r"\oint_{\partial V} \mathbf{F}\cdot d\mathbf{A} = \int_V (\nabla\cdot\mathbf{F})\,dV",
+        meaning=L("The outward flux through a closed surface equals the integral of the "
+                  "divergence over the enclosed volume.",
+                  "Egy zárt felületen kifelé átmenő fluxus egyenlő a divergencia bezárt "
+                  "térfogatra vett integráljával."),
+        intuition=L("Split V into small cells: on every shared internal face the flux leaving one "
+                    "cell enters its neighbour, so these cancel and only the outer boundary is "
+                    "left. Each tiny cell's net outflow is its divergence times its volume.",
+                    "Osszuk V-t kis cellákra: minden közös belső lapon az egyik cellából kilépő "
+                    "fluxus a szomszédba lép be, így ezek kiejtik egymást, és csak a külső határ "
+                    "marad. Minden kis cella nettó kiáramlása a divergencia és a térfogat "
+                    "szorzata."),
+        symbols=["Fvec", "dA", "V"],
+        assumptions=[L("∂V closed and outward-oriented; F continuously differentiable in V, or its "
+                       "divergence understood as a distribution.",
+                       "∂V zárt és kifelé irányított; F folytonosan differenciálható V-ben, vagy "
+                       "divergenciája disztribúcióként értendő.")],
+        limitations=[L("Fails if F is singular on ∂V (a charge on the surface).",
+                       "Nem érvényes, ha F szinguláris ∂V-n (töltés a felületen).")],
+    ),
+    Equation(
+        id="divergence_theorem_E", category="electrostatics",
+        name=L("Divergence theorem for E", "Divergenciatétel E-re"),
+        latex=r"\oint_{\partial V} \mathbf{E}\cdot d\mathbf{A} = \int_V (\nabla\cdot\mathbf{E})\,dV = \sum_{i:\,\mathbf{r}_i\in V} \frac{q_i}{\varepsilon_0}",
+        meaning=L("For point charges the volume integral of the distributional divergence is the "
+                  "sum of the enclosed weights qᵢ/ε₀; it equals the surface flux.",
+                  "Ponttöltésekre a disztribúciós divergencia térfogati integrálja a bezárt "
+                  "qᵢ/ε₀ súlyok összege; ez egyenlő a felületi fluxussal."),
+        intuition=L("The divergence is zero everywhere except at the charges, so the whole volume "
+                    "integral comes from the δ³ sources inside: no grid of samples is summed.",
+                    "A divergencia a töltéseken kívül mindenütt nulla, így a teljes térfogati "
+                    "integrál a bent lévő δ³-forrásokból származik: nem mintapontokat összegez "
+                    "a program."),
+        symbols=["E", "dA", "q", "eps0", "V"],
+        assumptions=[L("Point charges in vacuum; none on ∂V.",
+                       "Ponttöltések vákuumban; egy sincs ∂V-n.")],
+        limitations=[L("A charge on ∂V (or on an internal cell face when subdividing) has no "
+                       "well-defined owner.",
+                       "A ∂V-n (felosztásnál belső cellalapon) fekvő töltéshez nem rendelhető "
+                       "egyértelmű cella.")],
+        used_by=[PC],
+    ),
+    Equation(
+        id="divergence_theorem_D", category="electrostatics",
+        name=L("Divergence theorem for D", "Divergenciatétel D-re"),
+        latex=r"\oint_{\partial V} \mathbf{D}\cdot d\mathbf{A} = \int_V (\nabla\cdot\mathbf{D})\,dV = Q_{\text{enc}}",
+        meaning=L("The D form: both sides equal the enclosed charge.",
+                  "A D-alak: mindkét oldal a bezárt töltéssel egyenlő."),
+        intuition=L("The distributional divergence of D integrates to the enclosed charge.",
+                    "D disztribúciós divergenciájának integrálja a bezárt töltés."),
+        symbols=["D", "dA", "Qenc", "V"],
+        assumptions=[L("Point charges in vacuum; none on ∂V.",
+                       "Ponttöltések vákuumban; egy sincs ∂V-n.")],
         used_by=[PC],
     ),
     Equation(

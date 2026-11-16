@@ -137,6 +137,13 @@ class ModelContext(BaseModel):
     time_varying: bool = False
     computes_magnetic_field: bool = False
     source_count: int = 0  # number of non-zero point sources in the model
+    # Gaussian surfaces in the request (Phase 2B-2): how many, and whether any of them has a
+    # charge on its boundary (flux undefined) or failed validation.
+    gauss_surfaces: int = 0
+    gauss_boundary_ambiguous: bool = False
+    gauss_invalid: bool = False
+    # Equations whose two sides the application computes independently and compares.
+    checked_equation_ids: list[str] = []
     solver_id: str
     evaluated_equation_ids: list[str] = []
 

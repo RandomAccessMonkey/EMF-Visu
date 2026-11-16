@@ -104,6 +104,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/flux": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Flux
+         * @description Flux through closed Gaussian surfaces: surface integral (solid angles over the
+         *     represented mesh) and volume integral (enclosed distributional source weights), computed
+         *     independently and compared.
+         */
+        post: operations["flux_api_v1_flux_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gauss/situations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Gauss Situations */
+        get: operations["gauss_situations_api_v1_gauss_situations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/presets": {
         parameters: {
             query?: never;
@@ -312,12 +351,49 @@ export interface components {
                 number
             ];
         };
+        /**
+         * BoxShape
+         * @description Width (local x), depth (local y), height (local z).
+         */
+        BoxShape: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "box";
+            /**
+             * Size M
+             * @default [
+             *       1,
+             *       1,
+             *       1
+             *     ]
+             */
+            size_m: [
+                number,
+                number,
+                number
+            ];
+        };
         /** ComponentHealth */
         ComponentHealth: {
             /** Ok */
             ok: boolean;
             /** Detail */
             detail?: string | null;
+        };
+        /** CubeShape */
+        CubeShape: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "cube";
+            /**
+             * Side M
+             * @default 1
+             */
+            side_m: number;
         };
         /**
          * CylinderPrimitive
@@ -337,6 +413,27 @@ export interface components {
             /**
              * Height M
              * @default 0.6
+             */
+            height_m: number;
+        };
+        /**
+         * CylinderShape
+         * @description Axis along local z; orient it with the surface rotation.
+         */
+        CylinderShape: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "cylinder";
+            /**
+             * Radius M
+             * @default 0.5
+             */
+            radius_m: number;
+            /**
+             * Height M
+             * @default 1
              */
             height_m: number;
         };
@@ -438,12 +535,17 @@ export interface components {
              * Usage
              * @enum {string}
              */
-            usage: "evaluated" | "satisfied" | "not_used";
+            usage: "evaluated" | "checked" | "satisfied" | "not_used";
             usage_note: components["schemas"]["LocalizedText"];
         };
         /** EquationsBody */
         EquationsBody: {
             scene: components["schemas"]["Scene"];
+            /**
+             * Surfaces
+             * @default []
+             */
+            surfaces: components["schemas"]["GaussSurface"][];
         };
         /** EquationsResponse */
         EquationsResponse: {
@@ -585,6 +687,91 @@ export interface components {
              */
             field_classification: "exact_analytical" | "numerical_approximation" | "idealized_model" | "visualization_aid";
             method: components["schemas"]["MethodInfo"];
+        };
+        /** FluxBody */
+        FluxBody: {
+            scene: components["schemas"]["Scene"];
+            flux: components["schemas"]["FluxRequest"];
+        };
+        /** FluxRequest */
+        FluxRequest: {
+            /** Surfaces */
+            surfaces: components["schemas"]["GaussSurface"][];
+            /**
+             * Quality
+             * @default final
+             * @enum {string}
+             */
+            quality: "preview" | "final";
+            /**
+             * Patch Details
+             * @default true
+             */
+            patch_details: boolean;
+        };
+        /** GaussSituation */
+        GaussSituation: {
+            /** Id */
+            id: string;
+            /** Number */
+            number: number;
+            name: components["schemas"]["LocalizedText"];
+            description: components["schemas"]["LocalizedText"];
+            expectation: components["schemas"]["LocalizedText"];
+            scene: components["schemas"]["Scene"];
+            /** Surfaces */
+            surfaces: components["schemas"]["GaussSurface"][];
+        };
+        /** GaussSurface */
+        GaussSurface: {
+            /** Id */
+            id: string;
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            /** Shape */
+            shape: components["schemas"]["SphereShape"] | components["schemas"]["CubeShape"] | components["schemas"]["BoxShape"] | components["schemas"]["CylinderShape"] | components["schemas"]["MeshShape"];
+            /**
+             * Center M
+             * @default [
+             *       0,
+             *       0,
+             *       0
+             *     ]
+             */
+            center_m: [
+                number,
+                number,
+                number
+            ];
+            /**
+             * Rotation Euler Xyz Rad
+             * @default [
+             *       0,
+             *       0,
+             *       0
+             *     ]
+             */
+            rotation_euler_xyz_rad: [
+                number,
+                number,
+                number
+            ];
+            /**
+             * Orientation
+             * @default outward
+             * @enum {string}
+             */
+            orientation: "outward" | "inward";
+            /** Subdivision */
+            subdivision?: [
+                number,
+                number,
+                number
+            ] | null;
+            display?: components["schemas"]["SurfaceDisplay"] | null;
         };
         /**
          * GroupPrimitive
@@ -781,6 +968,29 @@ export interface components {
          */
         MaterialModel: "vacuum" | "linear_dielectric" | "linear_magnetic" | "ohmic_conductor" | "perfect_conductor";
         /**
+         * MeshShape
+         * @description A custom closed triangulated surface in local coordinates (engine-level for now).
+         */
+        MeshShape: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "mesh";
+            /** Vertices M */
+            vertices_m: [
+                number,
+                number,
+                number
+            ][];
+            /** Triangles */
+            triangles: [
+                number,
+                number,
+                number
+            ][];
+        };
+        /**
          * MethodInfo
          * @description How a derived product was obtained. Kept separate from the physical classification of the
          *     field it was derived from: a numerically integrated line of an exact field is still a line
@@ -852,6 +1062,26 @@ export interface components {
              * @default 0
              */
             source_count: number;
+            /**
+             * Gauss Surfaces
+             * @default 0
+             */
+            gauss_surfaces: number;
+            /**
+             * Gauss Boundary Ambiguous
+             * @default false
+             */
+            gauss_boundary_ambiguous: boolean;
+            /**
+             * Gauss Invalid
+             * @default false
+             */
+            gauss_invalid: boolean;
+            /**
+             * Checked Equation Ids
+             * @default []
+             */
+            checked_equation_ids: string[];
             /** Solver Id */
             solver_id: string;
             /**
@@ -1188,6 +1418,11 @@ export interface components {
             view: {
                 [key: string]: unknown;
             };
+            /**
+             * Surfaces
+             * @default []
+             */
+            surfaces: components["schemas"]["GaussSurface"][];
         };
         /** ProjectOut */
         ProjectOut: {
@@ -1210,6 +1445,11 @@ export interface components {
             view: {
                 [key: string]: unknown;
             };
+            /**
+             * Surfaces
+             * @default []
+             */
+            surfaces: components["schemas"]["GaussSurface"][];
         };
         /** ProjectSummary */
         ProjectSummary: {
@@ -1498,6 +1738,45 @@ export interface components {
              */
             radius_m: number;
         };
+        /** SphereShape */
+        SphereShape: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "sphere";
+            /**
+             * Radius M
+             * @default 1
+             */
+            radius_m: number;
+        };
+        /**
+         * SurfaceDisplay
+         * @description Visualization metadata. Ignored by the engine and excluded from every cache key.
+         */
+        SurfaceDisplay: {
+            /**
+             * Visible
+             * @default true
+             */
+            visible: boolean;
+            /**
+             * Opacity
+             * @default 0.3
+             */
+            opacity: number;
+            /**
+             * Show Normals
+             * @default false
+             */
+            show_normals: boolean;
+            /**
+             * Color By Flux
+             * @default true
+             */
+            color_by_flux: boolean;
+        };
         /** SymbolDef */
         SymbolDef: {
             /** Latex */
@@ -1747,6 +2026,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    flux_api_v1_flux_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FluxBody"];
+            };
+        };
+        responses: {
+            /** @description EMF1 container with a FluxHeader (see docs/architecture.md) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.emf.result": unknown;
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    gauss_situations_api_v1_gauss_situations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GaussSituation"][];
                 };
             };
         };
