@@ -1,0 +1,49 @@
+[project]
+name = "emf-visu"
+version = "0.1.0"
+description = "Electromagnetic field visualization and simulation platform (workspace root)"
+requires-python = ">=3.12,<3.14"
+dependencies = ["emf-core", "emf-worker", "emf-api"]
+
+[dependency-groups]
+dev = ["pytest>=9.2,<10", "httpx>=0.28,<0.29", "ruff>=0.17,<0.18", "mypy>=2.4,<3"]
+
+[tool.uv.workspace]
+members = ["packages/emf_core", "packages/emf_worker", "services/api"]
+
+[tool.uv.sources]
+emf-core = { workspace = true }
+emf-worker = { workspace = true }
+emf-api = { workspace = true }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["integration: needs running Redis and/or PostgreSQL (auto-skipped when unreachable)"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["B008"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+mypy_path = ["packages/emf_core/src", "packages/emf_worker/src", "services/api/src"]
+explicit_package_bases = true
+namespace_packages = true
+
+[[tool.mypy.overrides]]
+module = ["celery.*", "scipy.*"]
+ignore_missing_imports = true
+
+[tool.ruff.lint.isort]
+known-first-party = ["emf_core", "emf_worker", "emf_api"]
+
+[tool.ruff.lint.per-file-ignores]
+"packages/emf_core/src/emf_core/equations/data.py" = ["E501"]
+"packages/emf_core/src/emf_core/presets.py" = ["E501"]

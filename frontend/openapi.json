@@ -1,0 +1,2966 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "EMF-Visu API",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/v1/health": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Health",
+        "operationId": "health_api_v1_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/solvers": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Solvers",
+        "description": "Real availability: a solver is only 'available' if its code is loaded; its queue worker\nis only 'online' if a live worker answers right now.",
+        "operationId": "solvers_api_v1_solvers_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SolverStatus"
+                  },
+                  "type": "array",
+                  "title": "Response Solvers Api V1 Solvers Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/simulations": {
+      "post": {
+        "tags": [
+          "simulation"
+        ],
+        "summary": "Simulate",
+        "description": "Solve synchronously (fast analytical requests). Unsupported configurations are refused\nwith reasons; they are never approximated by a simpler model.",
+        "operationId": "simulate_api_v1_simulations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulationBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "EMF1 binary container (see docs/api.md)",
+            "content": {
+              "application/vnd.emf.result": {}
+            }
+          },
+          "413": {
+            "description": "Request Entity Too Large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/probe": {
+      "post": {
+        "tags": [
+          "simulation"
+        ],
+        "summary": "Probe",
+        "description": "Evaluate the fields at one point. Values are returned as float64 JSON numbers, not\ninterpolated from a sampled grid.",
+        "operationId": "probe_api_v1_probe_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProbeBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProbeResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request Entity Too Large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/equations/evaluate": {
+      "post": {
+        "tags": [
+          "simulation"
+        ],
+        "summary": "Evaluate Equations",
+        "description": "Equations with their applicability status for the model that this scene resolves to.",
+        "operationId": "evaluate_equations_api_v1_equations_evaluate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EquationsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EquationsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/presets": {
+      "get": {
+        "tags": [
+          "simulation"
+        ],
+        "summary": "Presets",
+        "operationId": "presets_api_v1_presets_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Preset"
+                  },
+                  "type": "array",
+                  "title": "Response Presets Api V1 Presets Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/jobs": {
+      "post": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Create Job",
+        "description": "Queue a long-running simulation on the worker service of the selected solver.",
+        "operationId": "create_job_api_v1_jobs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulationBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobCreated"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/jobs/{job_id}": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Job Status",
+        "operationId": "job_status_api_v1_jobs__job_id__get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobStatus"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Cancel Job",
+        "operationId": "cancel_job_api_v1_jobs__job_id__delete",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobStatus"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/jobs/{job_id}/result": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Job Result",
+        "operationId": "job_result_api_v1_jobs__job_id__result_get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/vnd.emf.result": {}
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "List Projects",
+        "operationId": "list_projects_api_v1_projects_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProjectSummary"
+                  },
+                  "type": "array",
+                  "title": "Response List Projects Api V1 Projects Get"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Create Project",
+        "operationId": "create_project_api_v1_projects_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Get Project",
+        "operationId": "get_project_api_v1_projects__project_id__get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Update Project",
+        "operationId": "update_project_api_v1_projects__project_id__put",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Delete Project",
+        "operationId": "delete_project_api_v1_projects__project_id__delete",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ArrayEntry": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "sampling_id": {
+            "type": "string",
+            "title": "Sampling Id"
+          },
+          "quantity": {
+            "type": "string",
+            "title": "Quantity"
+          },
+          "symbol": {
+            "type": "string",
+            "title": "Symbol"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit"
+          },
+          "components": {
+            "type": "integer",
+            "title": "Components"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/ArrayStats"
+          },
+          "dtype": {
+            "type": "string",
+            "title": "Dtype",
+            "default": "<f4"
+          },
+          "shape": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Shape",
+            "default": []
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset",
+            "default": 0
+          },
+          "byte_length": {
+            "type": "integer",
+            "title": "Byte Length",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "sampling_id",
+          "quantity",
+          "symbol",
+          "unit",
+          "components",
+          "stats"
+        ],
+        "title": "ArrayEntry"
+      },
+      "ArrayStats": {
+        "properties": {
+          "min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min"
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max"
+          },
+          "non_finite_count": {
+            "type": "integer",
+            "title": "Non Finite Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "min",
+          "max",
+          "non_finite_count"
+        ],
+        "title": "ArrayStats",
+        "description": "Statistics computed in float64 before the float32 transport cast. For vectors they\ndescribe the magnitude; for scalars the signed value."
+      },
+      "BoundaryCondition": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Id"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "fixed_potential",
+              "ground",
+              "pec",
+              "absorbing",
+              "periodic"
+            ],
+            "title": "Type"
+          },
+          "target_object_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Object Id"
+          },
+          "potential_V": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Potential V"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "type"
+        ],
+        "title": "BoundaryCondition",
+        "description": "Boundary condition attached to an object or to the domain boundary.\n\nNo Phase 1 solver evaluates boundary conditions; a scene that contains one is refused."
+      },
+      "BoxPrimitive": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "box",
+            "title": "Type",
+            "default": "box"
+          },
+          "size_m": {
+            "prefixItems": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Size M",
+            "default": [
+              0.5,
+              0.5,
+              0.5
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "BoxPrimitive"
+      },
+      "ComponentHealth": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "title": "ComponentHealth"
+      },
+      "CylinderPrimitive": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "cylinder",
+            "title": "Type",
+            "default": "cylinder"
+          },
+          "radius_m": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Radius M",
+            "default": 0.2
+          },
+          "height_m": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Height M",
+            "default": 0.6
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "CylinderPrimitive",
+        "description": "Axis along local z."
+      },
+      "Domain": {
+        "properties": {
+          "min_m": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Min M",
+            "default": [
+              -2.0,
+              -2.0,
+              -2.0
+            ]
+          },
+          "max_m": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Max M",
+            "default": [
+              2.0,
+              2.0,
+              2.0
+            ]
+          },
+          "background_material_id": {
+            "type": "string",
+            "title": "Background Material Id",
+            "default": "vacuum"
+          },
+          "potential_reference": {
+            "type": "string",
+            "const": "infinity",
+            "title": "Potential Reference",
+            "default": "infinity"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Domain",
+        "description": "Axis-aligned region of interest. It bounds sampling and visualization; the Phase 1\nanalytical model itself is unbounded (potential reference at infinity)."
+      },
+      "EquationStatusEntry": {
+        "properties": {
+          "equation_id": {
+            "type": "string",
+            "title": "Equation Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "applicable",
+              "applicable_under_assumptions",
+              "not_applicable",
+              "not_evaluated"
+            ],
+            "title": "Status"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LocalizedText"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "equation_id",
+          "status"
+        ],
+        "title": "EquationStatusEntry"
+      },
+      "EquationView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "maxwell",
+              "electrostatics",
+              "magnetostatics",
+              "induction",
+              "constitutive",
+              "additional"
+            ],
+            "title": "Category"
+          },
+          "name": {
+            "$ref": "#/components/schemas/LocalizedText"
+          },
+          "latex": {
+            "type": "string",
+            "title": "Latex"
+          },
+          "latex_integral": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latex Integral"
+          },
+          "meaning": {
+            "$ref": "#/components/schemas/LocalizedText"
+          },
+          "intuition": {
+            "$ref": "#/components/schemas/LocalizedText"
+          },
+          "symbols": {
+            "items": {
+              "$ref": "#/components/schemas/SymbolDef"
+            },
+            "type": "array",
+            "title": "Symbols"
+          },
+          "assumptions": {
+            "items": {
+              "$ref": "#/components/schemas/LocalizedText"
+            },
+            "type": "array",
+            "title": "Assumptions"
+          },
+          "limitations": {
+            "items": {
+              "$ref": "#/components/schemas/LocalizedText"
+            },
+            "type": "array",
+            "title": "Limitations"
+          },
+          "conditions": {
+            "items": {
+              "$ref": "#/components/schemas/LocalizedText"
+            },
+            "type": "array",
+            "title": "Conditions"
+          },
+          "derivation": {
+            "items": {
+              "$ref": "#/components/schemas/LocalizedText"
+            },
+            "type": "array",
+            "title": "Derivation"
+          },
+          "used_by": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Used By"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "applicable",
+              "applicable_under_assumptions",
+              "not_applicable",
+              "not_evaluated"
+            ],
+            "title": "Status"
+          },
+          "status_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LocalizedText"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evaluated_by_solver": {
+            "type": "boolean",
+            "title": "Evaluated By Solver"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "category",
+          "name",
+          "latex",
+          "latex_integral",
+          "meaning",
+          "intuition",
+          "symbols",
+          "assumptions",
+          "limitations",
+          "conditions",
+          "derivation",
+          "used_by",
+          "status",
+          "status_reason",
+          "evaluated_by_solver"
+        ],
+        "title": "EquationView",
+        "description": "An equation resolved against a model context: what the frontend displays."
+      },
+      "EquationsBody": {
+        "properties": {
+          "scene": {
+            "$ref": "#/components/schemas/Scene"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scene"
+        ],
+        "title": "EquationsBody"
+      },
+      "EquationsResponse": {
+        "properties": {
+          "supported": {
+            "type": "boolean",
+            "title": "Supported"
+          },
+          "solver_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Solver Id"
+          },
+          "unsupported_reasons": {
+            "items": {
+              "$ref": "#/components/schemas/LocalizedText"
+            },
+            "type": "array",
+            "title": "Unsupported Reasons"
+          },
+          "equations": {
+            "items": {
+              "$ref": "#/components/schemas/EquationView"
+            },
+            "type": "array",
+            "title": "Equations"
+          }
+        },
+        "type": "object",
+        "required": [
+          "supported",
+          "solver_id",
+          "unsupported_reasons",
+          "equations"
+        ],
+        "title": "EquationsResponse"
+      },
+      "ErrorBody": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "unsupported",
+              "solver_failed",
+              "too_large",
+              "unavailable",
+              "not_found",
+              "not_ready"
+            ],
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "reasons": {
+            "items": {
+              "$ref": "#/components/schemas/LocalizedText"
+            },
+            "type": "array",
+            "title": "Reasons",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ErrorBody"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "Health": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "degraded"
+            ],
+            "title": "Status"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "database": {
+            "$ref": "#/components/schemas/ComponentHealth"
+          },
+          "redis": {
+            "$ref": "#/components/schemas/ComponentHealth"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "version",
+          "database",
+          "redis"
+        ],
+        "title": "Health"
+      },
+      "JobCreated": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id"
+          },
+          "queue": {
+            "type": "string",
+            "title": "Queue"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "queue"
+        ],
+        "title": "JobCreated"
+      },
+      "JobStatus": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "State"
+          },
+          "progress": {
+            "type": "number",
+            "title": "Progress",
+            "default": 0.0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "default": ""
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Reason"
+          },
+          "result_header": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResultHeader"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "state"
+        ],
+        "title": "JobStatus"
+      },
+      "LatticeSampling": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "lattice",
+            "title": "Kind",
+            "default": "lattice"
+          },
+          "id": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_]+$",
+            "title": "Id"
+          },
+          "min_m": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Min M"
+          },
+          "max_m": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Max M"
+          },
+          "nx": {
+            "type": "integer",
+            "maximum": 256.0,
+            "minimum": 2.0,
+            "title": "Nx"
+          },
+          "ny": {
+            "type": "integer",
+            "maximum": 256.0,
+            "minimum": 2.0,
+            "title": "Ny"
+          },
+          "nz": {
+            "type": "integer",
+            "maximum": 256.0,
+            "minimum": 2.0,
+            "title": "Nz"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "min_m",
+          "max_m",
+          "nx",
+          "ny",
+          "nz"
+        ],
+        "title": "LatticeSampling",
+        "description": "Regular axis-aligned 3D lattice, inclusive of both ends. Shape (nz, ny, nx[, 3])."
+      },
+      "LinePrimitive": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "line",
+            "title": "Type",
+            "default": "line"
+          },
+          "length_m": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Length M",
+            "default": 1.0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "LinePrimitive",
+        "description": "Straight segment along local z, centred on the local origin."
+      },
+      "LocalizedText": {
+        "properties": {
+          "en": {
+            "type": "string",
+            "title": "En"
+          },
+          "hu": {
+            "type": "string",
+            "title": "Hu"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "en",
+          "hu"
+        ],
+        "title": "LocalizedText"
+      },
+      "Material": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "default": ""
+          },
+          "model": {
+            "$ref": "#/components/schemas/MaterialModel",
+            "default": "vacuum"
+          },
+          "relative_permittivity": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Relative Permittivity",
+            "default": 1.0
+          },
+          "relative_permeability": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Relative Permeability",
+            "default": 1.0
+          },
+          "conductivity_S_per_m": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Conductivity S Per M",
+            "default": 0.0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "title": "Material"
+      },
+      "MaterialModel": {
+        "type": "string",
+        "enum": [
+          "vacuum",
+          "linear_dielectric",
+          "linear_magnetic",
+          "ohmic_conductor",
+          "perfect_conductor"
+        ],
+        "title": "MaterialModel"
+      },
+      "ModelContext": {
+        "properties": {
+          "regime": {
+            "type": "string",
+            "enum": [
+              "electrostatic",
+              "magnetostatic",
+              "quasi_static",
+              "full_wave"
+            ],
+            "title": "Regime"
+          },
+          "dimensionality": {
+            "type": "string",
+            "enum": [
+              "3d",
+              "2d_planar",
+              "2d_axisymmetric"
+            ],
+            "title": "Dimensionality"
+          },
+          "medium": {
+            "type": "string",
+            "enum": [
+              "vacuum",
+              "homogeneous_linear",
+              "inhomogeneous_linear"
+            ],
+            "title": "Medium"
+          },
+          "has_free_charge": {
+            "type": "boolean",
+            "title": "Has Free Charge",
+            "default": false
+          },
+          "has_free_current": {
+            "type": "boolean",
+            "title": "Has Free Current",
+            "default": false
+          },
+          "has_conductors": {
+            "type": "boolean",
+            "title": "Has Conductors",
+            "default": false
+          },
+          "time_varying": {
+            "type": "boolean",
+            "title": "Time Varying",
+            "default": false
+          },
+          "computes_magnetic_field": {
+            "type": "boolean",
+            "title": "Computes Magnetic Field",
+            "default": false
+          },
+          "solver_id": {
+            "type": "string",
+            "title": "Solver Id"
+          },
+          "evaluated_equation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evaluated Equation Ids",
+            "default": []
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "regime",
+          "dimensionality",
+          "medium",
+          "solver_id"
+        ],
+        "title": "ModelContext",
+        "description": "What physical model produced a result. The equation registry derives every equation's\napplicability status from this, so statuses are computed rather than hard-coded."
+      },
+      "PlaneGridSampling": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "plane_grid",
+            "title": "Kind",
+            "default": "plane_grid"
+          },
+          "id": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_]+$",
+            "title": "Id"
+          },
+          "center_m": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Center M",
+            "default": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          },
+          "u_dir": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "U Dir",
+            "default": [
+              1.0,
+              0.0,
+              0.0
+            ]
+          },
+          "v_dir": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "V Dir",
+            "default": [
+              0.0,
+              1.0,
+              0.0
+            ]
+          },
+          "u_extent_m": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "U Extent M"
+          },
+          "v_extent_m": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "V Extent M"
+          },
+          "nu": {
+            "type": "integer",
+            "maximum": 1024.0,
+            "minimum": 2.0,
+            "title": "Nu"
+          },
+          "nv": {
+            "type": "integer",
+            "maximum": 1024.0,
+            "minimum": 2.0,
+            "title": "Nv"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "u_extent_m",
+          "v_extent_m",
+          "nu",
+          "nv"
+        ],
+        "title": "PlaneGridSampling",
+        "description": "Regular grid on a planar cross-section through the 3D configuration.\n\nPoint (i, j) = center + (u_i) * u_dir + (v_j) * v_dir with u_i, v_j spanning\n[-extent/2, +extent/2] inclusive. Arrays are stored row-major with shape (nv, nu[, 3])."
+      },
+      "PlanePrimitive": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "plane",
+            "title": "Type",
+            "default": "plane"
+          },
+          "width_m": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Width M",
+            "default": 1.0
+          },
+          "height_m": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Height M",
+            "default": 1.0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "PlanePrimitive",
+        "description": "Finite rectangle in the local xy plane (normal along local z)."
+      },
+      "PointChargeSource": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "point_charge",
+            "title": "Type",
+            "default": "point_charge"
+          },
+          "charge_C": {
+            "type": "number",
+            "title": "Charge C",
+            "default": 1e-09
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "PointChargeSource",
+        "description": "Ideal point charge q located at the object's world position."
+      },
+      "PointPrimitive": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "point",
+            "title": "Type",
+            "default": "point"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "PointPrimitive"
+      },
+      "PointsSampling": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "points",
+            "title": "Kind",
+            "default": "points"
+          },
+          "id": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_]+$",
+            "title": "Id"
+          },
+          "points_m": {
+            "items": {
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array",
+              "maxItems": 3,
+              "minItems": 3
+            },
+            "type": "array",
+            "maxItems": 100000,
+            "minItems": 1,
+            "title": "Points M"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "points_m"
+        ],
+        "title": "PointsSampling"
+      },
+      "Preset": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "number": {
+            "type": "integer",
+            "title": "Number"
+          },
+          "name": {
+            "$ref": "#/components/schemas/LocalizedText"
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available"
+          },
+          "planned_phase": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Phase"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LocalizedText"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expected_behavior": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LocalizedText"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "equation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Equation Ids",
+            "default": []
+          },
+          "scene": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Scene"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "number",
+          "name",
+          "available"
+        ],
+        "title": "Preset"
+      },
+      "ProbeBody": {
+        "properties": {
+          "scene": {
+            "$ref": "#/components/schemas/Scene"
+          },
+          "point_m": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Point M"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scene",
+          "point_m"
+        ],
+        "title": "ProbeBody"
+      },
+      "ProbeResponse": {
+        "properties": {
+          "point_m": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Point M"
+          },
+          "solver_id": {
+            "type": "string",
+            "title": "Solver Id"
+          },
+          "solver_version": {
+            "type": "string",
+            "title": "Solver Version"
+          },
+          "classification": {
+            "type": "string",
+            "enum": [
+              "exact_analytical",
+              "numerical_approximation",
+              "idealized_model",
+              "visualization_aid"
+            ],
+            "title": "Classification"
+          },
+          "defined": {
+            "type": "boolean",
+            "title": "Defined"
+          },
+          "values": {
+            "items": {
+              "$ref": "#/components/schemas/ProbeValue"
+            },
+            "type": "array",
+            "title": "Values"
+          }
+        },
+        "type": "object",
+        "required": [
+          "point_m",
+          "solver_id",
+          "solver_version",
+          "classification",
+          "defined",
+          "values"
+        ],
+        "title": "ProbeResponse"
+      },
+      "ProbeValue": {
+        "properties": {
+          "quantity": {
+            "type": "string",
+            "title": "Quantity"
+          },
+          "symbol": {
+            "type": "string",
+            "title": "Symbol"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "magnitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Magnitude"
+          }
+        },
+        "type": "object",
+        "required": [
+          "quantity",
+          "symbol",
+          "unit",
+          "value"
+        ],
+        "title": "ProbeValue"
+      },
+      "ProjectIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "scene": {
+            "$ref": "#/components/schemas/Scene"
+          },
+          "view": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "View",
+            "default": {}
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "scene"
+        ],
+        "title": "ProjectIn"
+      },
+      "ProjectOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "scene": {
+            "$ref": "#/components/schemas/Scene"
+          },
+          "view": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "View"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "created_at",
+          "updated_at",
+          "scene",
+          "view"
+        ],
+        "title": "ProjectOut"
+      },
+      "ProjectSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ProjectSummary"
+      },
+      "ResultHeader": {
+        "properties": {
+          "format_version": {
+            "type": "integer",
+            "const": 1,
+            "title": "Format Version",
+            "default": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status",
+            "default": "ok"
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Reason"
+          },
+          "solver_id": {
+            "type": "string",
+            "title": "Solver Id"
+          },
+          "solver_version": {
+            "type": "string",
+            "title": "Solver Version"
+          },
+          "solver_kind": {
+            "type": "string",
+            "enum": [
+              "analytical",
+              "fem",
+              "fdtd",
+              "circuit"
+            ],
+            "title": "Solver Kind"
+          },
+          "solver_interface_version": {
+            "type": "integer",
+            "title": "Solver Interface Version",
+            "default": 1
+          },
+          "classification": {
+            "type": "string",
+            "enum": [
+              "exact_analytical",
+              "numerical_approximation",
+              "idealized_model",
+              "visualization_aid"
+            ],
+            "title": "Classification"
+          },
+          "classification_note": {
+            "$ref": "#/components/schemas/LocalizedText"
+          },
+          "assumptions": {
+            "items": {
+              "$ref": "#/components/schemas/LocalizedText"
+            },
+            "type": "array",
+            "title": "Assumptions"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/LocalizedText"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "default": []
+          },
+          "excluded_object_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Excluded Object Ids",
+            "default": []
+          },
+          "model_context": {
+            "$ref": "#/components/schemas/ModelContext"
+          },
+          "discretization": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discretization"
+          },
+          "convergence": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Convergence"
+          },
+          "samplings": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Samplings",
+            "default": []
+          },
+          "quality": {
+            "type": "string",
+            "enum": [
+              "preview",
+              "normal",
+              "high"
+            ],
+            "title": "Quality",
+            "default": "normal"
+          },
+          "compute_time_ms": {
+            "type": "number",
+            "title": "Compute Time Ms",
+            "default": 0.0
+          },
+          "equation_status": {
+            "items": {
+              "$ref": "#/components/schemas/EquationStatusEntry"
+            },
+            "type": "array",
+            "title": "Equation Status",
+            "default": []
+          },
+          "arrays": {
+            "items": {
+              "$ref": "#/components/schemas/ArrayEntry"
+            },
+            "type": "array",
+            "title": "Arrays",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "solver_id",
+          "solver_version",
+          "solver_kind",
+          "classification",
+          "classification_note",
+          "assumptions",
+          "model_context"
+        ],
+        "title": "ResultHeader"
+      },
+      "RingPrimitive": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "ring",
+            "title": "Type",
+            "default": "ring"
+          },
+          "radius_m": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Radius M",
+            "default": 0.3
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "RingPrimitive",
+        "description": "Circle in the local xy plane."
+      },
+      "Role": {
+        "type": "string",
+        "enum": [
+          "geometry_only",
+          "charge_source",
+          "current_source",
+          "conductor",
+          "dielectric",
+          "magnetic_material"
+        ],
+        "title": "Role",
+        "description": "Physical role of an object. ``geometry_only`` objects are inert: they are drawn but are\nexplicitly excluded from the physical model (and reported as such in every result)."
+      },
+      "Scene": {
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 1,
+            "title": "Schema Version",
+            "default": 1
+          },
+          "dimensionality": {
+            "type": "string",
+            "enum": [
+              "3d",
+              "2d_planar",
+              "2d_axisymmetric"
+            ],
+            "title": "Dimensionality",
+            "default": "3d"
+          },
+          "objects": {
+            "items": {
+              "$ref": "#/components/schemas/SceneObject"
+            },
+            "type": "array",
+            "title": "Objects",
+            "default": []
+          },
+          "materials": {
+            "items": {
+              "$ref": "#/components/schemas/Material"
+            },
+            "type": "array",
+            "title": "Materials"
+          },
+          "boundaries": {
+            "items": {
+              "$ref": "#/components/schemas/BoundaryCondition"
+            },
+            "type": "array",
+            "title": "Boundaries",
+            "default": []
+          },
+          "domain": {
+            "$ref": "#/components/schemas/Domain",
+            "default": {
+              "min_m": [
+                -2.0,
+                -2.0,
+                -2.0
+              ],
+              "max_m": [
+                2.0,
+                2.0,
+                2.0
+              ],
+              "background_material_id": "vacuum",
+              "potential_reference": "infinity"
+            }
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Scene"
+      },
+      "SceneObject": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "default": ""
+          },
+          "primitive": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PointPrimitive"
+              },
+              {
+                "$ref": "#/components/schemas/SpherePrimitive"
+              },
+              {
+                "$ref": "#/components/schemas/BoxPrimitive"
+              },
+              {
+                "$ref": "#/components/schemas/CylinderPrimitive"
+              },
+              {
+                "$ref": "#/components/schemas/RingPrimitive"
+              },
+              {
+                "$ref": "#/components/schemas/PlanePrimitive"
+              },
+              {
+                "$ref": "#/components/schemas/LinePrimitive"
+              }
+            ],
+            "title": "Primitive",
+            "discriminator": {
+              "propertyName": "type",
+              "mapping": {
+                "box": "#/components/schemas/BoxPrimitive",
+                "cylinder": "#/components/schemas/CylinderPrimitive",
+                "line": "#/components/schemas/LinePrimitive",
+                "plane": "#/components/schemas/PlanePrimitive",
+                "point": "#/components/schemas/PointPrimitive",
+                "ring": "#/components/schemas/RingPrimitive",
+                "sphere": "#/components/schemas/SpherePrimitive"
+              }
+            }
+          },
+          "transform": {
+            "$ref": "#/components/schemas/Transform",
+            "default": {
+              "position_m": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "rotation_euler_xyz_rad": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "scale": [
+                1.0,
+                1.0,
+                1.0
+              ]
+            }
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role",
+            "default": "geometry_only"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/PointChargeSource"
+                  }
+                ],
+                "discriminator": {
+                  "propertyName": "type",
+                  "mapping": {
+                    "point_charge": "#/components/schemas/PointChargeSource"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "material_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Material Id"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "primitive"
+        ],
+        "title": "SceneObject"
+      },
+      "SimulationBody": {
+        "properties": {
+          "scene": {
+            "$ref": "#/components/schemas/Scene"
+          },
+          "request": {
+            "$ref": "#/components/schemas/SolveRequest"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scene",
+          "request"
+        ],
+        "title": "SimulationBody"
+      },
+      "SolveRequest": {
+        "properties": {
+          "samplings": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/PlaneGridSampling"
+                },
+                {
+                  "$ref": "#/components/schemas/LatticeSampling"
+                },
+                {
+                  "$ref": "#/components/schemas/PointsSampling"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "kind",
+                "mapping": {
+                  "lattice": "#/components/schemas/LatticeSampling",
+                  "plane_grid": "#/components/schemas/PlaneGridSampling",
+                  "points": "#/components/schemas/PointsSampling"
+                }
+              }
+            },
+            "type": "array",
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Samplings"
+          },
+          "quantities": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "E",
+                "phi",
+                "D"
+              ]
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Quantities"
+          },
+          "quality": {
+            "type": "string",
+            "enum": [
+              "preview",
+              "normal",
+              "high"
+            ],
+            "title": "Quality",
+            "default": "normal"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "samplings",
+          "quantities"
+        ],
+        "title": "SolveRequest"
+      },
+      "SolverDescriptor": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "analytical",
+              "fem",
+              "fdtd",
+              "circuit"
+            ],
+            "title": "Kind"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "name": {
+            "$ref": "#/components/schemas/LocalizedText"
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LocalizedText"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "planned_phase": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Phase"
+          },
+          "queue": {
+            "type": "string",
+            "title": "Queue"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "version",
+          "name",
+          "available",
+          "queue"
+        ],
+        "title": "SolverDescriptor"
+      },
+      "SolverStatus": {
+        "properties": {
+          "descriptor": {
+            "$ref": "#/components/schemas/SolverDescriptor"
+          },
+          "in_process": {
+            "type": "boolean",
+            "title": "In Process"
+          },
+          "queue_worker_online": {
+            "type": "boolean",
+            "title": "Queue Worker Online"
+          }
+        },
+        "type": "object",
+        "required": [
+          "descriptor",
+          "in_process",
+          "queue_worker_online"
+        ],
+        "title": "SolverStatus"
+      },
+      "SpherePrimitive": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "sphere",
+            "title": "Type",
+            "default": "sphere"
+          },
+          "radius_m": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Radius M",
+            "default": 0.25
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "SpherePrimitive"
+      },
+      "SymbolDef": {
+        "properties": {
+          "latex": {
+            "type": "string",
+            "title": "Latex"
+          },
+          "meaning": {
+            "$ref": "#/components/schemas/LocalizedText"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit"
+          }
+        },
+        "type": "object",
+        "required": [
+          "latex",
+          "meaning",
+          "unit"
+        ],
+        "title": "SymbolDef"
+      },
+      "Transform": {
+        "properties": {
+          "position_m": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Position M",
+            "default": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          },
+          "rotation_euler_xyz_rad": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Rotation Euler Xyz Rad",
+            "default": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          },
+          "scale": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Scale",
+            "default": [
+              1.0,
+              1.0,
+              1.0
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Transform",
+        "description": "Local transform relative to the parent object (or to the world if there is no parent).\n\n``rotation_euler_xyz_rad`` uses the rotation matrix R = Rx(a) @ Ry(b) @ Rz(c), which is the\nThree.js default Euler order ``'XYZ'``. Composition: M = T @ R @ S."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

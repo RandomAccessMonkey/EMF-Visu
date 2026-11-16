@@ -1,0 +1,176 @@
+"""Applicability rules: ModelContext -> (status, reason) for every equation.
+
+Rules read only the model context, so they keep working as new solvers and regimes are added.
+"""
+
+from __future__ import annotations
+
+from ..i18n import L, LocalizedText
+from ..solvers.base import ModelContext
+from .models import EquationStatus, Rule
+
+Out = tuple[EquationStatus, LocalizedText | None]
+OK: Out = ("applicable", None)
+
+_NO_B = L("The active electrostatic model contains no currents and no time variation; the "
+          "solver does not compute a magnetic field.",
+          "Az aktív elektrosztatikus modellben nincs áram és nincs időfüggés; a megoldó nem "
+          "számít mágneses mezőt.")
+
+
+def _static(c: ModelContext) -> bool:
+    return c.regime in ("electrostatic", "magnetostatic") and not c.time_varying
+
+
+def _gauss_vacuum(c: ModelContext) -> Out:
+    if c.medium == "vacuum":
+        return OK
+    return ("not_applicable", L("The medium is not vacuum; use ∇·D = ρ_free.",
+                                "A közeg nem vákuum; a ∇·D = ρ_free alak használandó."))
+
+
+def _needs_b(c: ModelContext) -> Out:
+    return OK if c.computes_magnetic_field else ("not_evaluated", _NO_B)
+
+
+def _faraday(c: ModelContext) -> Out:
+    if c.time_varying:
+        return OK
+    return ("applicable_under_assumptions",
+            L("Static model: ∂B/∂t = 0, so the law reduces to ∇×E = 0 (E is conservative).",
+              "Sztatikus modell: ∂B/∂t = 0, így a törvény ∇×E = 0 alakra egyszerűsödik (E "
+              "konzervatív)."))
+
+
+def _ampere_maxwell(c: ModelContext) -> Out:
+    if not c.computes_magnetic_field:
+        return ("not_evaluated", _NO_B)
+    if _static(c):
+        return ("applicable_under_assumptions",
+                L("Magnetostatic approximation: the ∂D/∂t term is neglected.",
+                  "Magnetosztatikus közelítés: a ∂D/∂t tag elhanyagolva."))
+    return OK
+
+
+def _e_from_phi(c: ModelContext) -> Out:
+    if c.regime == "electrostatic":
+        return OK
+    return ("not_applicable", L("With time-varying B the field is not purely a gradient.",
+                                "Időben változó B esetén a mező nem tisztán gradiens."))
+
+
+def _coulomb(c: ModelContext) -> Out:
+    if c.regime == "electrostatic" and c.medium == "vacuum" and not c.has_conductors:
+        return OK
+    return ("not_applicable",
+            L("Requires point charges in unbounded vacuum without conductors or dielectrics.",
+              "Végtelen vákuumban lévő ponttöltéseket feltételez, vezetők és dielektrikumok "
+              "nélkül."))
+
+
+def _poisson_general(c: ModelContext) -> Out:
+    if c.regime != "electrostatic":
+        return ("not_applicable", L("Not an electrostatic model.", "Nem elektrosztatikus modell."))
+    if c.medium == "inhomogeneous_linear":
+        return OK
+    return ("applicable_under_assumptions",
+            L("ε is constant here, so this reduces to the homogeneous form ∇²φ = −ρ/ε.",
+              "Itt ε állandó, így az egyenlet a homogén ∇²φ = −ρ/ε alakra egyszerűsödik."))
+
+
+def _poisson_homog(c: ModelContext) -> Out:
+    if c.regime != "electrostatic":
+        return ("not_applicable", L("Not an electrostatic model.", "Nem elektrosztatikus modell."))
+    if c.medium == "inhomogeneous_linear":
+        return ("not_applicable", L("ε varies in space; use ∇·(ε∇φ) = −ρ_free.",
+                                    "ε helyfüggő; a ∇·(ε∇φ) = −ρ_free alak használandó."))
+    return OK
+
+
+def _laplace(c: ModelContext) -> Out:
+    if c.regime != "electrostatic" or c.medium == "inhomogeneous_linear":
+        return ("not_applicable", L("Requires electrostatics in a homogeneous medium.",
+                                    "Homogén közegbeli elektrosztatikát feltételez."))
+    if not c.has_free_charge:
+        return OK
+    return ("applicable_under_assumptions",
+            L("Holds everywhere except at the charge locations, where Poisson's equation "
+              "applies.",
+              "Mindenütt érvényes, kivéve a töltések helyét, ahol a Poisson-egyenlet érvényes."))
+
+
+def _magnetostatic_only(c: ModelContext) -> Out:
+    if c.regime == "magnetostatic":
+        return OK
+    if not c.has_free_current:
+        return ("not_applicable", L("The model contains no current sources.",
+                                    "A modell nem tartalmaz áramforrást."))
+    return ("not_evaluated", _NO_B)
+
+
+def _d_linear(c: ModelContext) -> Out:
+    if c.medium == "vacuum":
+        return ("applicable_under_assumptions",
+                L("Vacuum: ε = ε₀ and P = 0, so D = ε₀E.", "Vákuum: ε = ε₀ és P = 0, így D = ε₀E."))
+    return OK
+
+
+def _ohm(c: ModelContext) -> Out:
+    if c.has_conductors:
+        return OK
+    return ("not_applicable", L("The model contains no conducting material (σ = 0).",
+                                "A modell nem tartalmaz vezető anyagot (σ = 0)."))
+
+
+def _continuity(c: ModelContext) -> Out:
+    if _static(c) and not c.has_free_current:
+        return ("applicable_under_assumptions",
+                L("Static charges: J = 0 and ∂ρ/∂t = 0, so both sides vanish.",
+                  "Nyugvó töltések: J = 0 és ∂ρ/∂t = 0, így mindkét oldal nulla."))
+    return OK
+
+
+def _lorentz(c: ModelContext) -> Out:
+    return ("not_evaluated", L("No test-particle motion is simulated by the current solver.",
+                               "A jelenlegi megoldó nem szimulál próbatöltés-mozgást."))
+
+
+def _poynting(c: ModelContext) -> Out:
+    if not c.computes_magnetic_field:
+        return ("not_evaluated",
+                L("H is not computed by the electrostatic solver (H = 0 in this model, so there "
+                  "is no energy flow).",
+                  "Az elektrosztatikus megoldó nem számítja H-t (ebben a modellben H = 0, tehát "
+                  "nincs energiaáramlás)."))
+    return OK
+
+
+def _energy(c: ModelContext) -> Out:
+    return ("not_evaluated", L("Energy density is not computed by the current solver yet.",
+                               "Az energiasűrűséget a jelenlegi megoldó még nem számítja."))
+
+
+RULES: dict[str, Rule] = {
+    "gauss_electric": lambda c: OK,
+    "gauss_electric_vacuum": _gauss_vacuum,
+    "gauss_magnetic": _needs_b,
+    "faraday": _faraday,
+    "ampere_maxwell": _ampere_maxwell,
+    "e_from_potential": _e_from_phi,
+    "coulomb_field": _coulomb,
+    "coulomb_potential": _coulomb,
+    "poisson_general": _poisson_general,
+    "poisson_homogeneous": _poisson_homog,
+    "laplace": _laplace,
+    "ampere_static": _magnetostatic_only,
+    "biot_savart": _magnetostatic_only,
+    "constitutive_d_general": lambda c: OK,
+    "constitutive_d_linear": _d_linear,
+    "constitutive_b_general": _needs_b,
+    "constitutive_b_linear": _needs_b,
+    "ohm_local": _ohm,
+    "continuity": _continuity,
+    "lorentz_force": _lorentz,
+    "poynting": _poynting,
+    "energy_density": _energy,
+}
