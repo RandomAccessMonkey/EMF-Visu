@@ -72,7 +72,7 @@
         },
         "responses": {
           "200": {
-            "description": "EMF1 binary container (see docs/api.md)",
+            "description": "EMF1 binary container (see docs/architecture.md)",
             "content": {
               "application/vnd.emf.result": {}
             }

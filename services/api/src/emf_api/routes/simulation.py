@@ -32,7 +32,7 @@ _ERRORS: dict[int | str, dict[str, object]] = {
     "/simulations",
     response_class=Response,
     responses={200: {"content": {RESULT_MEDIA_TYPE: {}},
-                     "description": "EMF1 binary container (see docs/api.md)"}, **_ERRORS},
+                     "description": "EMF1 binary container (see docs/architecture.md)"}, **_ERRORS},
 )
 def simulate(body: SimulationBody, orch: Orch) -> Response:
     """Solve synchronously (fast analytical requests). Unsupported configurations are refused

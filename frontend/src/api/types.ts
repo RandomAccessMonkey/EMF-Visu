@@ -1,0 +1,33 @@
+// Aliases over the types generated from the backend's OpenAPI schema (`pnpm gen:api`).
+// Nothing here is hand-maintained: if the backend contract changes, regeneration breaks the build.
+import type { components } from './schema'
+
+type S = components['schemas']
+
+export type Scene = S['Scene']
+export type SceneObject = S['SceneObject']
+export type Transform = S['Transform']
+export type Domain = S['Domain']
+export type Role = S['Role']
+export type Primitive = SceneObject['primitive']
+export type PrimitiveType = Primitive['type']
+export type SolveRequest = S['SolveRequest']
+export type Sampling = SolveRequest['samplings'][number]
+export type PlaneGridSampling = S['PlaneGridSampling']
+export type LatticeSampling = S['LatticeSampling']
+export type ResultHeader = S['ResultHeader']
+export type ArrayEntry = S['ArrayEntry']
+export type LocalizedText = S['LocalizedText']
+export type EquationView = S['EquationView']
+export type EquationsResponse = S['EquationsResponse']
+export type EquationStatus = EquationView['status']
+export type Preset = S['Preset']
+export type SolverStatus = S['SolverStatus']
+export type Health = S['Health']
+export type ProbeResponse = S['ProbeResponse']
+export type JobStatus = S['JobStatus']
+export type JobCreated = S['JobCreated']
+export type ProjectSummary = S['ProjectSummary']
+export type ProjectOut = S['ProjectOut']
+export type ErrorBody = S['ErrorBody']
+export type Vec3 = [number, number, number]
