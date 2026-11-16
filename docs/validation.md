@@ -6,7 +6,7 @@ or a verification status changes.
 ## How to run
 
 ```bash
-uv run pytest                      # physics, core, API, integration (63 tests)
+uv run pytest                      # physics, core, API, integration (108 tests)
 uv run ruff check . && uv run mypy packages/emf_core/src packages/emf_worker/src services/api/src
 cd frontend && pnpm typecheck && pnpm lint && pnpm test && pnpm build
 node tests/e2e/smoke.cjs http://localhost:8080      # against a running stack
@@ -40,6 +40,59 @@ The analytical solver has no discretization, so there is no mesh convergence stu
 only convergence study in Phase 1 is the finite-difference check of E = −∇φ above, which verifies
 the test method's order. Mesh and grid refinement studies belong to the numerical solvers
 (Phase 5).
+
+## Physics validation added in Phase 2A
+
+Existing tolerances were not changed. Three tests failed during development; each was
+investigated instead of loosened:
+
+- Boundary exit points did not converge with the tolerance, because the last segment was clipped
+  linearly however long it was. Fixed in the integrator (exit steps are shortened first).
+- Isosurfaces had cracks, because a shared lattice edge was refined in different orientations
+  from different cells, and cells touching a charge were skipped. Fixed (canonical edge
+  orientation; signed treatment of singular samples).
+- One bound written before running the code (2e-4) was below the theoretical chord error
+  (2.4e-4). It was replaced by the theoretical bound, which the code meets.
+
+One Phase 1 test fixture was updated: a hand-built model context now also sets the new
+`source_count` field, because Coulomb's law is reported as "applicable under assumptions" for a
+scene with no charge.
+
+| Check (file) | Method | Tolerance |
+|---|---|---|
+| Single + charge lines (`test_field_lines`) | start on the charge, straight, radial, end on the boundary; planar and spherical seeding | direction 1e-9, boundary 1e-12 |
+| Single − charge lines | start on the boundary, end on the charge, stored along +E | same |
+| Dipole lines | independent invariant q₁cosθ₁ + q₂cosθ₂ = const along every line; stay in plane exactly; tangent ∥ E; as many lines enter − as leave + | invariant 2e-4·q; cos > 0.999 |
+| Net charge | (+2q, −q): half of the + charge's lines end on − (Gauss), none enter from outside. (+q, −2q): half of the − charge's lines come from the boundary | 0.5 ± 0.06 (line counting) |
+| Zero of the field | a line aimed at the midpoint of two equal charges ends as a stagnation point there; its neighbour escapes | 1e-4 m |
+| Numerical endings | forced length limit, step limit, step underflow and non-finite field are reported as `max_length` / `integration_failure` | exact |
+| Weak sink in a strong field | only the line its own field dominates is captured | exact |
+| Convergence | exit point error falls as the tolerance is tightened (1e-4, 1e-6, 1e-8) | error < 300 × tolerance |
+| Guard radius | equals 0.5 × grid spacing; field arrays identical with and without field lines | exact |
+| Domain | lines clipped to a non-cubic domain; three complete density levels (8, 16, 32) | 1e-12 |
+| Contours of one charge (`test_equipotentials`) | vertices on circles of radius Kq/V; closed loops; inscribed length | 1e-7 relative |
+| Contours of four charges | exact φ at every vertex equals the level; chords near-perpendicular to E | 1e-7 relative; cos < 0.15 |
+| Dipole 0 V contour | lies on x = 0 | 1e-9 m |
+| Contour convergence | midpoint error ratio ≈ 4 per grid doubling; below the chord-error bound (√2h)²/8r² | ratio within 35 %; bound × 1.05 |
+| Singular samples | charge on a grid node: finite output, loops around it traced; sub-cell loop elsewhere missed, not invented | exact |
+| Isosurface of one charge | vertices on the sphere r = Kq/V; normals radial; area converges from below | 1e-7 relative; area error < 1 % at 33³ |
+| Isosurfaces of a dipole | exact φ at every vertex; 0 V surface is x = 0; closed surfaces watertight (every edge shared by exactly two triangles) | 1e-7 relative |
+| Superposition terms (`test_phase2a_models`) | ΣEᵢ = E, Σφᵢ = φ; each term equals the single-charge closed form; \|E\| < Σ\|Eᵢ\| somewhere | 1e-12 relative |
+| Dipole group | equals two explicit charges; follows the group transform; on-axis closed form | 1e-12 relative |
+| D in vacuum | D = ε₀E per sampling | exact |
+| Probe at a charge (`test_api_phase2a`) | undefined, names the charge, tolerance < 1e-10 m | exact |
+| Probe near a charge | r = 1e-3 … 1e-10 m: E = Kq/r², φ = Kq/r, D = ε₀E | 1e-12 relative |
+| Equation registry | statuses for 0, 1, 2 charges and zero charge; evaluated vs satisfied vs not used; other models | exact |
+
+## Known numerical limitations (Phase 2A)
+
+- Field-line paths carry integration error (per-step tolerance 1e-5 of the domain diagonal at
+  normal quality). The field values do not.
+- Line counts are rounded, so "lines ∝ |q|" holds to within one line per charge.
+- Contour and surface geometry between vertices is piecewise linear.
+- The fraction-of-lines tests have a counting tolerance, not a physical one.
+- Performance was measured only on a 4-core CPU with software WebGL: 2D solves 55–190 ms, 3D
+  solves 220–500 ms at normal quality for presets 1–4.
 
 ## Other automated tests
 
@@ -92,3 +145,29 @@ Not verified anywhere:
 - A real GPU: rendering performance and frame rates are unmeasured.
 - Windows and macOS hosts; arm64 images.
 - Touch input.
+
+## Verification record for the Phase 2A run
+
+Executed in the same development sandbox (4 cores, software WebGL, headless Chromium):
+
+| Item | Result |
+|---|---|
+| Python tests | 108 passed (63 from Phase 1, 45 new), including integration against native Redis and PostgreSQL |
+| Phase 1 test files alone | 63 passed |
+| ruff, mypy (strict) | clean |
+| Frontend type-check (strict), lint, production build | clean |
+| Frontend unit tests | 26 passed (16 from Phase 1 with the request tests rewritten for the new request shape, plus new ones) |
+| End-to-end script, native stack | 16 of 16 checks passed |
+| End-to-end script, container stack rebuilt from this code | 16 of 16 checks passed, twice |
+
+The end-to-end script asserts, by counting requests to `/simulations`, that 13 visual-only
+actions send no physics request (colour map, arrow length, vector density, vector size, vector
+field E/D, vectors on/off, field-line density, field lines on/off, contours on/off, grid, zoom,
+isosurfaces on/off, 3D volume vectors, orbit), and that dipole separation, dipole charge, charge
+magnitude, polarity, adding a charge and editing a coordinate each do. It also shows that
+returning to an already-solved physical state is served from the cache.
+
+Same qualifications as the Phase 1 record: images were built with `docker build` through a
+registry mirror, not with `docker compose build`; a plain `docker compose up --build` on an
+unrestricted network has not been executed. Not verified: browsers other than headless Chromium,
+a real GPU, touch input, Windows/macOS hosts, arm64.

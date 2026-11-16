@@ -1,7 +1,8 @@
 import type { Role, SceneObject, Vec3 } from '@/api/types'
-import { NumberField, Row, Section, Select, Slider } from '@/components/ui/controls'
+import { Button, NumberField, Row, Section, Select, Slider } from '@/components/ui/controls'
 import { useT, type MessageKey } from '@/i18n'
-import { useSceneStore } from '@/state/sceneStore'
+import { formatSI } from '@/lib/format'
+import { dipoleInfo, useSceneStore } from '@/state/sceneStore'
 import { useViewStore } from '@/state/viewStore'
 
 const AXES = ['x', 'y', 'z'] as const
@@ -43,6 +44,7 @@ function Dimensions({ o }: { o: SceneObject }) {
   )
   switch (p.type) {
     case 'point':
+    case 'group':
       return null
     case 'sphere':
     case 'ring':
@@ -78,11 +80,43 @@ function Dimensions({ o }: { o: SceneObject }) {
   }
 }
 
+/** Edits both charges of a dipole together. q and d are read from the two child charges. */
+function DipoleParameters({ o }: { o: SceneObject }) {
+  const { t } = useT()
+  const scene = useSceneStore((s) => s.scene)
+  const info = dipoleInfo(scene, o.id)
+  const setDipole = useSceneStore((s) => s.setDipole)
+  if (!info) return <p className="text-[11px] leading-snug text-warn/90">{t('dipole.broken')}</p>
+  return (
+    <>
+      <Row label={`${t('dipole.charge')} q`}>
+        <Slider label={t('dipole.charge')} value={Math.min(100, info.charge_C / 1e-9)} min={0.5} max={100} step={0.5} onChange={(v) => setDipole(o.id, v * 1e-9, info.separation_m)} />
+        <NumberField label={t('dipole.charge')} value={info.charge_C} factor={1e-9} unit="nC" min={1e-6} step={0.5} onChange={(v) => setDipole(o.id, v, info.separation_m)} />
+      </Row>
+      <Row label={`${t('dipole.separation')} d`}>
+        <Slider label={t('dipole.separation')} value={Math.min(3, info.separation_m)} min={0.05} max={3} step={0.05} onChange={(v) => setDipole(o.id, info.charge_C, v)} />
+        <NumberField label={t('dipole.separation')} value={info.separation_m} unit="m" min={1e-6} step={0.05} onChange={(v) => setDipole(o.id, info.charge_C, v)} />
+      </Row>
+      <Row label={t('dipole.moment')} hint={t('dipole.momentHint')}>
+        <span className="font-mono text-xs">p = q·d = {formatSI(info.charge_C * info.separation_m, 'C·m')}</span>
+      </Row>
+      {!info.balanced && (
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[11px] leading-snug text-warn/90">{t('dipole.unbalanced')}</p>
+          <Button onClick={() => setDipole(o.id, info.charge_C, info.separation_m)}>{t('dipole.rebalance')}</Button>
+        </div>
+      )}
+      <p className="text-[11px] leading-snug text-muted">{t('dipole.note')}</p>
+    </>
+  )
+}
+
 function ObjectParameters({ o }: { o: SceneObject }) {
   const { t } = useT()
   const { update, setTransform } = useSceneStore.getState()
   const advanced = useViewStore((s) => s.level === 'advanced')
   const source = o.source
+  const isGroup = o.primitive.type === 'group'
   return (
     <>
       <Section title={t('params.object')}>
@@ -97,6 +131,8 @@ function ObjectParameters({ o }: { o: SceneObject }) {
         <Row label={t('params.role')} hint={t('params.roleHint')}>
           {source ? (
             <span className="text-xs">{t('role.charge_source')}</span>
+          ) : isGroup ? (
+            <span className="text-xs">{t(o.primitive.type === 'group' && o.primitive.kind === 'dipole' ? 'role.dipole_group' : 'role.group')}</span>
           ) : (
             <Select<Role>
               label={t('params.role')}
@@ -113,13 +149,24 @@ function ObjectParameters({ o }: { o: SceneObject }) {
             />
           )}
         </Row>
-        {!source && <p className="text-[11px] leading-snug text-warn/90">{t('params.inertNote')}</p>}
+        {!source && !isGroup && <p className="text-[11px] leading-snug text-warn/90">{t('params.inertNote')}</p>}
       </Section>
+      {o.primitive.type === 'group' && o.primitive.kind === 'dipole' && (
+        <Section title={t('dipole.title')}>
+          <DipoleParameters o={o} />
+        </Section>
+      )}
       {source && (
         <Section title={t('params.electrical')}>
           <Row label={`${t('params.charge')} q`} hint={t('params.chargeHint')}>
-            <Slider label={t('params.charge')} value={source.charge_C / 1e-9} min={-10} max={10} step={0.1} onChange={(v) => update(o.id, { source: { ...source, charge_C: v * 1e-9 } })} />
+            <Slider label={t('params.charge')} value={Math.max(-100, Math.min(100, source.charge_C / 1e-9))} min={-100} max={100} step={0.5} onChange={(v) => update(o.id, { source: { ...source, charge_C: v * 1e-9 } })} />
             <NumberField label={t('params.charge')} value={source.charge_C} factor={1e-9} unit="nC" step={0.1} onChange={(v) => update(o.id, { source: { ...source, charge_C: v } })} />
+          </Row>
+          <Row label={t('params.polarity')}>
+            <span className="font-mono text-xs">{source.charge_C > 0 ? '+' : source.charge_C < 0 ? '−' : '0'}</span>
+            <Button aria-label={t('params.flip')} onClick={() => update(o.id, { source: { ...source, charge_C: -source.charge_C } })} title={t('params.flipHint')}>
+              {t('params.flip')}
+            </Button>
           </Row>
           <p className="text-[11px] leading-snug text-muted">{t('params.chargeHint')}</p>
         </Section>
@@ -192,7 +239,7 @@ export function ParametersPanel() {
   const selected = useSceneStore((s) => s.scene.objects.find((o) => o.id === s.selectedId))
   return (
     <div>
-      {selected ? <ObjectParameters o={selected} /> : <p className="border-b border-border px-3 py-3 text-xs text-muted">{t('params.nothingSelected')}</p>}
+      {selected ? <ObjectParameters key={selected.id} o={selected} /> : <p className="border-b border-border px-3 py-3 text-xs text-muted">{t('params.nothingSelected')}</p>}
       <DomainParameters />
     </div>
   )

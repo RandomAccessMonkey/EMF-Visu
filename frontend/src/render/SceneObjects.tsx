@@ -21,6 +21,13 @@ function Shape({ o, marker }: { o: SceneObject; marker: number }) {
     <meshStandardMaterial color={COLORS.inert} transparent opacity={0.3} roughness={0.6} side={THREE.DoubleSide} />
   )
   switch (p.type) {
+    case 'group': // no geometry of its own: a small handle to select and move the whole group
+      return (
+        <mesh>
+          <octahedronGeometry args={[marker * 0.9, 0]} />
+          <meshBasicMaterial color="#c4b5fd" wireframe toneMapped={false} />
+        </mesh>
+      )
     case 'point':
       return (
         <mesh>
@@ -121,7 +128,7 @@ function ObjectNode({ o, marker }: { o: SceneObject; marker: number }) {
         onPointerOut={() => setHover(false)}
       >
         <Shape o={o} marker={marker} />
-        {(selected || hover) && o.primitive.type === 'point' && (
+        {(selected || hover) && (o.primitive.type === 'point' || o.primitive.type === 'group') && (
           <mesh>
             <sphereGeometry args={[marker * 1.9, 24, 16]} />
             <meshBasicMaterial color="#ffffff" transparent opacity={selected ? 0.28 : 0.14} depthWrite={false} />

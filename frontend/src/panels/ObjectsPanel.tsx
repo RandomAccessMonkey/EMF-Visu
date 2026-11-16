@@ -1,14 +1,14 @@
 import { useQuery } from '@tanstack/react-query'
-import { Box, Circle, Copy, Cylinder, Eye, EyeOff, Minus, Plus, Square, Trash2 } from 'lucide-react'
+import { ArrowLeftRight, Box, Circle, Copy, Cylinder, Eye, EyeOff, Minus, Plus, Square, Trash2 } from 'lucide-react'
 import { api } from '@/api/client'
 import type { PrimitiveType, SceneObject } from '@/api/types'
 import { Badge, Button, Section } from '@/components/ui/controls'
 import { useT, type MessageKey } from '@/i18n'
 import { cn, formatSI } from '@/lib/format'
-import { useSceneStore, type NewObjectKind } from '@/state/sceneStore'
+import { dipoleInfo, useSceneStore, type NewObjectKind } from '@/state/sceneStore'
 import { useViewStore } from '@/state/viewStore'
 
-const GEOMETRY: { kind: Exclude<PrimitiveType, 'point'>; icon: typeof Box }[] = [
+const GEOMETRY: { kind: Exclude<PrimitiveType, 'point' | 'group'>; icon: typeof Box }[] = [
   { kind: 'sphere', icon: Circle },
   { kind: 'box', icon: Box },
   { kind: 'cylinder', icon: Cylinder },
@@ -67,40 +67,62 @@ function Presets() {
   )
 }
 
-function ObjectRow({ o }: { o: SceneObject }) {
+function ObjectRow({ o, depth }: { o: SceneObject; depth: number }) {
   const { t } = useT()
   const selected = useSceneStore((s) => s.selectedId === o.id)
+  const scene = useSceneStore((s) => s.scene)
+  const children = scene.objects.filter((c) => c.parent_id === o.id)
+  // Derived from the scene on every render: selectors must not return fresh objects.
+  const dipole = o.primitive.type === 'group' ? dipoleInfo(scene, o.id) : null
   const { select, update, remove, duplicate } = useSceneStore.getState()
   const q = o.source?.charge_C
   const label = o.name || o.id
+  const isGroup = o.primitive.type === 'group'
+  const summary = isGroup
+    ? dipole?.balanced
+      ? `±${formatSI(dipole.charge_C, 'C')} · d = ${formatSI(dipole.separation_m, 'm')}`
+      : t('primitive.group')
+    : q !== undefined && q !== null
+      ? formatSI(q, 'C')
+      : t(`primitive.${o.primitive.type}` as MessageKey)
   return (
-    <li
-      className={cn(
-        'group flex items-center gap-1 rounded px-1.5 py-1',
-        selected ? 'bg-accent/15' : 'hover:bg-panel-2',
-        !o.enabled && 'opacity-50',
-      )}
-    >
-      <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left text-xs" onClick={() => select(o.id)} aria-pressed={selected}>
-        <span
-          className="h-2.5 w-2.5 shrink-0 rounded-full"
-          style={{ background: q === undefined || q === null ? '#7c8db0' : q > 0 ? '#ff7a59' : q < 0 ? '#4aa8ff' : '#9aa7bd' }}
-        />
-        <span className="truncate">{label}</span>
-        <span className="ml-auto shrink-0 font-mono text-[10px] text-muted">
-          {q !== undefined && q !== null ? formatSI(q, 'C') : t(`primitive.${o.primitive.type}` as MessageKey)}
-        </span>
-      </button>
-      <Button variant="ghost" size="icon" aria-label={t(o.enabled ? 'objects.disable' : 'objects.enable', { name: label })} title={t(o.enabled ? 'objects.disable' : 'objects.enable', { name: label })} onClick={() => update(o.id, { enabled: !o.enabled })}>
-        {o.enabled ? <Eye size={13} /> : <EyeOff size={13} />}
-      </Button>
-      <Button variant="ghost" size="icon" aria-label={t('objects.duplicate', { name: label })} title={t('objects.duplicate', { name: label })} onClick={() => duplicate(o.id, `${label} ′`)}>
-        <Copy size={13} />
-      </Button>
-      <Button variant="danger" size="icon" aria-label={t('objects.delete', { name: label })} title={t('objects.delete', { name: label })} onClick={() => remove(o.id)}>
-        <Trash2 size={13} />
-      </Button>
-    </li>
+    <>
+      <li
+        className={cn(
+          'group flex items-center gap-1 rounded px-1.5 py-1',
+          selected ? 'bg-accent/15' : 'hover:bg-panel-2',
+          !o.enabled && 'opacity-50',
+        )}
+        style={{ marginLeft: depth * 14 }}
+      >
+        <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left text-xs" onClick={() => select(o.id)} aria-pressed={selected}>
+          {isGroup ? (
+            <ArrowLeftRight size={11} className="shrink-0 text-accent-2" />
+          ) : (
+            <span
+              className="h-2.5 w-2.5 shrink-0 rounded-full"
+              style={{ background: q === undefined || q === null ? '#7c8db0' : q > 0 ? '#ff7a59' : q < 0 ? '#4aa8ff' : '#9aa7bd' }}
+            />
+          )}
+          <span className="truncate">{label}</span>
+          <span className="ml-auto shrink-0 font-mono text-[10px] text-muted">{summary}</span>
+        </button>
+        <Button variant="ghost" size="icon" aria-label={t(o.enabled ? 'objects.disable' : 'objects.enable', { name: label })} title={t(o.enabled ? 'objects.disable' : 'objects.enable', { name: label })} onClick={() => update(o.id, { enabled: !o.enabled })}>
+          {o.enabled ? <Eye size={13} /> : <EyeOff size={13} />}
+        </Button>
+        {!isGroup && depth === 0 && (
+          <Button variant="ghost" size="icon" aria-label={t('objects.duplicate', { name: label })} title={t('objects.duplicate', { name: label })} onClick={() => duplicate(o.id, `${label} ′`)}>
+            <Copy size={13} />
+          </Button>
+        )}
+        <Button variant="danger" size="icon" aria-label={t('objects.delete', { name: label })} title={t('objects.delete', { name: label })} onClick={() => remove(o.id)}>
+          <Trash2 size={13} />
+        </Button>
+      </li>
+      {children.map((c) => (
+        <ObjectRow key={c.id} o={c} depth={depth + 1} />
+      ))}
+    </>
   )
 }
 
@@ -120,6 +142,9 @@ export function ObjectsPanel() {
             <Minus size={13} /> {t('objects.addNegative')}
           </Button>
         </div>
+        <Button onClick={() => useSceneStore.getState().addDipole(`${t('objects.dipole')} ${objects.filter((o) => o.primitive.type === 'group').length + 1}`)} title={t('objects.addDipoleHint')}>
+          <ArrowLeftRight size={13} /> {t('objects.addDipole')}
+        </Button>
         <div>
           <p className="mb-1 text-[11px] text-muted" title={t('objects.inertHint')}>
             {t('objects.addGeometry')}
@@ -136,8 +161,8 @@ export function ObjectsPanel() {
           <p className="text-xs text-muted">{t('objects.empty')}</p>
         ) : (
           <ul className="flex flex-col gap-0.5">
-            {objects.map((o) => (
-              <ObjectRow key={o.id} o={o} />
+            {objects.filter((o) => !o.parent_id).map((o) => (
+              <ObjectRow key={o.id} o={o} depth={0} />
             ))}
           </ul>
         )}

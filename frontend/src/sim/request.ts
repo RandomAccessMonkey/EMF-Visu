@@ -19,17 +19,31 @@ export const PLANE_BASIS: Record<SlicePlane, PlaneBasis> = {
   yz: { u: [0, 1, 0], v: [0, 0, 1], normal: [1, 0, 0], uAxis: 1, vAxis: 2, nAxis: 0 },
 }
 
+/** The only view settings that reach the physics request. Everything else in the view
+ *  (visibility toggles, densities, colour maps, vector field choice, camera) is display-only and
+ *  works on the cached result. */
 export interface SamplingSettings {
   plane: SlicePlane
   offset: number // coordinate of the slice along its normal axis, metres
-  arrowDensity: number // arrows along the longer slice edge
-  latticeDensity: number // lattice points per axis (3D)
-  lattice: boolean
-  heatResolution: number // heat-map samples along the longer slice edge
+  mode: '2d' | '3d' // decides which derived products are computed (planar or spherical lines, isosurfaces)
 }
 
-export const HEAT_RESOLUTION = { preview: 64, normal: 192, high: 768 } as const
+/** Samples along the longer slice edge. Odd counts keep a grid node on the slice centre. */
+export const HEAT_RESOLUTION = { preview: 65, normal: 193, high: 769 } as const
+/** Lattice points per axis used to extract equipotential surfaces (3D view). */
+export const ISO_RESOLUTION = { preview: 21, normal: 41, high: 65 } as const
 export type Quality = keyof typeof HEAT_RESOLUTION
+
+/** Arrows are always sampled on this grid; the displayed density is a subsample of it, so
+ *  changing the density never needs a new solve. */
+export const ARROW_BASE = 49
+export const ARROW_DENSITIES = [7, 9, 13, 17, 25, 49] as const
+export const LATTICE_BASE = 13
+export const LATTICE_DENSITIES = [3, 4, 5, 7, 13] as const
+export const FIELD_LINE_LEVELS = 3
+
+export const nearest = (allowed: readonly number[], value: number): number =>
+  allowed.reduce((best, a) => (Math.abs(a - value) < Math.abs(best - value) ? a : best), allowed[0]!)
 
 function sliceGrid(id: string, domain: Domain, s: SamplingSettings, n: number): PlaneGridSampling {
   const b = PLANE_BASIS[s.plane]
@@ -53,34 +67,49 @@ function sliceGrid(id: string, domain: Domain, s: SamplingSettings, n: number): 
   }
 }
 
-/** Arrow grids are inset by half a cell so no arrow sits on the domain boundary. */
-function inset(g: PlaneGridSampling): PlaneGridSampling {
+/** Shrink a grid slightly so no arrow sits exactly on the domain boundary. */
+function inset(g: PlaneGridSampling, n: number): PlaneGridSampling {
+  const f = 1 - 1 / n
+  return { ...g, u_extent_m: g.u_extent_m * f, v_extent_m: g.v_extent_m * f }
+}
+
+function lattice(id: string, domain: Domain, n: number, insetCells: number): LatticeSampling {
+  const pad = (a: number) => (insetCells * (domain.max_m[a]! - domain.min_m[a]!)) / n
   return {
-    ...g,
-    u_extent_m: g.u_extent_m * (1 - 1 / g.nu),
-    v_extent_m: g.v_extent_m * (1 - 1 / g.nv),
+    kind: 'lattice',
+    id,
+    min_m: domain.min_m.map((lo, a) => lo + pad(a)) as Vec3,
+    max_m: domain.max_m.map((hi, a) => hi - pad(a)) as Vec3,
+    nx: n,
+    ny: n,
+    nz: n,
   }
 }
 
+/** All sampling regions come from the scene's own domain; the frontend defines no bounds. */
 export function buildRequest(domain: Domain, s: SamplingSettings, quality: Quality): SolveRequest {
   const samplings: SolveRequest['samplings'] = [
-    sliceGrid('heat', domain, s, s.heatResolution),
-    inset(sliceGrid('arrows', domain, s, s.arrowDensity)),
+    { ...sliceGrid('heat', domain, s, HEAT_RESOLUTION[quality]), quantities: ['E', 'phi'] },
+    { ...inset(sliceGrid('arrows', domain, s, ARROW_BASE), ARROW_BASE), quantities: ['E', 'D'] },
   ]
-  if (s.lattice) {
-    const n = s.latticeDensity
-    const lattice: LatticeSampling = {
-      kind: 'lattice',
-      id: 'vol',
-      min_m: domain.min_m.map((lo, a) => lo + (domain.max_m[a]! - lo) / (2 * n)) as Vec3,
-      max_m: domain.max_m.map((hi, a) => hi - (hi - domain.min_m[a]!) / (2 * n)) as Vec3,
-      nx: n,
-      ny: n,
-      nz: n,
-    }
-    samplings.push(lattice)
+  const request: SolveRequest = {
+    samplings,
+    quantities: ['E', 'phi'],
+    quality,
+    field_lines: {
+      seeding: s.mode === '2d' ? 'planar' : 'spherical',
+      sampling_id: 'heat',
+      base_lines: 8,
+      levels: FIELD_LINE_LEVELS,
+      guard_cells: 0.5,
+    },
+    equipotentials: { sampling_id: 'heat' },
   }
-  return { samplings, quantities: ['E', 'phi'], quality }
+  if (s.mode === '3d') {
+    samplings.push({ ...lattice('vol', domain, LATTICE_BASE, 0.5), quantities: ['E', 'D'] })
+    request.isosurfaces = { lattice: lattice('iso', domain, ISO_RESOLUTION[quality], 0) }
+  }
+  return request
 }
 
 /** Everything that can change a physical result. Display-only attributes are excluded, so
@@ -124,4 +153,61 @@ export function latticePoints(l: LatticeSampling): Float32Array {
         out[k++] = at(l.min_m[2], l.max_m[2], iz, l.nz)
       }
   return out
+}
+
+export interface VectorSamples {
+  points: Float32Array // (N, 3)
+  vectors: Float32Array // (N, 3)
+  cell: number // spacing between displayed samples, metres
+}
+
+/** Every `stride`-th sample of a plane grid (rows and columns), keeping the centre sample. */
+export function subsamplePlane(g: PlaneGridSampling, vectors: Float32Array, density: number): VectorSamples {
+  const stride = Math.max(1, Math.round((Math.max(g.nu, g.nv) - 1) / (density - 1)))
+  const all = planeGridPoints(g)
+  const is: number[] = []
+  const js: number[] = []
+  for (let i = ((g.nu - 1) / 2) % stride; i < g.nu; i += stride) is.push(Math.round(i))
+  for (let j = ((g.nv - 1) / 2) % stride; j < g.nv; j += stride) js.push(Math.round(j))
+  const points = new Float32Array(is.length * js.length * 3)
+  const out = new Float32Array(points.length)
+  let k = 0
+  for (const j of js)
+    for (const i of is) {
+      const src = 3 * (j * g.nu + i)
+      for (let a = 0; a < 3; a++) {
+        points[k] = all[src + a]!
+        out[k++] = vectors[src + a]!
+      }
+    }
+  const cell = stride * Math.min(g.u_extent_m / (g.nu - 1), g.v_extent_m / (g.nv - 1))
+  return { points, vectors: out, cell }
+}
+
+/** Every `stride`-th sample of a lattice along each axis. */
+export function subsampleLattice(l: LatticeSampling, vectors: Float32Array, density: number): VectorSamples {
+  const stride = Math.max(1, Math.round((l.nx - 1) / (density - 1)))
+  const all = latticePoints(l)
+  const idx = (n: number) => {
+    const out: number[] = []
+    for (let i = 0; i < n; i += stride) out.push(i)
+    return out
+  }
+  const xs = idx(l.nx)
+  const ys = idx(l.ny)
+  const zs = idx(l.nz)
+  const points = new Float32Array(xs.length * ys.length * zs.length * 3)
+  const out = new Float32Array(points.length)
+  let k = 0
+  for (const z of zs)
+    for (const y of ys)
+      for (const x of xs) {
+        const src = 3 * ((z * l.ny + y) * l.nx + x)
+        for (let a = 0; a < 3; a++) {
+          points[k] = all[src + a]!
+          out[k++] = vectors[src + a]!
+        }
+      }
+  const cell = stride * Math.min(...[0, 1, 2].map((a) => (l.max_m[a]! - l.min_m[a]!) / ([l.nx, l.ny, l.nz][a]! - 1)))
+  return { points, vectors: out, cell }
 }

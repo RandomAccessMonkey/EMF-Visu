@@ -2,6 +2,8 @@ import { useT } from '@/i18n'
 import { formatSI, prettyUnit } from '@/lib/format'
 import { cssGradient, type LogScale } from '@/render/colormaps'
 import type { Legend as LegendData } from '@/render/fieldImages'
+import type { SimulationResult } from '@/api/container'
+import { FIELD_LINE_COLOR, isNumericalEnd, LEVEL_COLORS, NUMERICAL_LINE_COLOR } from '@/render/FieldProducts'
 import { PLANE_BASIS } from '@/sim/request'
 import { useViewStore } from '@/state/viewStore'
 
@@ -39,9 +41,17 @@ export function ViewStatement() {
 
 /** Overlay with the colour scales (with units) and a statement of which elements are
  *  visualization aids rather than physical quantities. */
-export function Legend({ heat, arrows }: { heat: LegendData | null; arrows: LogScale | null }) {
+const Swatch = ({ color, dashed }: { color: string; dashed?: boolean }) => (
+  <span className="mr-1 inline-block w-4 align-middle" style={{ borderTop: `2px ${dashed ? 'dashed' : 'solid'} ${color}` }} />
+)
+
+export function Legend({ heat, arrows, result }: { heat: LegendData | null; arrows: LogScale | null; result: SimulationResult | undefined }) {
   const { t } = useT()
   const v = useViewStore()
+  const lines = result?.header.field_lines
+  const hasNumerical = !!lines?.lines.some((l) => l.level === v.lineDensity && isNumericalEnd(l))
+  const unit = v.vectorField === 'E' ? 'V/m' : 'C/m²'
+  const sliceShown = v.mode === '2d' || v.showSliceIn3d
   return (
     <>
       <div className="pointer-events-none absolute bottom-3 left-3 flex flex-col gap-2 rounded-md border border-border bg-panel/85 p-2.5 backdrop-blur">
@@ -57,11 +67,29 @@ export function Legend({ heat, arrows }: { heat: LegendData | null; arrows: LogS
         )}
         {arrows && (v.showArrows || (v.mode === '3d' && v.showLattice)) && (
           <Bar
-            title={`${t('legend.arrows')} |E| [V/m]`}
+            title={`${t('legend.arrows')} |${v.vectorField}| [${unit}]`}
             kind="sequential"
             note={t('legend.log')}
-            ticks={[formatSI(arrows.min, 'V/m'), formatSI(arrows.max, 'V/m')]}
+            ticks={[formatSI(arrows.min, unit), formatSI(arrows.max, unit)]}
           />
+        )}
+        {v.showFieldLines && lines && (
+          <p className="max-w-56 text-[10px] leading-snug text-muted">
+            <Swatch color={FIELD_LINE_COLOR} />
+            {t('legend.fieldLines')}
+            {hasNumerical && (
+              <>
+                <br />
+                <Swatch color={NUMERICAL_LINE_COLOR} dashed />
+                {t('legend.numericalEnd')}
+              </>
+            )}
+          </p>
+        )}
+        {result?.header.equipotentials && ((v.showContours && sliceShown) || (v.mode === '3d' && v.showIsosurfaces)) && (
+          <p className="max-w-56 text-[10px] leading-snug text-muted">
+            {t('legend.equipotentials')}: <Swatch color={LEVEL_COLORS.positive} />φ &gt; 0 <Swatch color={LEVEL_COLORS.zero} />φ = 0 <Swatch color={LEVEL_COLORS.negative} />φ &lt; 0
+          </p>
         )}
         <p className="max-w-56 text-[10px] leading-snug text-muted">
           {t(v.arrowLength === 'uniform' ? 'legend.aidUniform' : 'legend.aidLog')} {t('legend.aid')}

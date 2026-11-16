@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '@/api/client'
 import { Badge, Button, NumberField, Row, Section, Select, Slider, Switch } from '@/components/ui/controls'
 import { useT } from '@/i18n'
-import { HEAT_RESOLUTION, PLANE_BASIS, type SlicePlane } from '@/sim/request'
+import { ARROW_DENSITIES, HEAT_RESOLUTION, LATTICE_DENSITIES, PLANE_BASIS, type SlicePlane } from '@/sim/request'
 import { useHighAccuracy, type Simulation } from '@/sim/useSimulation'
 import { useSceneStore } from '@/state/sceneStore'
 import { useViewStore, type ViewSettings } from '@/state/viewStore'
@@ -58,9 +58,15 @@ export function VisualizationPanel({ sim }: { sim: Simulation }) {
   const axisName = 'xyz'[n]!
   return (
     <div>
-      <Section title={t('viz.electricField')}>
+      <Section title={t('viz.vectors')}>
         <Row label={t('viz.arrows')} hint={t('viz.arrowsHint')}>
           <Switch label={t('viz.arrows')} checked={v.showArrows} onChange={set('showArrows')} />
+        </Row>
+        <Row label={t('viz.vectorField')} hint={t('viz.vectorFieldHint')}>
+          <Select label={t('viz.vectorField')} value={v.vectorField} onChange={set('vectorField')} options={[
+            { value: 'E', label: t('viz.vectorE') },
+            { value: 'D', label: t('viz.vectorD') },
+          ]} />
         </Row>
         <Row label={t('viz.arrowLength')} hint={t('viz.arrowLengthHint')}>
           <Select label={t('viz.arrowLength')} value={v.arrowLength} onChange={set('arrowLength')} options={[
@@ -69,7 +75,7 @@ export function VisualizationPanel({ sim }: { sim: Simulation }) {
           ]} />
         </Row>
         <Row label={t('viz.arrowDensity')}>
-          <Slider label={t('viz.arrowDensity')} value={v.arrowDensity} min={7} max={41} step={2} onChange={set('arrowDensity')} />
+          <Slider label={t('viz.arrowDensity')} value={ARROW_DENSITIES.indexOf(v.arrowDensity as (typeof ARROW_DENSITIES)[number])} min={0} max={ARROW_DENSITIES.length - 1} step={1} onChange={(i) => v.set({ arrowDensity: ARROW_DENSITIES[i]! })} />
           <span className="w-6 text-right font-mono text-[11px] text-muted">{v.arrowDensity}</span>
         </Row>
         <Row label={t('viz.arrowScale')}>
@@ -77,6 +83,27 @@ export function VisualizationPanel({ sim }: { sim: Simulation }) {
           <span className="w-6 text-right font-mono text-[11px] text-muted">{v.arrowScale.toFixed(1)}</span>
         </Row>
         <p className="text-[11px] leading-snug text-muted">{t('viz.arrowsHint')}</p>
+      </Section>
+      <Section title={t('viz.fieldLines')}>
+        <Row label={t('viz.showFieldLines')}>
+          <Switch label={t('viz.showFieldLines')} checked={v.showFieldLines} onChange={set('showFieldLines')} />
+        </Row>
+        <Row label={t('viz.lineDensity')}>
+          <Slider label={t('viz.lineDensity')} value={v.lineDensity} min={0} max={2} step={1} onChange={set('lineDensity')} />
+          <span className="w-6 text-right font-mono text-[11px] text-muted">{['×1', '×2', '×4'][v.lineDensity]}</span>
+        </Row>
+        <p className="text-[11px] leading-snug text-muted">{t(v.mode === '2d' ? 'viz.fieldLinesHint2d' : 'viz.fieldLinesHint3d')}</p>
+      </Section>
+      <Section title={t('viz.equipotentials')}>
+        <Row label={t('viz.contours')}>
+          <Switch label={t('viz.contours')} checked={v.showContours} onChange={set('showContours')} />
+        </Row>
+        {v.mode === '3d' && (
+          <Row label={t('viz.isosurfaces')}>
+            <Switch label={t('viz.isosurfaces')} checked={v.showIsosurfaces} onChange={set('showIsosurfaces')} />
+          </Row>
+        )}
+        <p className="text-[11px] leading-snug text-muted">{t('viz.equipotentialsHint')}</p>
       </Section>
       <Section title={t('viz.slice')}>
         <Row label={t('viz.heatmap')}>
@@ -107,7 +134,7 @@ export function VisualizationPanel({ sim }: { sim: Simulation }) {
             <Switch label={t('viz.lattice')} checked={v.showLattice} onChange={set('showLattice')} />
           </Row>
           <Row label={t('viz.latticeDensity')}>
-            <Slider label={t('viz.latticeDensity')} value={v.latticeDensity} min={3} max={13} step={1} onChange={set('latticeDensity')} />
+            <Slider label={t('viz.latticeDensity')} value={LATTICE_DENSITIES.indexOf(v.latticeDensity as (typeof LATTICE_DENSITIES)[number])} min={0} max={LATTICE_DENSITIES.length - 1} step={1} onChange={(i) => v.set({ latticeDensity: LATTICE_DENSITIES[i]! })} />
             <span className="w-6 text-right font-mono text-[11px] text-muted">{v.latticeDensity}³</span>
           </Row>
           <Row label={t('viz.sliceIn3d')}>

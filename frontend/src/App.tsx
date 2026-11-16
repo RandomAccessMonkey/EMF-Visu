@@ -61,10 +61,11 @@ export default function App() {
     () => (sim.result && heatKind !== 'none' ? heatImage(sim.result, heatKind) : null),
     [sim.result, heatKind],
   )
+  const vectorField = useViewStore((s) => s.vectorField)
   const arrowScale = useMemo(() => {
-    const field = sim.result?.arrays['arrows.E']
+    const field = sim.result?.arrays[`arrows.${vectorField}`]
     return field ? magnitudeScale(magnitudes(field.data)) : null
-  }, [sim.result])
+  }, [sim.result, vectorField])
 
   return (
     <div className="flex h-full flex-col">
@@ -77,7 +78,7 @@ export default function App() {
           <ViewStatement />
           <div className="relative min-h-0 flex-1">
           <Viewport result={sim.error ? undefined : sim.result} image={sim.error ? null : image} arrowScale={sim.error ? null : arrowScale} />
-          <Legend heat={sim.error ? null : (image?.legend ?? null)} arrows={sim.error ? null : arrowScale} />
+          <Legend heat={sim.error ? null : (image?.legend ?? null)} arrows={sim.error ? null : arrowScale} result={sim.error ? undefined : sim.result} />
           <AnimatePresence>
             {sim.error && (
               <motion.div

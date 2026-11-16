@@ -5,7 +5,7 @@ import { api, ApiError, type SimulationResponse } from '@/api/client'
 import type { JobStatus, Scene, SolveRequest } from '@/api/types'
 import { useSceneStore } from '@/state/sceneStore'
 import { useViewStore } from '@/state/viewStore'
-import { buildRequest, HEAT_RESOLUTION, physicsKey, type Quality } from './request'
+import { buildRequest, physicsKey, type Quality } from './request'
 
 function useDebounced<T>(value: T, delayMs: number): T {
   const [v, setV] = useState(value)
@@ -26,17 +26,11 @@ function useBundle(quality: Quality): Bundle {
   const scene = useSceneStore((s) => s.scene)
   const plane = useViewStore((s) => s.plane)
   const offset = useViewStore((s) => s.offset)
-  const arrowDensity = useViewStore((s) => s.arrowDensity)
-  const latticeDensity = useViewStore((s) => s.latticeDensity)
-  const lattice = useViewStore((s) => s.mode === '3d' && s.showLattice)
+  const mode = useViewStore((s) => s.mode)
   return useMemo(() => {
-    const request = buildRequest(
-      scene.domain,
-      { plane, offset, arrowDensity, latticeDensity, lattice, heatResolution: HEAT_RESOLUTION[quality] },
-      quality,
-    )
+    const request = buildRequest(scene.domain, { plane, offset, mode }, quality)
     return { key: physicsKey(scene, request), scene, request }
-  }, [scene, plane, offset, arrowDensity, latticeDensity, lattice, quality])
+  }, [scene, plane, offset, mode, quality])
 }
 
 // --- High-accuracy solves run as cancellable jobs on the solver's worker service -------------

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { Vec3 } from '@/api/types'
-import type { SlicePlane } from '@/sim/request'
+import { ARROW_DENSITIES, LATTICE_DENSITIES, nearest, type SlicePlane } from '@/sim/request'
 
 export type Lang = 'en' | 'hu'
 
@@ -10,6 +10,11 @@ export interface ViewSettings {
   plane: SlicePlane
   offset: number
   showArrows: boolean
+  vectorField: 'E' | 'D'
+  showFieldLines: boolean
+  lineDensity: number // density level 0..2 (each level is a complete, precomputed set)
+  showContours: boolean
+  showIsosurfaces: boolean
   heatmap: 'phi' | 'E' | 'none'
   showLattice: boolean
   showSliceIn3d: boolean
@@ -27,12 +32,17 @@ export const DEFAULT_VIEW: ViewSettings = {
   plane: 'xy',
   offset: 0,
   showArrows: true,
+  vectorField: 'E',
+  showFieldLines: true,
+  lineDensity: 1,
+  showContours: true,
+  showIsosurfaces: true,
   heatmap: 'phi',
-  showLattice: true,
+  showLattice: false,
   showSliceIn3d: true,
   showGrid: true,
-  arrowDensity: 21,
-  latticeDensity: 7,
+  arrowDensity: 13,
+  latticeDensity: 5,
   arrowScale: 1,
   arrowLength: 'uniform',
   snap: true,
@@ -94,5 +104,10 @@ export function sanitizeView(raw: Record<string, unknown>): Partial<ViewSettings
   for (const [k, def] of Object.entries(DEFAULT_VIEW)) {
     if (k in raw && typeof raw[k] === typeof def) out[k] = raw[k]
   }
+  // Projects saved before Phase 2A may hold densities that are no longer offered.
+  if (typeof out.arrowDensity === 'number') out.arrowDensity = nearest(ARROW_DENSITIES, out.arrowDensity)
+  if (typeof out.latticeDensity === 'number') out.latticeDensity = nearest(LATTICE_DENSITIES, out.latticeDensity)
+  if (typeof out.lineDensity === 'number') out.lineDensity = Math.min(2, Math.max(0, Math.round(out.lineDensity)))
+  if (out.vectorField !== undefined && out.vectorField !== 'E' && out.vectorField !== 'D') delete out.vectorField
   return out as Partial<ViewSettings>
 }

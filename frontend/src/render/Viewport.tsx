@@ -4,11 +4,12 @@ import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
 import type { SimulationResult } from '@/api/container'
 import type { Domain, LatticeSampling, PlaneGridSampling, Vec3 } from '@/api/types'
-import { latticePoints, PLANE_BASIS, planeGridPoints } from '@/sim/request'
+import { PLANE_BASIS, subsampleLattice, subsamplePlane } from '@/sim/request'
 import { useSceneStore } from '@/state/sceneStore'
 import { useViewStore } from '@/state/viewStore'
 import { ArrowField } from './ArrowField'
 import type { LogScale } from './colormaps'
+import { Contours, FieldLines, Isosurfaces } from './FieldProducts'
 import { magnitudes, sampling, type HeatImage } from './fieldImages'
 import { SceneObjects } from './SceneObjects'
 
@@ -168,20 +169,23 @@ function SlicePlane({ image, grid, visible }: { image: HeatImage | null; grid: P
 function Arrows({ result, id, scale }: { result: SimulationResult; id: 'arrows' | 'vol'; scale: LogScale }) {
   const lengthMode = useViewStore((s) => s.arrowLength)
   const sizeFactor = useViewStore((s) => s.arrowScale)
+  const quantity = useViewStore((s) => s.vectorField)
+  const density = useViewStore((s) => (id === 'arrows' ? s.arrowDensity : s.latticeDensity))
+  // Changing the density or the displayed vector field only re-reads the cached arrays.
   const data = useMemo(() => {
-    const field = result.arrays[`${id}.E`]
+    const field = result.arrays[`${id}.${quantity}`]
     if (!field) return null
     if (id === 'arrows') {
       const g = sampling<PlaneGridSampling>(result, id)
       if (!g) return null
-      const cell = Math.min(g.u_extent_m / (g.nu - 1), g.v_extent_m / (g.nv - 1))
-      return { points: planeGridPoints(g), cell, vectors: field.data, mags: magnitudes(field.data) }
+      const sub = subsamplePlane(g, field.data, density)
+      return { ...sub, mags: magnitudes(sub.vectors) }
     }
     const l = sampling<LatticeSampling>(result, id)
     if (!l) return null
-    const cell = Math.min(...[0, 1, 2].map((a) => (l.max_m[a]! - l.min_m[a]!) / ([l.nx, l.ny, l.nz][a]! - 1)))
-    return { points: latticePoints(l), cell: cell * 0.7, vectors: field.data, mags: magnitudes(field.data) }
-  }, [result, id])
+    const sub = subsampleLattice(l, field.data, density)
+    return { ...sub, cell: sub.cell * 0.7, mags: magnitudes(sub.vectors) }
+  }, [result, id, quantity, density])
   if (!data) return null
   return (
     <ArrowField
@@ -241,7 +245,7 @@ export function Viewport({ result, image, arrowScale }: Props) {
       <ambientLight intensity={1.4} />
       <directionalLight position={[3, -4, 6]} intensity={1.6} />
       <Cameras domain={domain} />
-      <Invalidator deps={[scene, selectedId, v.mode, v.plane, v.offset, v.probePoint, v.showGrid, v.tool, result]} />
+      <Invalidator deps={[scene, selectedId, v.mode, v.plane, v.offset, v.probePoint, v.showGrid, v.tool, result, v.showFieldLines, v.lineDensity, v.showContours, v.showIsosurfaces]} />
       {v.mode === '3d' && <DomainFrame domain={domain} />}
       {v.showGrid && <GridAxes domain={domain} />}
       {grid && <SlicePlane image={image} grid={grid} visible={sliceVisible && v.heatmap !== 'none'} />}
@@ -251,6 +255,9 @@ export function Viewport({ result, image, arrowScale }: Props) {
       {result && arrowScale && v.mode === '3d' && v.showLattice && (
         <Arrows result={result} id="vol" scale={arrowScale} />
       )}
+      {result && v.showContours && sliceVisible && <Contours result={result} />}
+      {result && v.showFieldLines && <FieldLines result={result} level={v.lineDensity} markerSize={marker * 0.9} />}
+      {result && v.mode === '3d' && v.showIsosurfaces && <Isosurfaces result={result} />}
       <SceneObjects marker={marker} />
       <ProbeMarker size={marker} />
     </Canvas>

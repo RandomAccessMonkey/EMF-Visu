@@ -1,6 +1,8 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
+import type React from 'react'
 import { api, ApiError } from '@/api/client'
+import type { MethodInfo } from '@/api/types'
 import { Badge, Button, Section } from '@/components/ui/controls'
 import { useT, type MessageKey } from '@/i18n'
 import { formatSI, prettyUnit } from '@/lib/format'
@@ -55,7 +57,9 @@ function Probe() {
         <>
           <p className="font-mono text-[11px] text-muted">r = ({point.map((c) => c.toFixed(3)).join(', ')}) m</p>
           {probe.isError && <p className="text-xs text-danger">{probe.error.message}</p>}
-          {probe.data && !probe.data.defined && <p className="text-xs text-warn">{t('probe.undefined')}</p>}
+          {probe.data && !probe.data.defined && (
+            <p className="text-xs text-warn">{t('probe.undefined', { tol: probe.data.singular_tolerance_m.toExponential(1) })}</p>
+          )}
           {probe.data?.defined && (
             <table className="w-full text-xs">
               <tbody>
@@ -77,8 +81,143 @@ function Probe() {
               </tbody>
             </table>
           )}
+          {probe.data?.defined && probe.data.contributions.length > 0 && (
+            <div>
+              <h4 className="mb-1 mt-1 text-[11px] font-semibold uppercase tracking-wider text-muted">{t('probe.superposition')}</h4>
+              <table className="w-full text-[11px]">
+                <thead>
+                  <tr className="text-left text-muted">
+                    <th className="font-normal">{t('probe.source')}</th>
+                    <th className="text-right font-normal">|Eᵢ|</th>
+                    <th className="text-right font-normal">φᵢ</th>
+                  </tr>
+                </thead>
+                <tbody className="font-mono">
+                  {probe.data.contributions.map((c) => (
+                    <tr key={c.object_id} className="border-t border-border/60">
+                      <td className="max-w-24 truncate font-sans">{c.name} <span className="text-muted">({formatSI(c.charge_C, 'C')})</span></td>
+                      <td className="text-right">{formatSI(c.E_magnitude_V_per_m, 'V/m', 4)}</td>
+                      <td className="text-right">{formatSI(c.phi_V, 'V', 4)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="mt-1 text-[11px] leading-snug text-muted">{t('probe.superpositionNote')}</p>
+            </div>
+          )}
           <p className="text-[11px] text-muted">{t('probe.exactNote')}</p>
         </>
+      )}
+    </Section>
+  )
+}
+
+function Method({ title, method, extra }: { title: string; method: MethodInfo; extra?: React.ReactNode }) {
+  const { t, loc } = useT()
+  const advanced = useViewStore((s) => s.level === 'advanced')
+  return (
+    <div className="rounded-md border border-border bg-panel-2/50 p-2 text-xs">
+      <div className="mb-1 flex flex-wrap items-center gap-1.5">
+        <span className="font-semibold">{title}</span>
+        <Badge tone="warn">{t(`method.${method.kind}` as MessageKey)}</Badge>
+      </div>
+      <p className="leading-snug">{loc(method.description)}</p>
+      {extra}
+      {advanced && (
+        <>
+          <p className="mt-1 font-mono text-[11px] text-muted">{loc(method.name)}</p>
+          <table className="mt-1 w-full text-[11px]">
+            <tbody className="font-mono">
+              {Object.entries(method.parameters).map(([k, v]) => (
+                <tr key={k}>
+                  <td className="text-muted">{k}</td>
+                  <td className="text-right">{typeof v === 'number' ? (Number.isInteger(v) ? v : v.toExponential(2)) : v}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+      <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[11px] leading-snug text-muted">
+        {method.limitations.map((l, i) => (
+          <li key={i}>{loc(l)}</li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+/** Derived visualizations: how each was obtained, separately from the accuracy of the field. */
+function DerivedProducts({ sim }: { sim: Simulation }) {
+  const { t } = useT()
+  const level = useViewStore((s) => s.lineDensity)
+  const h = sim.result?.header
+  if (!h || (!h.field_lines && !h.equipotentials && !h.isosurfaces)) return null
+  const fl = h.field_lines
+  const shown = fl ? fl.lines.filter((l) => l.level === Math.min(level, fl.levels - 1)) : []
+  const counts = new Map<string, number>()
+  for (const l of shown) {
+    const key = `${l.start_reason}>${l.end_reason}`
+    counts.set(key, (counts.get(key) ?? 0) + 1)
+  }
+  return (
+    <Section title={t('derived.title')}>
+      <p className="text-[11px] leading-snug text-muted">{t('derived.intro')}</p>
+      {fl && (
+        <Method
+          title={t('derived.fieldLines')}
+          method={fl.method}
+          extra={
+            <div className="mt-1">
+              <table className="w-full text-[11px]" aria-label={t('derived.terminations')}>
+                <thead>
+                  <tr className="text-left text-muted">
+                    <th className="font-normal">{t('derived.from')}</th>
+                    <th className="font-normal">{t('derived.to')}</th>
+                    <th className="text-right font-normal">{t('derived.count')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...counts.entries()].map(([key, n]) => {
+                    const [from, to] = key.split('>') as [string, string]
+                    const numerical = ['max_length', 'integration_failure'].some((r) => r === from || r === to)
+                    return (
+                      <tr key={key} className={numerical ? 'text-warn' : ''}>
+                        <td>{t(`end.${from}` as MessageKey)}</td>
+                        <td>{t(`end.${to}` as MessageKey)}</td>
+                        <td className="text-right font-mono">{n}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+              {shown.length === 0 && <p className="text-[11px] text-muted">{t('derived.noLines')}</p>}
+              {fl.lines_stay_in_plane === false && <p className="mt-1 text-[11px] text-warn">{t('derived.leavePlane')}</p>}
+            </div>
+          }
+        />
+      )}
+      {h.equipotentials && (
+        <Method
+          title={t('derived.contours')}
+          method={h.equipotentials.method}
+          extra={
+            <p className="mt-1 font-mono text-[11px] text-muted">
+              φ = {h.equipotentials.levels.filter((l) => l.count > 0).map((l) => formatSI(l.value_V, 'V', 2)).join(', ') || '—'}
+            </p>
+          }
+        />
+      )}
+      {h.isosurfaces && (
+        <Method
+          title={t('derived.isosurfaces')}
+          method={h.isosurfaces.method}
+          extra={
+            <p className="mt-1 font-mono text-[11px] text-muted">
+              φ = {h.isosurfaces.levels.filter((l) => l.count > 0).map((l) => formatSI(l.value_V, 'V', 2)).join(', ') || '—'}
+            </p>
+          }
+        />
       )}
     </Section>
   )
@@ -127,6 +266,7 @@ export function ResultsPanel({ sim }: { sim: Simulation }) {
           )}
         </>
       )}
+      {!sim.error && <DerivedProducts sim={sim} />}
       <Probe />
       {advanced && h && sim.result && (
         <Section title={t('results.diagnostics')}>

@@ -4,22 +4,31 @@ An interactive electromagnetic field laboratory in which every picture is backed
 calculation. Build a configuration, change a parameter, see the field respond, and read which
 equations govern it and under what assumptions.
 
-**Status: Phase 1 (Foundation) of seven.** What works today:
+**Status: Phase 1 (Foundation) and Phase 2A (point-charge electrostatics) are implemented.**
+What works today:
 
-- Ideal point charges in vacuum, solved exactly by the Python physics engine.
-- The same scene in a 2D cross-section view and a 3D view: field arrows, a colour map of the
-  potential φ or of |E|, a 3D arrow lattice.
+- Any number of positive and negative ideal point charges in vacuum, and dipoles made of two
+  point charges, solved exactly by the Python physics engine (E, φ, and D = ε₀E).
+- The same scene in a 2D cross-section view and a 3D view: E or D vectors, a colour map of φ
+  or |E|, field lines with direction markers, equipotential contour lines, and equipotential
+  surfaces in 3D.
 - Editing: add, move (drag in 2D, gizmo in 3D, numeric input, arrow keys), rotate, scale,
-  duplicate, disable and delete objects; snapping; adjustable bounds.
-- A probe that returns E, φ and D at a point in 64-bit precision.
-- An equation panel whose applicability statuses are computed from the active physical model.
+  duplicate, disable and delete objects; charge magnitude (slider ±100 nC, any value by
+  number), polarity flip; dipole charge and separation; snapping; adjustable bounds.
+- A probe that returns E, φ and D at a point in 64-bit precision, each charge's contribution,
+  and "undefined" exactly on a charge.
+- An equation panel whose statuses are computed from the active physical model and which says
+  whether the solver evaluates an equation or the field merely satisfies it.
 - Presets 1–4, saved projects, English and Hungarian, beginner and advanced levels.
 - High-resolution solves as cancellable jobs on a separate worker, with live progress.
 
-Everything else in the product definition (conductors, dielectrics, magnetostatics, induction,
-FEM, FDTD, circuits, field lines, flux tools) is **not implemented yet**. Such features are
-disabled or refused with a reason; nothing is approximated silently. See
-[docs/architecture.md](docs/architecture.md) for the full status table.
+Field lines, contours and surfaces are numerical constructions on top of the exact field; the
+Results panel states the method and its limits for each.
+
+Everything else in the product definition (conductors, dielectrics, extended charge
+distributions, magnetostatics, induction, FEM, FDTD, circuits, flux tools) is **not implemented
+yet**. Such features are disabled or refused with a reason; nothing is approximated silently.
+See [docs/architecture.md](docs/architecture.md) for the full status table.
 
 ## Run with Docker
 
@@ -133,3 +142,4 @@ handle fails the type-check.
 - [docs/architecture.md](docs/architecture.md): architecture, interfaces, data model, units and
   conventions, data flow, status, limitations, how to extend.
 - [docs/validation.md](docs/validation.md): validation methodology and verification record.
+- [docs/master_spec.md](docs/master_spec.md): the complete product specification.

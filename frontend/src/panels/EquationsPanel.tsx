@@ -44,8 +44,9 @@ function Details({ eq }: { eq: EquationView }) {
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <Badge tone={TONE[eq.status]}>{t(`eq.status.${eq.status}` as MessageKey)}</Badge>
-        {eq.evaluated_by_solver && <Badge tone="accent">{t('eq.usedBySolver')}</Badge>}
+        {eq.usage !== 'not_used' && <Badge tone={eq.usage === 'evaluated' ? 'accent' : 'muted'}>{t(`eq.usage.${eq.usage}` as MessageKey)}</Badge>}
       </div>
+      {eq.usage !== 'not_used' && <p className="text-xs text-muted">{loc(eq.usage_note)}</p>}
       {eq.status_reason && <p className="rounded-md border border-border bg-panel-2 p-2 text-xs">{loc(eq.status_reason)}</p>}
       <p>{loc(eq.meaning)}</p>
       <p className="text-xs italic text-text/80">{loc(eq.intuition)}</p>
@@ -124,7 +125,10 @@ export function EquationsPanel() {
               >
                 <div className="mb-1 flex items-start justify-between gap-2">
                   <span className="text-xs font-medium">{loc(eq.name)}</span>
-                  <Badge tone={TONE[eq.status]}>{t(`eq.status.${eq.status}` as MessageKey)}</Badge>
+                  <span className="flex shrink-0 flex-col items-end gap-1">
+                    <Badge tone={TONE[eq.status]}>{t(`eq.status.${eq.status}` as MessageKey)}</Badge>
+                    {eq.usage !== 'not_used' && <Badge tone={eq.usage === 'evaluated' ? 'accent' : 'muted'}>{t(`eq.usage.${eq.usage}` as MessageKey)}</Badge>}
+                  </span>
                 </div>
                 <div className="overflow-x-auto py-1 text-[13px]">
                   <Tex latex={eq.latex} />
