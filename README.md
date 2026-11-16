@@ -39,20 +39,23 @@ distributions, magnetostatics, induction, FEM, FDTD, circuits, flux tools) is **
 yet**. Such features are disabled or refused with a reason; nothing is approximated silently.
 See [docs/architecture.md](docs/architecture.md) for the full status table.
 
-## Run with Docker
+## Run with Docker (local preview)
 
-Requirements: Docker with the Compose plugin.
+Full instructions for Windows, macOS and Linux, including troubleshooting:
+**[docs/local-preview.md](docs/local-preview.md)**.
 
-```bash
-cp .env.example .env
-```
+Requirements: Docker Desktop (Windows, macOS) or Docker Engine with the Compose plugin (Linux).
 
-```bash
-docker compose up --build
-```
+| | macOS / Linux | Windows (PowerShell) |
+|---|---|---|
+| Start | `./scripts/start.sh` | `powershell -ExecutionPolicy Bypass -File scripts\start.ps1` |
+| Stop (projects are kept) | `./scripts/stop.sh` | `powershell -ExecutionPolicy Bypass -File scripts\stop.ps1` |
+| Status | `./scripts/status.sh` | `powershell -ExecutionPolicy Bypass -File scripts\status.ps1` |
 
-Open <http://localhost:8080>. The API is also published on <http://localhost:8000>
-(interactive docs at `/docs`).
+Without the scripts, on any system: `docker compose up -d --build` and `docker compose down`.
+
+Then open **<http://localhost:8080>**. The API documentation is at <http://localhost:8000/docs>.
+Both listen on this computer only. A `.env` file is optional (see `.env.example`).
 
 | Service | Role |
 |---|---|
@@ -62,8 +65,8 @@ Open <http://localhost:8080>. The API is also published on <http://localhost:800
 | `redis` | job queue and job results |
 | `postgres` | saved projects |
 
-If Docker Hub rate-limits you, uncomment the mirror variables at the bottom of `.env`.
-Behind a TLS-inspecting proxy, pass your CA bundle as the `extra_ca` build secret.
+Saved projects live in the Docker volume `emf-visu_pgdata` and survive stopping, restarting
+and updating; only `docker compose down -v` deletes them.
 
 ## Run natively (development)
 

@@ -258,3 +258,16 @@ each triggering a flux request with the expected result; subdivision with a char
 internal plane (ambiguous) and with 4×3×3 cells (75 shared faces cancelling exactly); the patch
 inspector; preview-mesh requests during a drag followed by a final-mesh request; a charge on the
 surface; the same flux through three shapes; equation usage; project persistence; Hungarian.
+
+## Verification record for the local preview preparation
+
+| Item | Result |
+|---|---|
+| `docker compose config` | valid |
+| `./scripts/start.sh --no-build` (images built beforehand) | all five containers healthy, including the new worker health check; ports bound to 127.0.0.1 |
+| Error paths of `start.sh` | Docker unreachable, port 8080 in use, database password changed after first start (degraded warning): each reported with a hint |
+| `stop.sh` then `start.sh` | a saved project (charge, Gaussian surface, view settings) was intact |
+| End-to-end script against the started stack | 35 of 35 checks, twice |
+| Python tests, ruff, mypy | 203 passed; clean |
+| Frontend type-check, lint, unit tests | clean; 43 passed |
+| PowerShell scripts | not executed (no PowerShell available) |

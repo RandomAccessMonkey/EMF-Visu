@@ -1,6 +1,8 @@
-# EMF-Visu local stack:  docker compose up --build   ->  http://localhost:8080
-# Solver workers are separate services. FEM (DOLFINx/Gmsh) and FDTD (Meep) workers are not
-# implemented yet (Phase 5); they will be added as additional, optional services.
+# EMF-Visu local stack.
+#   start:  docker compose up -d --build      ->  http://localhost:8080
+#   stop:   docker compose down               (saved projects stay in the pgdata volume)
+# See docs/local-preview.md. Solver workers are separate services; FEM (DOLFINx/Gmsh) and FDTD
+# (Meep) workers are not implemented yet (Phase 5).
 name: emf-visu
 
 services:
@@ -43,8 +45,10 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
+    # Only needed for direct API access (e.g. http://localhost:8000/docs); the app reaches the
+    # API through the frontend. Bound to this computer only by default.
     ports:
-      - "${API_PORT:-8000}:8000"
+      - "${BIND_ADDRESS:-127.0.0.1}:${API_PORT:-8000}:8000"
 
   worker-analytical:
     build:
@@ -57,6 +61,13 @@ services:
       EMF_RESULT_TTL_S: ${EMF_RESULT_TTL_S:-3600}
     depends_on:
       redis: { condition: service_healthy }
+    # Serves queued (high-resolution) solves; the rest of the app works without it.
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A emf_worker.app inspect ping -d celery@$${HOSTNAME} --timeout 5 | grep -q pong"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 20s
 
   frontend:
     build:
@@ -66,8 +77,10 @@ services:
         NGINX_IMAGE: ${NGINX_IMAGE:-nginx:1.29-alpine}
     depends_on:
       api: { condition: service_healthy }
+    # Bound to this computer only; set BIND_ADDRESS=0.0.0.0 in .env to allow other devices.
     ports:
-      - "${FRONTEND_PORT:-8080}:80"
+      - "${BIND_ADDRESS:-127.0.0.1}:${FRONTEND_PORT:-8080}:80"
 
 volumes:
+  # Saved projects. Survives "docker compose down"; only "docker compose down -v" deletes it.
   pgdata:

@@ -55,6 +55,16 @@ Decisions taken during Phase 1 implementation:
 | Recharts not installed yet | No chart exists in Phase 1; it is added with the first waveform or plot. |
 | shadcn/ui used as a pattern (Tailwind + Radix primitives in `components/ui`), not via its generator | Same component model, fewer generated files. |
 
+Local preview (before Phase 3), see [local-preview.md](local-preview.md):
+
+| Decision | Reason |
+|---|---|
+| Published ports bound to `127.0.0.1` by default (`BIND_ADDRESS`) | A local preview should not be reachable from the network unless asked. |
+| Health check for the worker (`celery inspect ping`) | Every service now reports health; the start scripts and `docker compose ps` show it. |
+| API logs database and Redis reachability at start-up | The API keeps running without them (field solving needs neither), so the log says what will not work. |
+| `scripts/start|stop|status` in `.sh` and `.ps1` | One command with prerequisite checks, port checks, health waiting and diagnostics; plain `docker compose` remains equivalent. |
+| `.gitattributes` keeps LF endings for shell, Python, YAML, Dockerfiles, nginx config | Windows checkouts with `core.autocrlf` would otherwise break scripts and containers. |
+
 ## 3. System overview
 
 ```
