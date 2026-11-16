@@ -88,6 +88,48 @@ def _superposition(c: ModelContext) -> Out:
     return OK
 
 
+def _gauss_d_vacuum(c: ModelContext) -> Out:
+    if c.medium == "vacuum":
+        return OK
+    return ("not_applicable", L("The medium is not vacuum; use ∇·D = ρ_free.",
+                                "A közeg nem vákuum; a ∇·D = ρ_free alak használandó."))
+
+
+def _div_point_charges(c: ModelContext) -> Out:
+    if not (c.regime == "electrostatic" and c.medium == "vacuum" and not c.has_conductors):
+        return ("not_applicable",
+                L("Requires point charges in vacuum without conductors or dielectrics.",
+                  "Vákuumbeli ponttöltéseket feltételez, vezetők és dielektrikumok nélkül."))
+    if c.source_count == 0:
+        return ("applicable_under_assumptions",
+                L("There are no point charges, so the sum is empty and ∇·E = 0 everywhere.",
+                  "Nincsenek ponttöltések, így az összeg üres és ∇·E = 0 mindenütt."))
+    return OK
+
+
+def _curl_e_static(c: ModelContext) -> Out:
+    if c.regime in ("electrostatic", "magnetostatic") and not c.time_varying:
+        return OK
+    return ("not_applicable",
+            L("The magnetic field changes in time, so ∇×E = −∂B/∂t (Faraday's law).",
+              "A mágneses mező időben változik, ezért ∇×E = −∂B/∂t (Faraday-törvény)."))
+
+
+def _curl_d_vacuum(c: ModelContext) -> Out:
+    if c.time_varying or c.regime not in ("electrostatic", "magnetostatic"):
+        return ("not_applicable",
+                L("Not a static model.", "Nem sztatikus modell."))
+    if c.medium == "inhomogeneous_linear":
+        return ("not_applicable",
+                L("ε varies in space, so ∇×D = ∇ε × E need not vanish.",
+                  "ε helyfüggő, ezért ∇×D = ∇ε × E nem feltétlenül nulla."))
+    if c.medium == "homogeneous_linear":
+        return ("applicable_under_assumptions",
+                L("Homogeneous medium: D = εE with constant ε.",
+                  "Homogén közeg: D = εE állandó ε-nal."))
+    return OK
+
+
 def _poisson_general(c: ModelContext) -> Out:
     if c.regime != "electrostatic":
         return ("not_applicable", L("Not an electrostatic model.", "Nem elektrosztatikus modell."))
@@ -173,6 +215,11 @@ def _energy(c: ModelContext) -> Out:
 RULES: dict[str, Rule] = {
     "gauss_electric": lambda c: OK,
     "gauss_electric_vacuum": _gauss_vacuum,
+    "gauss_displacement_vacuum": _gauss_d_vacuum,
+    "div_E_point_charges": _div_point_charges,
+    "div_D_point_charges": _div_point_charges,
+    "curl_E_electrostatic": _curl_e_static,
+    "curl_D_vacuum": _curl_d_vacuum,
     "gauss_magnetic": _needs_b,
     "faraday": _faraday,
     "ampere_maxwell": _ampere_maxwell,

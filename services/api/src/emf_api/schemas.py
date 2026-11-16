@@ -35,6 +35,37 @@ class ProbeValue(BaseModel):
     unit: str
     value: list[float] | float | None  # None where the quantity is undefined (singularity)
     magnitude: float | None = None
+    kind: Literal["scalar", "vector"] = "scalar"
+    # defined: a classical pointwise value exists. singular: E, D, phi at a charge position.
+    # not_evaluated: div/curl at a charge position, where the field itself is undefined; only
+    # the distributional statement in ProbeResponse.distributional applies there.
+    status: Literal["defined", "singular", "not_evaluated"] = "defined"
+
+
+class ProbeDistributional(BaseModel):
+    """What holds at a point-charge position, where only distributions are meaningful."""
+
+    object_id: str
+    name: str
+    charge_C: float
+    div_E_weight_V_m: float  # weight of delta3 in div E: q / eps0
+    div_D_weight_C: float  # weight of delta3 in div D: q
+    curl_E_distributional: list[float]  # always the zero vector: no rotational source
+    curl_D_distributional: list[float]
+
+
+class ProbeDiagnostic(BaseModel):
+    """Finite-difference estimate of an operator applied to the exact field. A numerical check
+    with an uncertainty, never the result: the exact value is given alongside."""
+
+    quantity: str
+    symbol: str
+    unit: str
+    exact: list[float] | float
+    estimate: list[float] | float
+    uncertainty: list[float] | float
+    consistent_with_exact: bool
+    step_m: float
 
 
 class ProbeContribution(BaseModel):
@@ -60,6 +91,9 @@ class ProbeResponse(BaseModel):
     singular_object_id: str | None = None
     values: list[ProbeValue]
     contributions: list[ProbeContribution]
+    distributional: ProbeDistributional | None = None
+    diagnostics: list[ProbeDiagnostic] = []
+    diagnostics_method: str | None = None
 
 
 class EquationsBody(BaseModel):

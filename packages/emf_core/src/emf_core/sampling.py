@@ -11,7 +11,7 @@ from pydantic import Field, model_validator
 from .scene.models import StrictModel, Vec3
 
 MAX_POINTS_PER_REQUEST = 2_000_000
-Quantity = Literal["E", "phi", "D"]
+Quantity = Literal["E", "phi", "D", "div_E", "curl_E", "div_D", "curl_D"]
 # Optional per-sampling override of the request's quantity list (Phase 2A, additive).
 Quantities = Annotated[list[Quantity] | None, Field(default=None, min_length=1)]
 SamplingId = Annotated[str, Field(min_length=1, max_length=40, pattern=r"^[A-Za-z0-9_]+$")]

@@ -50,7 +50,8 @@ def dipole_objects(group_id: str, name: str, q: float, d: float,
 
 
 _EQ = ["coulomb_field", "coulomb_potential", "superposition", "e_from_potential",
-       "gauss_electric_vacuum", "constitutive_d_linear"]
+       "gauss_electric_vacuum", "div_E_point_charges", "curl_E_electrostatic",
+       "constitutive_d_linear"]
 
 _AVAILABLE = [
     Preset(

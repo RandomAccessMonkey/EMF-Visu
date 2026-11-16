@@ -240,6 +240,24 @@ class IsosurfaceSet(BaseModel):
     method: MethodInfo
 
 
+class PointSourceInfo(BaseModel):
+    """One ideal point charge as a distributional source (Phase 2B-1).
+
+    rho = sum_i q_i delta3(r - r_i), so div E = sum_i (q_i/eps0) delta3(r - r_i) and
+    div D = sum_i q_i delta3(r - r_i). The weights are exact; a delta source has no finite
+    pointwise value. Its distributional curl contribution is zero (there is no weight for it)."""
+
+    object_id: str
+    position_m: list[float]  # world position, metres
+    charge_C: float
+    div_E_weight_V_m: float  # q / eps0, the weight of delta3 in div E  [V*m]
+    div_D_weight_C: float  # q, the weight of delta3 in div D  [C]
+    # For every plane-grid sampling: signed distance of the charge from that plane along the
+    # plane normal u x v [m], and whether it lies in the plane (|distance| <= tolerance).
+    plane_distance_m: dict[str, float] = {}
+    in_plane: dict[str, bool] = {}
+
+
 class ResultHeader(BaseModel):
     format_version: Literal[1] = RESULT_FORMAT_VERSION
     status: Literal["ok", "failed", "cancelled"] = "ok"
@@ -260,6 +278,8 @@ class ResultHeader(BaseModel):
     quality: Quality = "normal"
     compute_time_ms: float = 0.0
     equation_status: list[EquationStatusEntry] = []
+    point_sources: list[PointSourceInfo] = []
+    in_plane_tolerance_m: float | None = None
     field_lines: FieldLineSet | None = None
     equipotentials: EquipotentialSet | None = None
     isosurfaces: IsosurfaceSet | None = None

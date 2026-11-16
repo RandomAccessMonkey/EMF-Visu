@@ -696,7 +696,7 @@ export interface components {
             /** Id */
             id: string;
             /** Quantities */
-            quantities?: ("E" | "phi" | "D")[] | null;
+            quantities?: ("E" | "phi" | "D" | "div_E" | "curl_E" | "div_D" | "curl_D")[] | null;
             /** Min M */
             min_m: [
                 number,
@@ -876,7 +876,7 @@ export interface components {
             /** Id */
             id: string;
             /** Quantities */
-            quantities?: ("E" | "phi" | "D")[] | null;
+            quantities?: ("E" | "phi" | "D" | "div_E" | "curl_E" | "div_D" | "curl_D")[] | null;
             /**
              * Center M
              * @default [
@@ -970,6 +970,40 @@ export interface components {
              */
             type: "point";
         };
+        /**
+         * PointSourceInfo
+         * @description One ideal point charge as a distributional source (Phase 2B-1).
+         *
+         *     rho = sum_i q_i delta3(r - r_i), so div E = sum_i (q_i/eps0) delta3(r - r_i) and
+         *     div D = sum_i q_i delta3(r - r_i). The weights are exact; a delta source has no finite
+         *     pointwise value. Its distributional curl contribution is zero (there is no weight for it).
+         */
+        PointSourceInfo: {
+            /** Object Id */
+            object_id: string;
+            /** Position M */
+            position_m: number[];
+            /** Charge C */
+            charge_C: number;
+            /** Div E Weight V M */
+            div_E_weight_V_m: number;
+            /** Div D Weight C */
+            div_D_weight_C: number;
+            /**
+             * Plane Distance M
+             * @default {}
+             */
+            plane_distance_m: {
+                [key: string]: number;
+            };
+            /**
+             * In Plane
+             * @default {}
+             */
+            in_plane: {
+                [key: string]: boolean;
+            };
+        };
         /** PointsSampling */
         PointsSampling: {
             /**
@@ -980,7 +1014,7 @@ export interface components {
             /** Id */
             id: string;
             /** Quantities */
-            quantities?: ("E" | "phi" | "D")[] | null;
+            quantities?: ("E" | "phi" | "D" | "div_E" | "curl_E" | "div_D" | "curl_D")[] | null;
             /** Points M */
             points_m: [
                 number,
@@ -1038,6 +1072,49 @@ export interface components {
             /** Phi V */
             phi_V: number | null;
         };
+        /**
+         * ProbeDiagnostic
+         * @description Finite-difference estimate of an operator applied to the exact field. A numerical check
+         *     with an uncertainty, never the result: the exact value is given alongside.
+         */
+        ProbeDiagnostic: {
+            /** Quantity */
+            quantity: string;
+            /** Symbol */
+            symbol: string;
+            /** Unit */
+            unit: string;
+            /** Exact */
+            exact: number[] | number;
+            /** Estimate */
+            estimate: number[] | number;
+            /** Uncertainty */
+            uncertainty: number[] | number;
+            /** Consistent With Exact */
+            consistent_with_exact: boolean;
+            /** Step M */
+            step_m: number;
+        };
+        /**
+         * ProbeDistributional
+         * @description What holds at a point-charge position, where only distributions are meaningful.
+         */
+        ProbeDistributional: {
+            /** Object Id */
+            object_id: string;
+            /** Name */
+            name: string;
+            /** Charge C */
+            charge_C: number;
+            /** Div E Weight V M */
+            div_E_weight_V_m: number;
+            /** Div D Weight C */
+            div_D_weight_C: number;
+            /** Curl E Distributional */
+            curl_E_distributional: number[];
+            /** Curl D Distributional */
+            curl_D_distributional: number[];
+        };
         /** ProbeResponse */
         ProbeResponse: {
             /** Point M */
@@ -1065,6 +1142,14 @@ export interface components {
             values: components["schemas"]["ProbeValue"][];
             /** Contributions */
             contributions: components["schemas"]["ProbeContribution"][];
+            distributional?: components["schemas"]["ProbeDistributional"] | null;
+            /**
+             * Diagnostics
+             * @default []
+             */
+            diagnostics: components["schemas"]["ProbeDiagnostic"][];
+            /** Diagnostics Method */
+            diagnostics_method?: string | null;
         };
         /** ProbeValue */
         ProbeValue: {
@@ -1078,6 +1163,18 @@ export interface components {
             value: number[] | number | null;
             /** Magnitude */
             magnitude?: number | null;
+            /**
+             * Kind
+             * @default scalar
+             * @enum {string}
+             */
+            kind: "scalar" | "vector";
+            /**
+             * Status
+             * @default defined
+             * @enum {string}
+             */
+            status: "defined" | "singular" | "not_evaluated";
         };
         /** ProjectIn */
         ProjectIn: {
@@ -1211,6 +1308,13 @@ export interface components {
              * @default []
              */
             equation_status: components["schemas"]["EquationStatusEntry"][];
+            /**
+             * Point Sources
+             * @default []
+             */
+            point_sources: components["schemas"]["PointSourceInfo"][];
+            /** In Plane Tolerance M */
+            in_plane_tolerance_m?: number | null;
             field_lines?: components["schemas"]["FieldLineSet"] | null;
             equipotentials?: components["schemas"]["EquipotentialSet"] | null;
             isosurfaces?: components["schemas"]["IsosurfaceSet"] | null;
@@ -1342,7 +1446,7 @@ export interface components {
             /** Samplings */
             samplings: (components["schemas"]["PlaneGridSampling"] | components["schemas"]["LatticeSampling"] | components["schemas"]["PointsSampling"])[];
             /** Quantities */
-            quantities: ("E" | "phi" | "D")[];
+            quantities: ("E" | "phi" | "D" | "div_E" | "curl_E" | "div_D" | "curl_D")[];
             /**
              * Quality
              * @default normal

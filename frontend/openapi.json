@@ -1875,7 +1875,11 @@
                   "enum": [
                     "E",
                     "phi",
-                    "D"
+                    "D",
+                    "div_E",
+                    "curl_E",
+                    "div_D",
+                    "curl_D"
                   ]
                 },
                 "type": "array",
@@ -2227,7 +2231,11 @@
                   "enum": [
                     "E",
                     "phi",
-                    "D"
+                    "D",
+                    "div_E",
+                    "curl_E",
+                    "div_D",
+                    "curl_D"
                   ]
                 },
                 "type": "array",
@@ -2398,6 +2406,59 @@
         "type": "object",
         "title": "PointPrimitive"
       },
+      "PointSourceInfo": {
+        "properties": {
+          "object_id": {
+            "type": "string",
+            "title": "Object Id"
+          },
+          "position_m": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Position M"
+          },
+          "charge_C": {
+            "type": "number",
+            "title": "Charge C"
+          },
+          "div_E_weight_V_m": {
+            "type": "number",
+            "title": "Div E Weight V M"
+          },
+          "div_D_weight_C": {
+            "type": "number",
+            "title": "Div D Weight C"
+          },
+          "plane_distance_m": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Plane Distance M",
+            "default": {}
+          },
+          "in_plane": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "type": "object",
+            "title": "In Plane",
+            "default": {}
+          }
+        },
+        "type": "object",
+        "required": [
+          "object_id",
+          "position_m",
+          "charge_C",
+          "div_E_weight_V_m",
+          "div_D_weight_C"
+        ],
+        "title": "PointSourceInfo",
+        "description": "One ideal point charge as a distributional source (Phase 2B-1).\n\nrho = sum_i q_i delta3(r - r_i), so div E = sum_i (q_i/eps0) delta3(r - r_i) and\ndiv D = sum_i q_i delta3(r - r_i). The weights are exact; a delta source has no finite\npointwise value. Its distributional curl contribution is zero (there is no weight for it)."
+      },
       "PointsSampling": {
         "properties": {
           "kind": {
@@ -2421,7 +2482,11 @@
                   "enum": [
                     "E",
                     "phi",
-                    "D"
+                    "D",
+                    "div_E",
+                    "curl_E",
+                    "div_D",
+                    "curl_D"
                   ]
                 },
                 "type": "array",
@@ -2638,6 +2703,135 @@
         "title": "ProbeContribution",
         "description": "Field of one source at the probe point (one term of the superposition sums)."
       },
+      "ProbeDiagnostic": {
+        "properties": {
+          "quantity": {
+            "type": "string",
+            "title": "Quantity"
+          },
+          "symbol": {
+            "type": "string",
+            "title": "Symbol"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit"
+          },
+          "exact": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "Exact"
+          },
+          "estimate": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "Estimate"
+          },
+          "uncertainty": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "Uncertainty"
+          },
+          "consistent_with_exact": {
+            "type": "boolean",
+            "title": "Consistent With Exact"
+          },
+          "step_m": {
+            "type": "number",
+            "title": "Step M"
+          }
+        },
+        "type": "object",
+        "required": [
+          "quantity",
+          "symbol",
+          "unit",
+          "exact",
+          "estimate",
+          "uncertainty",
+          "consistent_with_exact",
+          "step_m"
+        ],
+        "title": "ProbeDiagnostic",
+        "description": "Finite-difference estimate of an operator applied to the exact field. A numerical check\nwith an uncertainty, never the result: the exact value is given alongside."
+      },
+      "ProbeDistributional": {
+        "properties": {
+          "object_id": {
+            "type": "string",
+            "title": "Object Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "charge_C": {
+            "type": "number",
+            "title": "Charge C"
+          },
+          "div_E_weight_V_m": {
+            "type": "number",
+            "title": "Div E Weight V M"
+          },
+          "div_D_weight_C": {
+            "type": "number",
+            "title": "Div D Weight C"
+          },
+          "curl_E_distributional": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Curl E Distributional"
+          },
+          "curl_D_distributional": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Curl D Distributional"
+          }
+        },
+        "type": "object",
+        "required": [
+          "object_id",
+          "name",
+          "charge_C",
+          "div_E_weight_V_m",
+          "div_D_weight_C",
+          "curl_E_distributional",
+          "curl_D_distributional"
+        ],
+        "title": "ProbeDistributional",
+        "description": "What holds at a point-charge position, where only distributions are meaningful."
+      },
       "ProbeResponse": {
         "properties": {
           "point_m": {
@@ -2707,6 +2901,35 @@
             },
             "type": "array",
             "title": "Contributions"
+          },
+          "distributional": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProbeDistributional"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "diagnostics": {
+            "items": {
+              "$ref": "#/components/schemas/ProbeDiagnostic"
+            },
+            "type": "array",
+            "title": "Diagnostics",
+            "default": []
+          },
+          "diagnostics_method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diagnostics Method"
           }
         },
         "type": "object",
@@ -2763,6 +2986,25 @@
               }
             ],
             "title": "Magnitude"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "scalar",
+              "vector"
+            ],
+            "title": "Kind",
+            "default": "scalar"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "defined",
+              "singular",
+              "not_evaluated"
+            ],
+            "title": "Status",
+            "default": "defined"
           }
         },
         "type": "object",
@@ -3015,6 +3257,25 @@
             "type": "array",
             "title": "Equation Status",
             "default": []
+          },
+          "point_sources": {
+            "items": {
+              "$ref": "#/components/schemas/PointSourceInfo"
+            },
+            "type": "array",
+            "title": "Point Sources",
+            "default": []
+          },
+          "in_plane_tolerance_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "In Plane Tolerance M"
           },
           "field_lines": {
             "anyOf": [
@@ -3349,7 +3610,11 @@
               "enum": [
                 "E",
                 "phi",
-                "D"
+                "D",
+                "div_E",
+                "curl_E",
+                "div_D",
+                "curl_D"
               ]
             },
             "type": "array",

@@ -179,9 +179,12 @@ def test_registry_statuses_and_usage_are_computed_from_the_configuration():
     assert one["laplace"].status == "applicable_under_assumptions"
 
     # Directly evaluated by the solver vs. laws the solution merely satisfies.
-    for eq in ("coulomb_field", "coulomb_potential", "superposition", "constitutive_d_linear"):
+    for eq in ("coulomb_field", "coulomb_potential", "superposition", "constitutive_d_linear",
+               "div_E_point_charges", "div_D_point_charges", "curl_E_electrostatic",
+               "curl_D_vacuum"):
         assert two[eq].usage == "evaluated" and two[eq].evaluated_by_solver
-    for eq in ("gauss_electric_vacuum", "gauss_electric", "e_from_potential",
+    for eq in ("gauss_electric_vacuum", "gauss_electric", "gauss_displacement_vacuum",
+               "e_from_potential",
                "poisson_homogeneous", "poisson_general", "laplace"):
         assert two[eq].usage == "satisfied" and not two[eq].evaluated_by_solver
         assert "does not solve" in two[eq].usage_note.en and two[eq].usage_note.hu
@@ -199,3 +202,40 @@ def test_registry_statuses_and_usage_are_computed_from_the_configuration():
     assert other["coulomb_field"].status == "not_applicable"
     assert other["coulomb_field"].usage == "not_used"
     assert other["superposition"].status == "applicable"
+
+
+def test_registry_divergence_and_curl_equations():
+    reg = default_registry()
+
+    def views(scene):
+        ctx = engine.run(scene, points_request([(1, 1, 1)])).header.model_context
+        return {v.id: v for v in reg.evaluate(ctx)}
+
+    none = views(scene_of())
+    two = views(scene_of(charge("a", 1e-9, (0, 0, 0)), charge("b", -1e-9, (1, 0, 0))))
+    for eq in ("div_E_point_charges", "div_D_point_charges"):
+        assert two[eq].status == "applicable"
+        assert none[eq].status == "applicable_under_assumptions"
+        assert "empty" in none[eq].status_reason.en
+        assert r"\delta^3" in two[eq].latex and two[eq].latex_integral
+    for eq in ("curl_E_electrostatic", "curl_D_vacuum", "gauss_displacement_vacuum",
+               "e_from_potential", "gauss_electric_vacuum"):
+        assert two[eq].status == "applicable" and none[eq].status == "applicable"
+    assert len(two["div_E_point_charges"].derivation) == 4
+    assert len(two["curl_E_electrostatic"].derivation) == 3
+    for d in two["div_E_point_charges"].derivation + two["curl_E_electrostatic"].derivation:
+        assert d.en and d.hu
+    assert "distributional" in two["gauss_electric_vacuum"].conditions[0].en
+    units = {s.latex: s.unit for s in two["div_E_point_charges"].symbols}
+    assert units[r"\delta^3(\mathbf{r}-\mathbf{r}_i)"] == "1/m^3"
+    # Computed from the model, not from presets.
+    wave = {v.id: v for v in reg.evaluate(_ctx(regime="full_wave", time_varying=True,
+                                                computes_magnetic_field=True))}
+    assert wave["curl_E_electrostatic"].status == "not_applicable"
+    assert wave["div_E_point_charges"].status == "not_applicable"
+    inhom = {v.id: v for v in reg.evaluate(_ctx(medium="inhomogeneous_linear", source_count=2))}
+    assert inhom["curl_D_vacuum"].status == "not_applicable"
+    assert inhom["curl_E_electrostatic"].status == "applicable"
+    assert inhom["gauss_displacement_vacuum"].status == "not_applicable"
+    homog = {v.id: v for v in reg.evaluate(_ctx(medium="homogeneous_linear", source_count=2))}
+    assert homog["curl_D_vacuum"].status == "applicable_under_assumptions"

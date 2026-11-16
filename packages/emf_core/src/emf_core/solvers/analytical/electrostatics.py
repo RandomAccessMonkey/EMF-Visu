@@ -16,6 +16,13 @@ Singularity versus safeguards
   ``COINCIDENCE_FACTOR * domain diagonal`` (1e-12 of the domain size, i.e. a few ulps of the
   coordinates). Such samples are returned as NaN and counted. Any other point, however close,
   gets its true (possibly very large) analytical value.
+* Divergence and curl (Phase 2B-1). Every Coulomb term K q_i (r - r_i)/|r - r_i|^3 has a
+  symmetric, traceless Jacobian K q_i (I - 3 n n^T)/|r - r_i|^3 at every r != r_i, so its
+  pointwise divergence and curl are exactly zero there (an analytical identity, not a rounded
+  computation). The solver therefore returns exact 0 for div/curl of E and D wherever E is
+  defined, and "not evaluated" (NaN) exactly where E is undefined. The charges themselves enter
+  only as distributional sources: div E = sum_i (q_i/eps0) delta3(r - r_i), reported with their
+  exact weights in ``ResultHeader.point_sources``; the distributional curl is zero everywhere.
 * Numerical / drawing safeguards (guard radius for field-line seeding and capture, masked
   contour cells) are derived from the sampling resolution in ``postprocess`` and never change a
   field value.
@@ -24,6 +31,8 @@ Singularity versus safeguards
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
+from typing import Literal
 
 import numpy as np
 from numpy.typing import NDArray
@@ -53,6 +62,7 @@ from ..base import (
     LevelRange,
     MethodInfo,
     ModelContext,
+    PointSourceInfo,
     ProgressCallback,
     ResultHeader,
     SimulationResult,
@@ -64,6 +74,8 @@ from ..base import (
 )
 
 COINCIDENCE_FACTOR = 1e-12
+# A charge counts as lying in a sampling plane if |distance| <= IN_PLANE_FACTOR * domain diagonal.
+IN_PLANE_FACTOR = 1e-9
 _CHUNK = 100_000
 
 
@@ -142,6 +154,56 @@ def evaluate(
     e[singular] = np.nan
     phi[singular] = np.nan
     return e, phi
+
+
+def exact_div_curl(e: NDArray[np.float64]) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """Pointwise divergence (N,) and curl (N, 3) of a superposition of Coulomb fields, given the
+    field values (N, 3) returned by ``evaluate``.
+
+    Exact analytical result: zero wherever the field is defined (see the module docstring); not
+    evaluated (NaN) at samples that coincide with a charge, where E itself is undefined. Units are
+    those of the field per metre. The same identities hold for D = eps0 E in vacuum."""
+    defined = np.all(np.isfinite(e), axis=1)
+    div = np.where(defined, 0.0, np.nan)
+    curl = np.where(defined[:, None], 0.0, np.nan) * np.ones((1, 3))
+    return div, curl
+
+
+def point_source_table(scene: Scene, planes: list[PlaneGridSampling]) -> list[PointSourceInfo]:
+    """The distributional sources of div E and div D, with their positions relative to every
+    sampling plane."""
+    ids, positions, charges = point_charge_table(scene)
+    tol = IN_PLANE_FACTOR * scene.domain.diagonal_m
+    out: list[PointSourceInfo] = []
+    for oid, pos, q in zip(ids, positions, charges, strict=True):
+        if q == 0.0:
+            continue  # a zero charge is no source
+        dist: dict[str, float] = {}
+        inside: dict[str, bool] = {}
+        for g in planes:
+            n = np.cross(np.asarray(g.u_dir, float), np.asarray(g.v_dir, float))
+            d = float((pos - np.asarray(g.center_m, float)) @ n)
+            dist[g.id] = d
+            inside[g.id] = abs(d) <= tol
+        out.append(PointSourceInfo(
+            object_id=oid, position_m=[float(x) for x in pos], charge_C=float(q),
+            div_E_weight_V_m=float(q / EPS0), div_D_weight_C=float(q),
+            plane_distance_m=dist, in_plane=inside,
+        ))
+    return out
+
+
+def enclosed_source_weight(sources: list[PointSourceInfo],
+                           contains: Callable[[NDArray[np.float64]], bool],
+                           quantity: Literal["E", "D"] = "E") -> float:
+    """Integral of div E (or div D) over a volume: the sum of the delta weights of the sources
+    inside it, i.e. Q_enclosed / eps0 (or Q_enclosed). ``contains`` decides membership; a charge
+    exactly on the boundary is a matter of convention and must be avoided by the caller."""
+    total = 0.0
+    for src in sources:
+        if contains(np.asarray(src.position_m, float)):
+            total += src.div_E_weight_V_m if quantity == "E" else src.div_D_weight_C
+    return total
 
 
 def _stats(a: NDArray[np.float64], vector: bool) -> ArrayStats:
@@ -288,7 +350,7 @@ class PointChargeVacuumSolver:
             u, v = np.asarray(ref.u_dir, float), np.asarray(ref.v_dir, float)
             normal = np.cross(u, v)
             off = np.abs((positions - np.asarray(ref.center_m)) @ normal)
-            in_plane = off <= 1e-9 * diag
+            in_plane = off <= IN_PLANE_FACTOR * diag
             stay_in_plane = bool(np.all(in_plane[active])) if active.size else True
             seedable &= in_plane
         radii = fl.seed_radii(field_fn, sources, guard)
@@ -577,8 +639,18 @@ class PointChargeVacuumSolver:
                     progress(sampling_share * done / total, s.id)
             masked += int(np.count_nonzero(np.isnan(phi)))
             phi_by_sampling[s.id] = phi
-            for qty in quantities_for(request, s):
-                data = {"E": e, "phi": phi, "D": EPS0 * e}[qty]
+            wanted = quantities_for(request, s)
+            div = curl = None
+            if any(q in wanted for q in ("div_E", "curl_E", "div_D", "curl_D")):
+                div, curl = exact_div_curl(e)
+            for qty in wanted:
+                if qty in ("E", "phi", "D"):
+                    data = {"E": e, "phi": phi, "D": EPS0 * e}[qty]
+                else:
+                    assert div is not None and curl is not None
+                    # D = eps0 E in vacuum: the same exact zeros, in C/m^3 instead of V/m^2.
+                    data = {"div_E": div, "curl_E": curl, "div_D": EPS0 * div,
+                            "curl_D": EPS0 * curl}[qty]
                 info = QUANTITIES[qty]
                 name = f"{s.id}.{qty}"
                 shape = (*s.shape, 3) if info.rank == 1 else s.shape
@@ -677,11 +749,16 @@ class PointChargeVacuumSolver:
                 has_free_charge=bool(np.any(charges != 0.0)), solver_id=self.id,
                 source_count=int(np.count_nonzero(charges)),
                 evaluated_equation_ids=["coulomb_field", "coulomb_potential", "superposition",
-                                        "constitutive_d_linear"],
+                                        "constitutive_d_linear", "div_E_point_charges",
+                                        "div_D_point_charges", "curl_E_electrostatic",
+                                        "curl_D_vacuum"],
             ),
             samplings=[s.model_dump(mode="json", exclude={"points_m"}) for s in request.samplings],
             quality=request.quality,
             compute_time_ms=(time.perf_counter() - t0) * 1e3,
+            point_sources=point_source_table(
+                scene, [g for g in request.samplings if isinstance(g, PlaneGridSampling)]),
+            in_plane_tolerance_m=IN_PLANE_FACTOR * scene.domain.diagonal_m,
             field_lines=field_lines, equipotentials=equipotentials, isosurfaces=isosurfaces,
             arrays=entries,
         )

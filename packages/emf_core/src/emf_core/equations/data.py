@@ -60,6 +60,16 @@ SYMBOLS: dict[str, SymbolDef] = {
     "v": SymbolDef(latex=r"\mathbf{v}", unit="m/s", meaning=L("velocity", "sebesség")),
     "u": SymbolDef(latex=r"u", unit="J/m^3",
                    meaning=L("electromagnetic energy density", "elektromágneses energiasűrűség")),
+    "delta3": SymbolDef(latex=r"\delta^3(\mathbf{r}-\mathbf{r}_i)", unit="1/m^3",
+                        meaning=L("three-dimensional Dirac delta distribution centred on charge i: "
+                                  "zero for r ≠ rᵢ, with ∫ δ³ dV = 1 over any volume containing "
+                                  "rᵢ. It has no finite value at rᵢ.",
+                                  "az i-edik töltésre centrált háromdimenziós Dirac-delta "
+                                  "disztribúció: r ≠ rᵢ esetén nulla, és bármely rᵢ-t tartalmazó "
+                                  "térfogatra ∫ δ³ dV = 1. Az rᵢ pontban nincs véges értéke.")),
+    "Qenc": SymbolDef(latex=r"Q_{\text{enc}}", unit="C",
+                      meaning=L("total charge inside the volume V", "a V térfogaton belüli "
+                                "összes töltés")),
     "t": SymbolDef(latex=r"t", unit="s", meaning=L("time", "idő")),
 }
 
@@ -89,9 +99,35 @@ EQUATIONS: list[Equation] = [
                     "charge the divergence is zero even though the field is not.",
                     "Az erővonalak pozitív töltésen erednek és negatívon végződnek; ahol nincs "
                     "töltés, ott a divergencia nulla, bár maga a mező nem az."),
-        symbols=["E", "rho", "eps0"],
+        symbols=["E", "rho", "eps0", "Qenc"],
         assumptions=[L("Vacuum: D = ε₀E, so ρ is the total charge density.",
                        "Vákuum: D = ε₀E, így ρ a teljes töltéssűrűség.")],
+        conditions=[L("For point charges ρ = Σ qᵢ δ³(r − rᵢ) is a distribution, not a function: "
+                      "the law holds in the distributional sense, ∇·E = Σ (qᵢ/ε₀) δ³(r − rᵢ). "
+                      "Away from the charges ∇·E = 0 even though E ≠ 0.",
+                      "Ponttöltéseknél ρ = Σ qᵢ δ³(r − rᵢ) disztribúció, nem függvény: a törvény "
+                      "disztribúciós értelemben teljesül, ∇·E = Σ (qᵢ/ε₀) δ³(r − rᵢ). A "
+                      "töltéseken kívül ∇·E = 0, noha E ≠ 0.")],
+    ),
+    Equation(
+        id="gauss_displacement_vacuum", category="maxwell",
+        name=L("Gauss's law for D in vacuum", "Gauss-törvény D-re vákuumban"),
+        latex=r"\nabla \cdot \mathbf{D} = \rho",
+        latex_integral=r"\oint_{\partial V} \mathbf{D}\cdot d\mathbf{A} = Q_{\text{enc}}",
+        meaning=L("In vacuum all charge is free charge, so the displacement field has the total "
+                  "charge density as its source.",
+                  "Vákuumban minden töltés szabad töltés, ezért az eltolási mező forrása a teljes "
+                  "töltéssűrűség."),
+        intuition=L("Same law as for E, measured in C/m² instead of V/m: D = ε₀E in vacuum.",
+                    "Ugyanaz a törvény, mint E-re, csak C/m²-ben mérve V/m helyett: vákuumban "
+                    "D = ε₀E."),
+        symbols=["D", "rho", "Qenc"],
+        assumptions=[L("Vacuum: no polarization, ρ = ρ_free.",
+                       "Vákuum: nincs polarizáció, ρ = ρ_free.")],
+        conditions=[L("For point charges ρ is a distribution; the law then holds in the "
+                      "distributional sense (see ∇·D = Σ qᵢ δ³).",
+                      "Ponttöltéseknél ρ disztribúció; a törvény ekkor disztribúciós értelemben "
+                      "teljesül (lásd ∇·D = Σ qᵢ δ³).")],
     ),
     Equation(
         id="gauss_magnetic", category="maxwell",
@@ -202,6 +238,136 @@ EQUATIONS: list[Equation] = [
                        "lineárisak.")],
         limitations=[L("Does not hold for the field in nonlinear materials.",
                        "Nemlineáris anyagokban a mezőre nem érvényes.")],
+        used_by=[PC],
+    ),
+    Equation(
+        id="div_E_point_charges", category="electrostatics",
+        name=L("Divergence of E for point charges (distributional Gauss's law)",
+               "E divergenciája ponttöltésekre (disztribúciós Gauss-törvény)"),
+        latex=r"\nabla \cdot \mathbf{E} = \sum_i \frac{q_i}{\varepsilon_0}\,\delta^3(\mathbf{r}-\mathbf{r}_i)",
+        latex_integral=r"\int_V \nabla\cdot\mathbf{E}\,dV = \sum_{i:\,\mathbf{r}_i\in V} \frac{q_i}{\varepsilon_0} = \frac{Q_{\text{enc}}}{\varepsilon_0}",
+        meaning=L("Each point charge is a delta source of divergence with weight qᵢ/ε₀ [V·m]. "
+                  "Everywhere else the divergence is exactly zero.",
+                  "Minden ponttöltés a divergencia delta-forrása qᵢ/ε₀ [V·m] súllyal. Minden "
+                  "más pontban a divergencia pontosan nulla."),
+        intuition=L("Divergence measures net outward flux per unit volume. Around a point charge "
+                    "the field is strong, but every small volume that excludes the charge has as "
+                    "much flux leaving as entering, so its divergence is zero. All the outward "
+                    "flux comes from the charge itself.",
+                    "A divergencia az egységnyi térfogatból kifelé irányuló nettó fluxus. A "
+                    "ponttöltés körül a mező erős, de minden olyan kis térfogatból, amely a "
+                    "töltést nem tartalmazza, ugyanannyi fluxus lép ki, mint be, így ott a "
+                    "divergencia nulla. A teljes kifelé irányuló fluxus magától a töltéstől "
+                    "származik."),
+        symbols=["E", "q", "eps0", "delta3", "r", "Qenc"],
+        assumptions=[L("Ideal point charges at rest in vacuum.",
+                       "Ideális, nyugvó ponttöltések vákuumban.")],
+        limitations=[L("δ³ is a distribution: it has no finite value at rᵢ, so the divergence at "
+                       "a charge position is not a number. Only integrals over volumes are "
+                       "meaningful there; the classical pointwise value is not evaluated.",
+                       "A δ³ disztribúció: rᵢ-ben nincs véges értéke, ezért a divergencia a töltés "
+                       "helyén nem szám. Ott csak térfogati integráloknak van értelmük; a klasszikus "
+                       "pontbeli értéket a program nem értékeli ki."),
+                     L("A charge exactly on the boundary of V has no well-defined enclosed "
+                       "fraction.",
+                       "A V határán pontosan rajta lévő töltéshez nem rendelhető egyértelmű "
+                       "bezárt hányad.")],
+        derivation=[
+            L("Away from charge i: ∇·[(r − rᵢ)/|r − rᵢ|³] = 3/|r − rᵢ|³ − 3/|r − rᵢ|³ = 0. The "
+              "Jacobian of each Coulomb term is traceless.",
+              "Az i-edik töltésen kívül: ∇·[(r − rᵢ)/|r − rᵢ|³] = 3/|r − rᵢ|³ − 3/|r − rᵢ|³ = 0. "
+              "Minden Coulomb-tag Jacobi-mátrixának nyoma nulla."),
+            L("Through any sphere around rᵢ the flux of (r − rᵢ)/|r − rᵢ|³ is 4π, whatever the "
+              "radius. A function that is zero everywhere except one point cannot give that, so "
+              "the divergence is the distribution 4π δ³(r − rᵢ).",
+              "Bármely rᵢ körüli gömbön át a (r − rᵢ)/|r − rᵢ|³ fluxusa 4π, a sugártól "
+              "függetlenül. Egy pontot kivéve mindenütt nulla függvény ezt nem adhatja, ezért a "
+              "divergencia a 4π δ³(r − rᵢ) disztribúció."),
+            L("Multiplying by qᵢ/(4πε₀) and summing over the charges (superposition) gives "
+              "∇·E = Σ (qᵢ/ε₀) δ³(r − rᵢ).",
+              "qᵢ/(4πε₀)-lal szorozva és a töltésekre összegezve (szuperpozíció): "
+              "∇·E = Σ (qᵢ/ε₀) δ³(r − rᵢ)."),
+            L("Integrating over a volume V picks out exactly the enclosed charges: "
+              "∫_V ∇·E dV = Q_enc/ε₀, which is Gauss's law.",
+              "V térfogatra integrálva pontosan a bezárt töltések maradnak meg: "
+              "∫_V ∇·E dV = Q_enc/ε₀, ami a Gauss-törvény."),
+        ],
+        used_by=[PC],
+    ),
+    Equation(
+        id="div_D_point_charges", category="electrostatics",
+        name=L("Divergence of D for point charges in vacuum",
+               "D divergenciája ponttöltésekre vákuumban"),
+        latex=r"\nabla \cdot \mathbf{D} = \sum_i q_i\,\delta^3(\mathbf{r}-\mathbf{r}_i)",
+        latex_integral=r"\int_V \nabla\cdot\mathbf{D}\,dV = Q_{\text{enc}}",
+        meaning=L("Each point charge is a delta source of ∇·D with weight qᵢ [C]; elsewhere "
+                  "∇·D = 0 exactly.",
+                  "Minden ponttöltés a ∇·D delta-forrása qᵢ [C] súllyal; máshol ∇·D pontosan 0."),
+        intuition=L("D = ε₀E in vacuum, so this is the same statement as for E with the factor ε₀ "
+                    "removed: the weight is the charge itself.",
+                    "Vákuumban D = ε₀E, így ez ugyanaz az állítás, mint E-re, az ε₀ szorzó "
+                    "nélkül: a súly maga a töltés."),
+        symbols=["D", "q", "delta3", "r", "Qenc"],
+        assumptions=[L("Ideal point charges at rest in vacuum (D = ε₀E).",
+                       "Ideális, nyugvó ponttöltések vákuumban (D = ε₀E).")],
+        limitations=[L("Not defined pointwise at a charge position; see the δ³ symbol.",
+                       "A töltés helyén pontonként nem értelmezett; lásd a δ³ jelölést.")],
+        used_by=[PC],
+    ),
+    Equation(
+        id="curl_E_electrostatic", category="electrostatics",
+        name=L("Curl of the electrostatic field", "Az elektrosztatikus tér rotációja"),
+        latex=r"\nabla \times \mathbf{E} = \mathbf{0}",
+        latex_integral=r"\oint_{C} \mathbf{E}\cdot d\boldsymbol{\ell} = 0",
+        meaning=L("An electrostatic field has no rotational part: its circulation around every "
+                  "closed path is zero, so it is conservative.",
+                  "Az elektrosztatikus térnek nincs örvényes része: minden zárt görbe menti "
+                  "cirkulációja nulla, tehát konzervatív."),
+        intuition=L("The field can be strong and its lines can curve, yet a tiny paddle wheel "
+                    "placed anywhere would not turn. Curl is a vector; here it is the zero vector.",
+                    "A mező lehet erős és az erővonalai görbülhetnek, egy bárhová helyezett apró "
+                    "lapátkerék mégsem fordulna el. A rotáció vektor; itt a nullvektor."),
+        symbols=["E", "dl"],
+        assumptions=[L("Electrostatics: ∂B/∂t = 0 (Faraday's law with no changing magnetic field).",
+                       "Elektrosztatika: ∂B/∂t = 0 (Faraday-törvény változó mágneses mező "
+                       "nélkül).")],
+        limitations=[L("Fails when B changes in time; then ∇×E = −∂B/∂t (induction milestone).",
+                       "Nem érvényes, ha B időben változik; ekkor ∇×E = −∂B/∂t (indukciós "
+                       "mérföldkő).")],
+        derivation=[
+            L("Each Coulomb term is a gradient: E = −∇φ with φ = Σ qᵢ/(4πε₀|r − rᵢ|).",
+              "Minden Coulomb-tag gradiens: E = −∇φ, ahol φ = Σ qᵢ/(4πε₀|r − rᵢ|)."),
+            L("Away from the charges ∇×∇φ = 0 identically: the Jacobian of each term is symmetric.",
+              "A töltéseken kívül ∇×∇φ azonosan 0: minden tag Jacobi-mátrixa szimmetrikus."),
+            L("At a charge position the pointwise field is undefined, but the distributional curl "
+              "is still zero: φ is single-valued, so ∮E·dl = 0 for every closed path, including "
+              "paths passing arbitrarily close to the charge. A point charge is a source of "
+              "divergence, never a source of rotation.",
+              "A töltés helyén a pontbeli mező nem értelmezett, a disztribúciós rotáció azonban ott "
+              "is nulla: φ egyértékű, ezért ∮E·dl = 0 minden zárt görbére, a töltéshez "
+              "tetszőlegesen közel haladókra is. A ponttöltés a divergencia forrása, sosem a "
+              "rotációé."),
+        ],
+        used_by=[PC],
+    ),
+    Equation(
+        id="curl_D_vacuum", category="electrostatics",
+        name=L("Curl of D in vacuum", "D rotációja vákuumban"),
+        latex=r"\nabla \times \mathbf{D} = \mathbf{0}",
+        latex_integral=r"\oint_{C} \mathbf{D}\cdot d\boldsymbol{\ell} = 0",
+        meaning=L("In vacuum D = ε₀E with constant ε₀, so D is curl-free wherever E is, in the "
+                  "distributional sense included.",
+                  "Vákuumban D = ε₀E állandó ε₀-lal, ezért D ott rotációmentes, ahol E is, "
+                  "disztribúciós értelemben is."),
+        intuition=L("Multiplying a curl-free field by a constant keeps it curl-free.",
+                    "Egy rotációmentes mező állandóval szorozva rotációmentes marad."),
+        symbols=["D", "dl"],
+        assumptions=[L("Electrostatics in vacuum or a homogeneous linear medium.",
+                       "Elektrosztatika vákuumban vagy homogén lineáris közegben.")],
+        limitations=[L("Not valid where ε varies in space: ∇×(εE) = ∇ε × E can be nonzero at "
+                       "material interfaces even though ∇×E = 0.",
+                       "Nem érvényes, ahol ε helyfüggő: anyaghatárokon ∇×(εE) = ∇ε × E nem nulla "
+                       "lehet, noha ∇×E = 0.")],
         used_by=[PC],
     ),
     Equation(
