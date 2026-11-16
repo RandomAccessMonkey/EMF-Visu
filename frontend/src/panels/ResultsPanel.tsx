@@ -2,10 +2,10 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 import type React from 'react'
 import { api, ApiError } from '@/api/client'
-import type { MethodInfo } from '@/api/types'
+import type { MethodInfo, ProbeValue, Vec3 } from '@/api/types'
 import { Badge, Button, Section } from '@/components/ui/controls'
 import { useT, type MessageKey } from '@/i18n'
-import { formatSI, prettyUnit } from '@/lib/format'
+import { formatNumber, formatSI, formatVector, prettyUnit } from '@/lib/format'
 import { scenePhysics } from '@/sim/request'
 import type { Simulation } from '@/sim/useSimulation'
 import { useSceneStore } from '@/state/sceneStore'
@@ -32,12 +32,47 @@ export function SimulationError({ error }: { error: Error }) {
   )
 }
 
-function Probe() {
+const isCalculus = (q: string) => q.startsWith('div_') || q.startsWith('curl_')
+
+function ProbeValueRow({ v }: { v: ProbeValue }) {
+  const { t } = useT()
+  const unit = prettyUnit(v.unit)
+  let body: React.ReactNode
+  if (v.status !== 'defined') {
+    body = <span className="text-warn">{t(v.status === 'singular' ? 'probe.singular' : 'probe.notEvaluated')}</span>
+  } else if (Array.isArray(v.value)) {
+    body = (
+      <>
+        <div>
+          |{v.symbol}| = {formatSI(v.magnitude, unit, 4)}
+        </div>
+        <div className="text-[11px] text-muted">
+          {formatVector(v.value)} {unit}
+        </div>
+      </>
+    )
+  } else {
+    body = formatSI(v.value, unit, 5)
+  }
+  return (
+    <tr className="border-t border-border/60 align-top">
+      <td className="w-12 py-1 font-semibold">
+        {v.symbol}
+        <div className="text-[9px] font-normal uppercase tracking-wide text-muted">{t(v.kind === 'vector' ? 'probe.vector' : 'probe.scalar')}</div>
+      </td>
+      <td className="py-1 font-mono">{body}</td>
+    </tr>
+  )
+}
+
+function Probe({ sim }: { sim: Simulation }) {
   const { t } = useT()
   const scene = useSceneStore((s) => s.scene)
+  const selectedId = useSceneStore((s) => s.selectedId)
   const point = useViewStore((s) => s.probePoint)
   const dragging = useViewStore((s) => s.dragging)
   const tool = useViewStore((s) => s.tool)
+  const advanced = useViewStore((s) => s.level === 'advanced')
   const key = useMemo(() => JSON.stringify(scenePhysics(scene)), [scene])
   const probe = useQuery({
     queryKey: ['probe', key, point],
@@ -46,42 +81,64 @@ function Probe() {
     placeholderData: keepPreviousData,
     retry: false,
   })
+  // The engine's exact world position of the selected charge, so the probe can be placed on it.
+  const selectedSource = sim.result?.header.point_sources.find((s) => s.object_id === selectedId)
+  const data = probe.data
+  const fieldValues = data?.values.filter((v) => !isCalculus(v.quantity)) ?? []
+  const calculusValues = data?.values.filter((v) => isCalculus(v.quantity)) ?? []
+  const dist = data?.distributional
   return (
     <Section
       title={t('probe.title')}
       aside={point && <Button variant="ghost" onClick={() => useViewStore.getState().set({ probePoint: null })}>{t('probe.clear')}</Button>}
     >
+      {selectedSource && (
+        <Button onClick={() => useViewStore.getState().set({ probePoint: selectedSource.position_m as Vec3 })}>
+          {t('probe.atCharge')}
+        </Button>
+      )}
       {!point ? (
         <p className="text-xs text-muted">{t(tool === 'probe' ? 'probe.clickHint' : 'probe.enableHint')}</p>
       ) : (
         <>
           <p className="font-mono text-[11px] text-muted">r = ({point.map((c) => c.toFixed(3)).join(', ')}) m</p>
           {probe.isError && <p className="text-xs text-danger">{probe.error.message}</p>}
-          {probe.data && !probe.data.defined && (
-            <p className="text-xs text-warn">{t('probe.undefined', { tol: probe.data.singular_tolerance_m.toExponential(1) })}</p>
+          {data && !data.defined && (
+            <p className="text-xs text-warn">{t('probe.undefined', { tol: data.singular_tolerance_m.toExponential(1) })}</p>
           )}
-          {probe.data?.defined && (
-            <table className="w-full text-xs">
+          {data && (
+            <table className="w-full text-xs" aria-label={t('probe.fields')}>
               <tbody>
-                {probe.data.values.map((v) => (
-                  <tr key={v.quantity} className="border-t border-border/60 align-top">
-                    <td className="w-10 py-1 font-semibold">{v.symbol}</td>
-                    <td className="py-1 font-mono">
-                      {Array.isArray(v.value) ? (
-                        <>
-                          <div>|{v.symbol}| = {formatSI(v.magnitude, prettyUnit(v.unit), 4)}</div>
-                          <div className="text-[11px] text-muted">({v.value.map((c) => c.toExponential(3)).join(', ')}) {prettyUnit(v.unit)}</div>
-                        </>
-                      ) : (
-                        formatSI(v.value, prettyUnit(v.unit), 5)
-                      )}
-                    </td>
-                  </tr>
+                {fieldValues.map((v) => (
+                  <ProbeValueRow key={v.quantity} v={v} />
                 ))}
               </tbody>
             </table>
           )}
-          {probe.data?.defined && probe.data.contributions.length > 0 && (
+          {data && (
+            <div>
+              <h4 className="mb-1 mt-1 text-[11px] font-semibold uppercase tracking-wider text-muted">{t('probe.calculus')}</h4>
+              <table className="w-full text-xs" aria-label={t('probe.calculus')}>
+                <tbody>
+                  {calculusValues.map((v) => (
+                    <ProbeValueRow key={v.quantity} v={v} />
+                  ))}
+                </tbody>
+              </table>
+              <p className="mt-1 text-[11px] leading-snug text-muted">{t(data.defined ? 'probe.calculusNote' : 'probe.calculusSingularNote')}</p>
+            </div>
+          )}
+          {dist && (
+            <div role="note" className="rounded-md border border-accent-2/40 bg-accent-2/5 p-2 text-[11px] leading-snug">
+              <p className="font-semibold text-accent-2">{t('probe.distTitle')}</p>
+              <p>{t('probe.distSource', { name: dist.name, q: formatSI(dist.charge_C, 'C') })}</p>
+              <p className="font-mono">∇·E ∋ ({formatSI(dist.div_E_weight_V_m, 'V·m')}) · δ³(r − rᵢ)</p>
+              <p className="font-mono">∇·D ∋ ({formatSI(dist.div_D_weight_C, 'C')}) · δ³(r − rᵢ)</p>
+              <p className="font-mono">∇×E = {formatVector(dist.curl_E_distributional)} · ∇×D = {formatVector(dist.curl_D_distributional)}</p>
+              <p className="mt-1 text-muted">{t('probe.distExplain')}</p>
+            </div>
+          )}
+          {data?.defined && data.contributions.length > 0 && (
             <div>
               <h4 className="mb-1 mt-1 text-[11px] font-semibold uppercase tracking-wider text-muted">{t('probe.superposition')}</h4>
               <table className="w-full text-[11px]">
@@ -93,7 +150,7 @@ function Probe() {
                   </tr>
                 </thead>
                 <tbody className="font-mono">
-                  {probe.data.contributions.map((c) => (
+                  {data.contributions.map((c) => (
                     <tr key={c.object_id} className="border-t border-border/60">
                       <td className="max-w-24 truncate font-sans">{c.name} <span className="text-muted">({formatSI(c.charge_C, 'C')})</span></td>
                       <td className="text-right">{formatSI(c.E_magnitude_V_per_m, 'V/m', 4)}</td>
@@ -105,9 +162,78 @@ function Probe() {
               <p className="mt-1 text-[11px] leading-snug text-muted">{t('probe.superpositionNote')}</p>
             </div>
           )}
+          {advanced && data?.defined && data.diagnostics.length > 0 && (
+            <div className="rounded-md border border-warn/30 bg-warn/5 p-2">
+              <div className="mb-1 flex items-center gap-1.5">
+                <span className="text-[11px] font-semibold">{t('probe.diagTitle')}</span>
+                <Badge tone="warn">{t('classification.numerical_approximation')}</Badge>
+              </div>
+              <table className="w-full text-[11px]" aria-label={t('probe.diagTitle')}>
+                <tbody className="font-mono">
+                  {data.diagnostics.map((d) => (
+                    <tr key={d.quantity} className="border-t border-border/60 align-top">
+                      <td className="w-10 py-0.5 font-sans font-semibold">{d.symbol}</td>
+                      <td className="py-0.5">
+                        {Array.isArray(d.estimate) && Array.isArray(d.uncertainty)
+                          ? d.estimate.map((e, i) => (
+                              <div key={i}>
+                                {formatNumber(e, 3)} ± {formatNumber((d.uncertainty as number[])[i], 2)}
+                              </div>
+                            ))
+                          : `${formatNumber(d.estimate as number, 3)} ± ${formatNumber(d.uncertainty as number, 2)}`}{' '}
+                        <span className="text-muted">{prettyUnit(d.unit)}</span>
+                      </td>
+                      <td className={`py-0.5 text-right font-sans ${d.consistent_with_exact ? 'text-ok' : 'text-danger'}`}>
+                        {t(d.consistent_with_exact ? 'probe.diagConsistent' : 'probe.diagInconsistent')}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="mt-1 text-[11px] leading-snug text-muted">{t('probe.diagNote', { h: formatNumber(data.diagnostics[0]!.step_m, 2) })}</p>
+            </div>
+          )}
           <p className="text-[11px] text-muted">{t('probe.exactNote')}</p>
         </>
       )}
+    </Section>
+  )
+}
+
+/** The distributional sources of the current model, with their exact delta weights. */
+function Sources({ sim }: { sim: Simulation }) {
+  const { t } = useT()
+  const objects = useSceneStore((s) => s.scene.objects)
+  const sources = sim.result?.header.point_sources ?? []
+  const names = Object.fromEntries(objects.map((o) => [o.id, o.name || o.id]))
+  return (
+    <Section title={t('sources.title')}>
+      <p className="text-[11px] leading-snug text-muted">{t('sources.intro')}</p>
+      {sources.length === 0 ? (
+        <p className="text-xs text-muted">{t('sources.none')}</p>
+      ) : (
+        <table className="w-full text-[11px]" aria-label={t('sources.title')}>
+          <thead>
+            <tr className="text-left text-muted">
+              <th className="font-normal">{t('probe.source')}</th>
+              <th className="text-right font-normal">∇·E: qᵢ/ε₀</th>
+              <th className="text-right font-normal">∇·D: qᵢ</th>
+              <th className="text-right font-normal">{t('sources.slice')}</th>
+            </tr>
+          </thead>
+          <tbody className="font-mono">
+            {sources.map((s) => (
+              <tr key={s.object_id} className="border-t border-border/60">
+                <td className="max-w-20 truncate font-sans">{names[s.object_id] ?? s.object_id}</td>
+                <td className="text-right">{formatSI(s.div_E_weight_V_m, 'V·m')}</td>
+                <td className="text-right">{formatSI(s.div_D_weight_C, 'C')}</td>
+                <td className="text-right font-sans">{s.in_plane['heat'] ? t('sources.inSlice') : t('sources.offSlice', { d: formatSI(s.plane_distance_m['heat'] ?? 0, 'm') })}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <p className="text-[11px] leading-snug text-muted">{t('sources.curl')}</p>
     </Section>
   )
 }
@@ -267,7 +393,8 @@ export function ResultsPanel({ sim }: { sim: Simulation }) {
         </>
       )}
       {!sim.error && <DerivedProducts sim={sim} />}
-      <Probe />
+      <Probe sim={sim} />
+      {!sim.error && sim.result && <Sources sim={sim} />}
       {advanced && h && sim.result && (
         <Section title={t('results.diagnostics')}>
           <table className="w-full text-[11px]">

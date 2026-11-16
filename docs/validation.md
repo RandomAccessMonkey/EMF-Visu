@@ -6,7 +6,7 @@ or a verification status changes.
 ## How to run
 
 ```bash
-uv run pytest                      # physics, core, API, integration (108 tests)
+uv run pytest                      # physics, core, API, integration (134 tests)
 uv run ruff check . && uv run mypy packages/emf_core/src packages/emf_worker/src services/api/src
 cd frontend && pnpm typecheck && pnpm lint && pnpm test && pnpm build
 node tests/e2e/smoke.cjs http://localhost:8080      # against a running stack
@@ -94,6 +94,29 @@ scene with no charge.
 - Performance was measured only on a 4-core CPU with software WebGL: 2D solves 55–190 ms, 3D
   solves 220–500 ms at normal quality for presets 1–4.
 
+## Physics validation added in Phase 2B-1
+
+Existing tolerances were not changed. Four new tests failed on first run; all four were mistakes
+in the new tests, fixed in the tests: a sharpness bound measured against |E| (which cancels for a
+dipole) instead of the per-charge derivative scale; a test box with a charge exactly on its face;
+a 2D finite-difference comparison tolerance below the method's own error; and a component-wise
+"E ≠ 0" check where a magnitude check was meant.
+
+| Check (file) | Method | Tolerance |
+|---|---|---|
+| Single +, single −, dipole, four charges (`test_divergence_curl`) | ∇·E, ∇·D, ∇×E, ∇×D exactly 0 at 300 random points while \|E\| > 0; units | exact |
+| Independent check of the zeros | analytical Jacobian written in the test: trace and antisymmetric part | ≤ 1e-13 × max\|J\| |
+| Finite-difference diagnostic on the Coulomb fields | estimate consistent with 0 within its uncertainty; uncertainty < 1e-5 × Σ K\|qᵢ\|/rᵢ³ | as stated |
+| Finite-difference method itself | known fields with div = 3 + 2x and curl = (−2xz, −2yz, 2(1 + z²)): recovered within the uncertainty; a real curl is not reported as zero; Richardson error ratio ≈ 16 per halving | ratio 16 ± 20 % |
+| Near a charge | r = 1e-3 … 1e-10 m: E = Kq/r², div and curl exactly 0 | 1e-12 relative |
+| At a charge | all seven quantities not evaluated (NaN), counted in the header | exact |
+| Source table | weights q/ε₀ and q exactly; zero and disabled charges excluded; signed distances to xy and xz planes; in-plane flags; no curl weight | exact |
+| ∫_V ∇·E dV = Q_enc/ε₀ and ∫_V ∇·D dV = Q_enc | sum of enclosed δ weights for four boxes (all, one, one other, none of three charges), compared with the outward flux of the exact field through each box face by 40 × 40 Gauss–Legendre quadrature | weights 1e-15 relative; flux 1e-4 × Σ\|q\|/ε₀ |
+| Distributional curl = 0 | circulation of E around 96 circles of radius 1 mm to 0.3 m, centred on each charge or displaced off its plane | ≤ 1e-9 × \|E\| × 2πr |
+| 2D slice shows 3D operators | engine ∇·E on a slice through a charge is exactly 0 at every defined sample, while the 2D divergence ∂Eₓ/∂x + ∂E_y/∂y of the same E samples is −Kq/r³ | 5e-3 relative (second-order differences) |
+| Probe (`test_api_phase2b1`) | values, units, scalar/vector kinds, statuses; distributional block at a charge; diagnostics only at ordinary points | exact / as above |
+| Registry (`test_phase2a_models`) | new equations present, statuses for 0 and 2 charges, full-wave, inhomogeneous and homogeneous media; usage "evaluated" vs "satisfied"; bilingual derivations; δ³ unit 1/m³ | exact |
+
 ## Other automated tests
 
 - **Scene and solver support** (`tests/core`): rotation convention, parent transforms, eight
@@ -171,3 +194,20 @@ Same qualifications as the Phase 1 record: images were built with `docker build`
 registry mirror, not with `docker compose build`; a plain `docker compose up --build` on an
 unrestricted network has not been executed. Not verified: browsers other than headless Chromium,
 a real GPU, touch input, Windows/macOS hosts, arm64.
+
+## Verification record for the Phase 2B-1 run
+
+| Item | Result |
+|---|---|
+| Python tests | 134 passed (108 from earlier phases, 26 new) |
+| ruff, mypy (strict) | clean |
+| Frontend type-check (strict), lint, production build | clean |
+| Frontend unit tests | 35 passed (26 earlier, 9 new; two request tests updated for the new request contents) |
+| End-to-end script, native stack | 22 of 22 checks passed, four runs |
+| End-to-end script, container stack rebuilt from this code | 22 of 22 checks passed, twice |
+
+New end-to-end checks: probe values and units of div/curl; probe at a charge (singular,
+not evaluated, δ weights, zero distributional curl); ten further visual-only actions with zero
+physics requests (four divergence/curl colour maps, curl vectors and their field, source markers
+off and on, volume vectors, volume scalars); off-slice ghost with Δz and its return; equations
+dialog for the new equations; finite-difference diagnostics at the advanced level.

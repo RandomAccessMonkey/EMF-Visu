@@ -41,6 +41,7 @@ export const ARROW_DENSITIES = [7, 9, 13, 17, 25, 49] as const
 export const LATTICE_BASE = 13
 export const LATTICE_DENSITIES = [3, 4, 5, 7, 13] as const
 export const FIELD_LINE_LEVELS = 3
+export const CALCULUS_QUANTITIES: SolveRequest['quantities'] = ['E', 'D', 'div_E', 'curl_E', 'div_D', 'curl_D']
 
 export const nearest = (allowed: readonly number[], value: number): number =>
   allowed.reduce((best, a) => (Math.abs(a - value) < Math.abs(best - value) ? a : best), allowed[0]!)
@@ -90,7 +91,9 @@ function lattice(id: string, domain: Domain, n: number, insetCells: number): Lat
 export function buildRequest(domain: Domain, s: SamplingSettings, quality: Quality): SolveRequest {
   const samplings: SolveRequest['samplings'] = [
     { ...sliceGrid('heat', domain, s, HEAT_RESOLUTION[quality]), quantities: ['E', 'phi'] },
-    { ...inset(sliceGrid('arrows', domain, s, ARROW_BASE), ARROW_BASE), quantities: ['E', 'D'] },
+    // Vectors and the pointwise divergence/curl are sampled on the fixed vector grid, so every
+    // vector layer and the divergence/curl colour maps are display-only choices.
+    { ...inset(sliceGrid('arrows', domain, s, ARROW_BASE), ARROW_BASE), quantities: CALCULUS_QUANTITIES },
   ]
   const request: SolveRequest = {
     samplings,
@@ -106,7 +109,7 @@ export function buildRequest(domain: Domain, s: SamplingSettings, quality: Quali
     equipotentials: { sampling_id: 'heat' },
   }
   if (s.mode === '3d') {
-    samplings.push({ ...lattice('vol', domain, LATTICE_BASE, 0.5), quantities: ['E', 'D'] })
+    samplings.push({ ...lattice('vol', domain, LATTICE_BASE, 0.5), quantities: ['phi', ...CALCULUS_QUANTITIES] })
     request.isosurfaces = { lattice: lattice('iso', domain, ISO_RESOLUTION[quality], 0) }
   }
   return request

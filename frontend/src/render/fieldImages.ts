@@ -10,6 +10,9 @@ export interface Legend {
   min: number
   max: number
   scale: 'log' | 'symlog'
+  /** Divergence/curl maps: counts that let the legend state exact zeros explicitly. */
+  zeroAware?: { exactZero: number; nonzero: number; undefined: number }
+  samplingId: string
 }
 
 export interface HeatImage {
@@ -18,7 +21,11 @@ export interface HeatImage {
   height: number
   grid: PlaneGridSampling
   legend: Legend
+  /** Discrete maps are drawn without interpolation so no value is invented between samples. */
+  nearest: boolean
 }
+
+export type ScalarKind = 'phi' | 'E' | 'div_E' | 'curl_E' | 'div_D' | 'curl_D'
 
 export function sampling<T>(result: SimulationResult, id: string): T | undefined {
   return result.header.samplings.find((s) => s['id'] === id) as T | undefined
@@ -41,32 +48,98 @@ export function magnitudeScale(mag: Float32Array): LogScale {
   return { min, max }
 }
 
-const UNDEFINED_COLOR = [20, 26, 40] as const
+export const UNDEFINED_COLOR = [20, 26, 40] as const
+/** Colour of an exact zero in divergence and curl maps: distinct from "undefined" and from the
+ *  background, so that "zero" is never read as "no data". */
+export const ZERO_COLOR = [38, 70, 86] as const
+export const ZERO_CSS = `rgb(${ZERO_COLOR.join(',')})`
 
-export function heatImage(result: SimulationResult, kind: 'phi' | 'E'): HeatImage | null {
-  const grid = sampling<PlaneGridSampling>(result, 'heat')
-  const field = result.arrays[kind === 'phi' ? 'heat.phi' : 'heat.E']
-  if (!grid || !field) return null
+const SYMBOLS: Record<ScalarKind, string> = {
+  phi: 'φ', E: '|E|', div_E: '∇·E', curl_E: '|∇×E|', div_D: '∇·D', curl_D: '|∇×D|',
+}
+
+/** Per-sample scalar values of a map, read from the engine's arrays (never derived from E):
+ *  φ and |E| from the fine slice grid, divergence and curl magnitude from the vector grid. */
+export function scalarSamples(result: SimulationResult, kind: ScalarKind, samplingId?: string): { values: Float32Array; unit: string; samplingId: string } | null {
+  const id = samplingId ?? (kind === 'phi' || kind === 'E' ? 'heat' : 'arrows')
+  const field = result.arrays[`${id}.${kind}`]
+  if (!field) return null
+  const vector = field.entry.components === 3
+  return { values: vector ? magnitudes(field.data) : field.data, unit: field.entry.unit, samplingId: id }
+}
+
+export interface ScalarColoring {
+  legend: Legend
+  colorAt: (v: number, out: Uint8ClampedArray | number[], o: number) => void
+}
+
+/** Colour scale for a scalar map. Exact zeros of divergence/curl get ZERO_COLOR; there is no
+ *  stretching of a zero field into an artificial gradient. */
+export function scalarColoring(kind: ScalarKind, values: Float32Array, unit: string, samplingId: string): ScalarColoring {
+  const put = (c: readonly number[], out: Uint8ClampedArray | number[], o: number) => {
+    out[o] = c[0]!
+    out[o + 1] = c[1]!
+    out[o + 2] = c[2]!
+  }
+  const finiteAction = (fn: (v: number, out: Uint8ClampedArray | number[], o: number) => void) =>
+    (v: number, out: Uint8ClampedArray | number[], o: number) => (Number.isFinite(v) ? fn(v, out, o) : put(UNDEFINED_COLOR, out, o))
+  if (kind === 'phi') {
+    const limit = absQuantile(values, 0.98)
+    return {
+      legend: { kind: 'diverging', symbol: SYMBOLS[kind], unit, min: -limit, max: limit, scale: 'symlog', samplingId },
+      colorAt: finiteAction((v, out, o) => diverging(symlogT(v, limit), out, o)),
+    }
+  }
+  if (kind === 'E') {
+    const scale = magnitudeScale(values)
+    return {
+      legend: { kind: 'sequential', symbol: SYMBOLS[kind], unit, ...scale, scale: 'log', samplingId },
+      colorAt: finiteAction((v, out, o) => sequential(logT(v, scale), out, o)),
+    }
+  }
+  let exactZero = 0
+  let nonzero = 0
+  let undef = 0
+  let maxAbs = 0
+  for (const v of values) {
+    if (!Number.isFinite(v)) undef++
+    else if (v === 0) exactZero++
+    else {
+      nonzero++
+      maxAbs = Math.max(maxAbs, Math.abs(v))
+    }
+  }
+  const signed = kind === 'div_E' || kind === 'div_D'
+  return {
+    legend: {
+      kind: signed ? 'diverging' : 'sequential',
+      symbol: SYMBOLS[kind],
+      unit,
+      min: signed ? -maxAbs : 0,
+      max: maxAbs,
+      scale: signed ? 'symlog' : 'log',
+      zeroAware: { exactZero, nonzero, undefined: undef },
+      samplingId,
+    },
+    colorAt: finiteAction((v, out, o) => {
+      if (v === 0) put(ZERO_COLOR, out, o)
+      else if (signed) diverging(symlogT(v, maxAbs), out, o)
+      else sequential(logT(v, { min: maxAbs * 1e-6, max: maxAbs }), out, o)
+    }),
+  }
+}
+
+export function heatImage(result: SimulationResult, kind: ScalarKind): HeatImage | null {
+  const samples = scalarSamples(result, kind)
+  if (!samples) return null
+  const grid = sampling<PlaneGridSampling>(result, samples.samplingId)
+  if (!grid) return null
+  const { legend, colorAt } = scalarColoring(kind, samples.values, samples.unit, samples.samplingId)
   const n = grid.nu * grid.nv
   const pixels = new Uint8ClampedArray(n * 4)
-  let legend: Legend
-  let values: Float32Array // one scalar per pixel; non-finite = undefined (singular point)
-  let colorAt: (i: number) => void
-  if (kind === 'phi') {
-    values = field.data
-    const limit = absQuantile(values, 0.98)
-    legend = { kind: 'diverging', symbol: 'φ', unit: field.entry.unit, min: -limit, max: limit, scale: 'symlog' }
-    colorAt = (i) => diverging(symlogT(values[i]!, limit), pixels, 4 * i)
-  } else {
-    values = magnitudes(field.data)
-    const scale = magnitudeScale(values)
-    legend = { kind: 'sequential', symbol: '|E|', unit: field.entry.unit, ...scale, scale: 'log' }
-    colorAt = (i) => sequential(logT(values[i]!, scale), pixels, 4 * i)
-  }
   for (let i = 0; i < n; i++) {
-    if (Number.isFinite(values[i]!)) colorAt(i)
-    else pixels.set(UNDEFINED_COLOR, 4 * i)
+    colorAt(samples.values[i]!, pixels, 4 * i)
     pixels[4 * i + 3] = 255
   }
-  return { pixels, width: grid.nu, height: grid.nv, grid, legend }
+  return { pixels, width: grid.nu, height: grid.nv, grid, legend, nearest: legend.zeroAware !== undefined }
 }

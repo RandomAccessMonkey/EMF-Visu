@@ -9,8 +9,9 @@ same change as any significant architectural decision.
   [Implementation status](#10-implementation-status-and-roadmap) and marked unsupported in the UI.
 - **Product definition file:** [master_spec.md](master_spec.md), a verbatim copy of the original
   specification.
-- **Current state:** Phase 1 (Foundation) and Phase 2A (point-charge electrostatics and field
-  visualization) are implemented. Phase 2B and later are not started.
+- **Current state:** Phase 1 (Foundation), Phase 2A (point-charge electrostatics and field
+  visualization) and Phase 2B-1 (divergence, curl and local field analysis) are implemented.
+  Phase 2B-2 and later are not started.
 
 ## 1. Principles
 
@@ -101,7 +102,8 @@ EMF-Visu/
 │  │  ├─ sampling.py             plane grid, lattice, point list
 │  │  ├─ solvers/                base.py (interface), catalog.py, analytical/
 │  │  ├─ equations/              models.py, data.py, rules.py, registry.py
-│  │  ├─ postprocess/            field_lines.py (ODE integration), isolines.py (contours, isosurfaces)
+│  │  ├─ postprocess/            field_lines.py (ODE integration), isolines.py (contours, isosurfaces),
+│  │  │                          differential.py (finite-difference diagnostic, never a result)
 │  │  ├─ engine.py               run(): select → solve → attach equation statuses
 │  │  ├─ presets.py              catalog of the 20 presets (4 available)
 │  │  ├─ wire.py                 EMF1 binary container
@@ -379,6 +381,72 @@ point-dipole model.
 | Field-line density levels are separate complete sets, all computed per request | density becomes a display filter |
 | 3D volume arrows off by default | field lines and isosurfaces already fill the 3D view |
 
+## 9b. Phase 2B-1: divergence, curl and local field analysis
+
+Solver version stays 1.1.0 (no change to E, φ or D). Added:
+
+**Pointwise divergence and curl** (quantities `div_E`, `curl_E`, `div_D`, `curl_D`; units V/m²,
+V/m², C/m³, C/m³). Each Coulomb term has the Jacobian K qᵢ (I − 3nnᵀ)/|r − rᵢ|³, which is
+symmetric and traceless at every r ≠ rᵢ. The solver therefore returns **exact 0** for divergence
+and curl wherever E is defined, and NaN ("not evaluated") exactly where E is undefined (the
+Phase 2A position tolerance, 1e-12 × domain diagonal). These are analytical identities, not
+rounded computations; tests check them independently against the analytical Jacobian (trace and
+antisymmetric part below 1e-13 of its scale) and against finite differences.
+
+**Distributional sources.** `ResultHeader.point_sources` lists each nonzero enabled point
+charge with its world position and exact δ³ weights: qᵢ/ε₀ [V·m] for ∇·E and qᵢ [C] for ∇·D,
+plus, for every plane-grid sampling, its signed distance along u × v and an in-plane flag
+(|d| ≤ 1e-9 × domain diagonal, the same tolerance field-line seeding uses). There is no curl
+weight: the distributional curl is zero. `electrostatics.enclosed_source_weight()` integrates
+∇·E or ∇·D over a volume as the sum of enclosed weights.
+
+**Finite-difference diagnostic** (`postprocess/differential.py`). Central differences of the
+exact field at steps h and h/2, Richardson-extrapolated; uncertainty = |J(h) − J(h/2)| +
+8 ε |F|max / h per Jacobian entry; h = 10⁻³ × distance to the nearest charge. Used only by the
+probe, only at ordinary points, labelled "numerical approximation", always next to the exact
+value.
+
+**Probe.** Returns E, φ, D, ∇·E, ∇×E, ∇·D, ∇×D with `kind` (scalar/vector) and `status`
+(`defined`, `singular` for E, φ, D at a charge, `not_evaluated` for div/curl at a charge). At a
+charge it adds `distributional` (the charge, both δ weights, zero distributional curl). At
+ordinary points it adds `diagnostics`.
+
+**Rendering.**
+
+| Layer | Data | Encoding |
+|---|---|---|
+| ∇·E, ∇·D, \|∇×E\|, \|∇×D\| colour maps (slice) | `arrows.*` arrays (49 × 49 vector grid) | exact 0 → a dedicated "zero" colour; NaN → "undefined" colour; nonzero (none in this model) → diverging or sequential scale; no interpolation between samples |
+| Curl vectors | `arrows.curl_*`, `vol.curl_*` | exact zero vector → small ring (in the slice plane on the slice); nonzero → arrow; never rotating or animated |
+| Volume scalars (3D) | `vol.*` (13³ lattice, subsampled) | small cubes in the colour-map scale |
+| Source markers | `point_sources` | ring in the sign colour plus a label (name, q; for the selected charge also the δ weights). In 2D, a charge off the slice is drawn hollow at its projection with Δ along the slice normal; its own marker sphere is also drawn hollow |
+
+The legend for divergence/curl maps states the counts: "exactly 0 at all N defined samples",
+plus any nonzero or undefined samples. The 2D view shows the full 3D operators evaluated on the
+slice; a test shows that the 2D-only divergence ∂Eₓ/∂x + ∂E_y/∂y of the same samples would be
+−Kq/r³ instead of 0.
+
+**Equation registry.** New: `gauss_displacement_vacuum` (∇·D = ρ), `div_E_point_charges`
+(∇·E = Σ (qᵢ/ε₀)δ³), `div_D_point_charges`, `curl_E_electrostatic` (∇×E = 0, ∮E·dl = 0),
+`curl_D_vacuum`. The point-charge divergence and the two curl equations are "evaluated by the
+solver" (they produce displayed values); Gauss's laws and E = −∇φ are "satisfied, not solved".
+Derivations (bilingual) explain the distributional interpretation. `gauss_electric_vacuum`
+gained a condition explaining the distributional reading for point charges.
+
+**Schema changes (additive; no version bumps).**
+
+| Where | Change | Compatibility |
+|---|---|---|
+| `Quantity` | `div_E`, `curl_E`, `div_D`, `curl_D` | old requests unchanged |
+| ResultHeader | `point_sources`, `in_plane_tolerance_m` | defaults keep old results valid |
+| ProbeValue | `kind`, `status` | defaults `scalar` / `defined` |
+| ProbeResponse | `distributional`, `diagnostics`, `diagnostics_method` | additions only |
+| Saved view settings | `heatmap` gains div/curl options; `showCurl`, `curlField`, `showSources`, `showVolumeScalars` | unknown values are dropped on load; old projects load unchanged |
+
+**Request size.** The vector grid now carries E, D, ∇·E, ∇×E, ∇·D, ∇×D (14 floats per sample,
+49² samples) and the 3D lattice also φ (15 floats, 13³). The fine slice grid is unchanged (E, φ),
+so high-resolution results did not grow. Responses are gzip-compressed and the exact-zero arrays
+compress well.
+
 ## 10. Implementation status and roadmap
 
 | Area | Phase 1 state |
@@ -388,14 +456,15 @@ point-dipole model.
 | 2D and 3D rendering of one shared scene | implemented (E or D arrows, slice colour map of φ or \|E\|, field lines, equipotential contours, 3D equipotential surfaces, 3D arrow lattice) |
 | State management, caching, selective recomputation | implemented |
 | Analytical solver | point charges in vacuum |
-| Probe | E, φ, D at a point, per-charge contributions, singular state. Divergence, curl, energy density: later milestones |
+| Probe | E, φ, D, ∇·E, ∇×E, ∇·D, ∇×D at a point, per-charge contributions, singular state with the distributional statement, finite-difference check (advanced). Energy density: later milestone |
 | Equation registry | all required equations plus superposition, with computed statuses and usage; derivations are empty |
 | Presets | 1–4 available; 5–20 listed as unavailable |
 | Persistence | projects (scene + view settings) in PostgreSQL |
 | Job queue | analytical worker, progress, cancellation |
 | Waveforms, time dependence, timeline | not started (Phase 4) |
 | Field lines, equipotentials | implemented for point charges (Phase 2A) |
-| Flux tools, divergence display, Gauss demonstrations, analytical conductor cases, presets 5–8 | not started (later Phase 2 milestones) |
+| Divergence and curl display, distributional sources | implemented (Phase 2B-1) |
+| Flux and circulation tools, Gauss demonstration, analytical conductor cases, presets 5–8 | not started (later Phase 2 milestones) |
 | Magnetostatics, induction | not started (Phases 3, 4) |
 | FEM (DOLFINx, Gmsh), FDTD (Meep) | not started (Phase 5); reported as unavailable |
 | Circuit subsystem (MNA) | not started; reported as unavailable |
@@ -430,6 +499,13 @@ Acceptance criteria per phase are unchanged from the approved plan:
   choice.
 - 3D solves at normal quality take roughly 0.2–0.5 s for the presets, so the 3D view updates
   less smoothly than the 2D view after a change.
+- Divergence and curl maps are sampled on the 49 × 49 vector grid, not the finer colour-map
+  grid. For this model every defined sample is exactly 0, so nothing is lost; with a future model
+  that has nonzero divergence or curl the resolution of these maps would matter.
+- Source labels show full δ weights only for the selected charge, to avoid overlap; all weights
+  are listed in the Results panel.
+- The finite-difference diagnostic needs a step much smaller than the distance to the nearest
+  charge; within about 1e-9 m of a charge its uncertainty is dominated by round-off.
 - Many charges: the total number of field lines is capped at 1500 per request by lowering the
   lines per charge.
 - Arrow colour and colour-map ranges cover the 2nd–98th percentile and clamp beyond, because the

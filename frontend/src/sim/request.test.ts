@@ -57,8 +57,12 @@ describe('buildRequest', () => {
     expect(two.equipotentials?.sampling_id).toBe('heat')
     expect(three.field_lines?.seeding).toBe('spherical')
     expect(three.isosurfaces?.lattice.nx).toBe(41)
-    // D is requested where vectors are drawn, so showing D needs no extra solve.
-    expect(two.samplings[1]!.quantities).toEqual(['E', 'D'])
+    // Everything a vector layer or a divergence/curl map can show is requested on the vector
+    // grid and the volume lattice, so switching between them needs no extra solve.
+    expect(two.samplings[1]!.quantities).toEqual(['E', 'D', 'div_E', 'curl_E', 'div_D', 'curl_D'])
+    expect(three.samplings[2]!.quantities).toEqual(['phi', 'E', 'D', 'div_E', 'curl_E', 'div_D', 'curl_D'])
+    // The fine slice grid stays as in Phase 2A (E and φ only).
+    expect(two.samplings[0]!.quantities).toEqual(['E', 'phi'])
   })
 })
 
@@ -143,13 +147,16 @@ describe('physicsKey (selective recomputation)', () => {
     const keys: (keyof SamplingSettings)[] = ['plane', 'offset', 'mode']
     expect(Object.keys(settings).sort()).toEqual([...keys].sort())
     const visual = Object.keys(DEFAULT_VIEW).filter((k) => !keys.includes(k as keyof SamplingSettings))
-    expect(visual).toEqual(expect.arrayContaining(['showArrows', 'showFieldLines', 'lineDensity', 'showContours', 'showIsosurfaces', 'arrowDensity', 'latticeDensity', 'arrowScale', 'arrowLength', 'heatmap', 'vectorField']))
+    expect(visual).toEqual(expect.arrayContaining(['showArrows', 'showFieldLines', 'lineDensity', 'showContours', 'showIsosurfaces', 'arrowDensity', 'latticeDensity', 'arrowScale', 'arrowLength', 'heatmap', 'vectorField', 'showCurl', 'curlField', 'showSources', 'showVolumeScalars']))
   })
 })
 
 describe('saved view settings', () => {
   it('maps densities from older projects onto the offered values', () => {
-    const v = sanitizeView({ arrowDensity: 21, latticeDensity: 9, lineDensity: 7, vectorField: 'B', bogus: 1 })
+    const v = sanitizeView({ arrowDensity: 21, latticeDensity: 9, lineDensity: 7, vectorField: 'B', bogus: 1, heatmap: 'rho', curlField: 'H' })
+    expect(v.heatmap).toBeUndefined()
+    expect(v.curlField).toBeUndefined()
+    expect(sanitizeView({ heatmap: 'div_D', curlField: 'D' })).toEqual({ heatmap: 'div_D', curlField: 'D' })
     expect(v.arrowDensity).toBe(17)
     expect(LATTICE_DENSITIES).toContain(v.latticeDensity)
     expect(v.lineDensity).toBe(2)

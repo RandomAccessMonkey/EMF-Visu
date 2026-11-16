@@ -84,6 +84,23 @@ export function VisualizationPanel({ sim }: { sim: Simulation }) {
         </Row>
         <p className="text-[11px] leading-snug text-muted">{t('viz.arrowsHint')}</p>
       </Section>
+      <Section title={t('viz.calculus')}>
+        <Row label={t('viz.showCurl')} hint={t('viz.curlHint')}>
+          <Switch label={t('viz.showCurl')} checked={v.showCurl} onChange={set('showCurl')} />
+        </Row>
+        <Row label={t('viz.curlField')}>
+          <Select label={t('viz.curlField')} value={v.curlField} onChange={set('curlField')} options={[
+            { value: 'E', label: t('viz.curlE') },
+            { value: 'D', label: t('viz.curlD') },
+          ]} />
+        </Row>
+        <p className="text-[11px] leading-snug text-muted">{t('viz.curlHint')}</p>
+        <Row label={t('viz.sources')}>
+          <Switch label={t('viz.sources')} checked={v.showSources} onChange={set('showSources')} />
+        </Row>
+        <p className="text-[11px] leading-snug text-muted">{t('viz.sourcesHint')}</p>
+        <p className="text-[11px] leading-snug text-muted">{t('viz.divergenceHint')}</p>
+      </Section>
       <Section title={t('viz.fieldLines')}>
         <Row label={t('viz.showFieldLines')}>
           <Switch label={t('viz.showFieldLines')} checked={v.showFieldLines} onChange={set('showFieldLines')} />
@@ -110,6 +127,10 @@ export function VisualizationPanel({ sim }: { sim: Simulation }) {
           <Select label={t('viz.heatmap')} value={v.heatmap} onChange={set('heatmap')} options={[
             { value: 'phi', label: t('viz.heatPhi') },
             { value: 'E', label: t('viz.heatE') },
+            { value: 'div_E', label: t('viz.heatDivE') },
+            { value: 'curl_E', label: t('viz.heatCurlE') },
+            { value: 'div_D', label: t('viz.heatDivD') },
+            { value: 'curl_D', label: t('viz.heatCurlD') },
             { value: 'none', label: t('viz.heatNone') },
           ]} />
         </Row>
@@ -136,6 +157,9 @@ export function VisualizationPanel({ sim }: { sim: Simulation }) {
           <Row label={t('viz.latticeDensity')}>
             <Slider label={t('viz.latticeDensity')} value={LATTICE_DENSITIES.indexOf(v.latticeDensity as (typeof LATTICE_DENSITIES)[number])} min={0} max={LATTICE_DENSITIES.length - 1} step={1} onChange={(i) => v.set({ latticeDensity: LATTICE_DENSITIES[i]! })} />
             <span className="w-6 text-right font-mono text-[11px] text-muted">{v.latticeDensity}³</span>
+          </Row>
+          <Row label={t('viz.volumeScalars')} hint={t('viz.volumeScalarsHint')}>
+            <Switch label={t('viz.volumeScalars')} checked={v.showVolumeScalars} onChange={set('showVolumeScalars')} />
           </Row>
           <Row label={t('viz.sliceIn3d')}>
             <Switch label={t('viz.sliceIn3d')} checked={v.showSliceIn3d} onChange={set('showSliceIn3d')} />

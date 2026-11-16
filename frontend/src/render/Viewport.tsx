@@ -9,6 +9,7 @@ import { useSceneStore } from '@/state/sceneStore'
 import { useViewStore } from '@/state/viewStore'
 import { ArrowField } from './ArrowField'
 import type { LogScale } from './colormaps'
+import { CurlGlyphs, SourceMarkers, VolumeScalars } from './CalculusLayers'
 import { Contours, FieldLines, Isosurfaces } from './FieldProducts'
 import { magnitudes, sampling, type HeatImage } from './fieldImages'
 import { SceneObjects } from './SceneObjects'
@@ -115,6 +116,15 @@ function GridAxes({ domain }: { domain: Domain }) {
   )
 }
 
+const planeMatrix = (g: PlaneGridSampling) => {
+  const u = new THREE.Vector3(...g.u_dir)
+  const v = new THREE.Vector3(...g.v_dir)
+  return new THREE.Matrix4().makeBasis(u, v, new THREE.Vector3().crossVectors(u, v)).setPosition(...g.center_m)
+}
+
+/** The colour map is drawn on the grid it was sampled on (the fine slice grid for φ and |E|,
+ *  the vector grid for divergence and curl); a separate invisible plane over the whole slice
+ *  receives probe clicks. */
 function SlicePlane({ image, grid, visible }: { image: HeatImage | null; grid: PlaneGridSampling; visible: boolean }) {
   const mode = useViewStore((s) => s.mode)
   const tool = useViewStore((s) => s.tool)
@@ -124,8 +134,8 @@ function SlicePlane({ image, grid, visible }: { image: HeatImage | null; grid: P
     const data = new Uint8Array(image.pixels.buffer, image.pixels.byteOffset, image.pixels.byteLength)
     const tex = new THREE.DataTexture(data, image.width, image.height, THREE.RGBAFormat)
     tex.colorSpace = THREE.SRGBColorSpace
-    tex.magFilter = THREE.LinearFilter
-    tex.minFilter = THREE.LinearFilter
+    tex.magFilter = image.nearest ? THREE.NearestFilter : THREE.LinearFilter
+    tex.minFilter = image.nearest ? THREE.NearestFilter : THREE.LinearFilter
     tex.needsUpdate = true
     return tex
   }, [image])
@@ -133,36 +143,36 @@ function SlicePlane({ image, grid, visible }: { image: HeatImage | null; grid: P
     invalidate()
     return () => texture?.dispose()
   }, [texture, invalidate])
-  const matrix = useMemo(() => {
-    const u = new THREE.Vector3(...grid.u_dir)
-    const v = new THREE.Vector3(...grid.v_dir)
-    return new THREE.Matrix4()
-      .makeBasis(u, v, new THREE.Vector3().crossVectors(u, v))
-      .setPosition(...grid.center_m)
-  }, [grid])
-  const show = visible && texture !== null
+  const pickMatrix = useMemo(() => planeMatrix(grid), [grid])
+  const imageGrid = image?.grid
+  const imageMatrix = useMemo(() => (imageGrid ? planeMatrix(imageGrid) : null), [imageGrid])
+  // Each texel is centred on its sample: the textured quad extends half a cell beyond the
+  // outermost samples.
+  const texSize: [number, number] | null = imageGrid
+    ? [imageGrid.u_extent_m * (imageGrid.nu / (imageGrid.nu - 1)), imageGrid.v_extent_m * (imageGrid.nv / (imageGrid.nv - 1))]
+    : null
+  const sampledAtNodes = imageGrid && image && !image.nearest
   return (
-    <mesh
-      matrix={matrix}
-      matrixAutoUpdate={false}
-      renderOrder={-1}
-      onClick={(e) => {
-        if (tool !== 'probe') return
-        e.stopPropagation()
-        useViewStore.getState().set({ probePoint: e.point.toArray() as Vec3 })
-      }}
-    >
-      <planeGeometry args={[grid.u_extent_m, grid.v_extent_m]} />
-      <meshBasicMaterial
-        key={show ? 'heat' : 'pick'}
-        map={show ? texture : null}
-        toneMapped={false}
-        transparent
-        opacity={show ? (mode === '3d' ? 0.82 : 1) : 0}
-        depthWrite={false}
-        side={THREE.DoubleSide}
-      />
-    </mesh>
+    <>
+      <mesh
+        matrix={pickMatrix}
+        matrixAutoUpdate={false}
+        onClick={(e) => {
+          if (tool !== 'probe') return
+          e.stopPropagation()
+          useViewStore.getState().set({ probePoint: e.point.toArray() as Vec3 })
+        }}
+      >
+        <planeGeometry args={[grid.u_extent_m, grid.v_extent_m]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} side={THREE.DoubleSide} />
+      </mesh>
+      {visible && texture && imageMatrix && imageGrid && texSize && (
+        <mesh matrix={imageMatrix} matrixAutoUpdate={false} renderOrder={-1} raycast={() => null}>
+          <planeGeometry args={sampledAtNodes ? [imageGrid.u_extent_m, imageGrid.v_extent_m] : texSize} />
+          <meshBasicMaterial map={texture} toneMapped={false} transparent opacity={mode === '3d' ? 0.82 : 1} depthWrite={false} side={THREE.DoubleSide} />
+        </mesh>
+      )}
+    </>
   )
 }
 
@@ -233,6 +243,11 @@ export function Viewport({ result, image, arrowScale }: Props) {
   const marker = diag * 0.011
   const grid = result ? sampling<PlaneGridSampling>(result, 'heat') : undefined
   const sliceVisible = v.mode === '2d' || v.showSliceIn3d
+  // Charges off the slice plane, according to the engine's source table.
+  const offSlice = useMemo(
+    () => new Set((result?.header.point_sources ?? []).filter((s) => s.in_plane['heat'] === false).map((s) => s.object_id)),
+    [result],
+  )
   return (
     <Canvas
       frameloop="demand"
@@ -245,7 +260,7 @@ export function Viewport({ result, image, arrowScale }: Props) {
       <ambientLight intensity={1.4} />
       <directionalLight position={[3, -4, 6]} intensity={1.6} />
       <Cameras domain={domain} />
-      <Invalidator deps={[scene, selectedId, v.mode, v.plane, v.offset, v.probePoint, v.showGrid, v.tool, result, v.showFieldLines, v.lineDensity, v.showContours, v.showIsosurfaces]} />
+      <Invalidator deps={[scene, selectedId, v.mode, v.plane, v.offset, v.probePoint, v.showGrid, v.tool, result, v.showFieldLines, v.lineDensity, v.showContours, v.showIsosurfaces, v.showCurl, v.curlField, v.showSources, v.showVolumeScalars, v.heatmap]} />
       {v.mode === '3d' && <DomainFrame domain={domain} />}
       {v.showGrid && <GridAxes domain={domain} />}
       {grid && <SlicePlane image={image} grid={grid} visible={sliceVisible && v.heatmap !== 'none'} />}
@@ -258,7 +273,11 @@ export function Viewport({ result, image, arrowScale }: Props) {
       {result && v.showContours && sliceVisible && <Contours result={result} />}
       {result && v.showFieldLines && <FieldLines result={result} level={v.lineDensity} markerSize={marker * 0.9} />}
       {result && v.mode === '3d' && v.showIsosurfaces && <Isosurfaces result={result} />}
-      <SceneObjects marker={marker} />
+      {result && v.showCurl && sliceVisible && <CurlGlyphs result={result} id="arrows" field={v.curlField} />}
+      {result && v.showCurl && v.mode === '3d' && v.showLattice && <CurlGlyphs result={result} id="vol" field={v.curlField} />}
+      {result && v.mode === '3d' && v.showVolumeScalars && v.heatmap !== 'none' && <VolumeScalars result={result} kind={v.heatmap} />}
+      {result && v.showSources && <SourceMarkers result={result} size={marker} />}
+      <SceneObjects marker={marker} offSlice={offSlice} />
       <ProbeMarker size={marker} />
     </Canvas>
   )

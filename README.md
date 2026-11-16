@@ -4,7 +4,8 @@ An interactive electromagnetic field laboratory in which every picture is backed
 calculation. Build a configuration, change a parameter, see the field respond, and read which
 equations govern it and under what assumptions.
 
-**Status: Phase 1 (Foundation) and Phase 2A (point-charge electrostatics) are implemented.**
+**Status: Phase 1 (Foundation), Phase 2A (point-charge electrostatics) and Phase 2B-1
+(divergence and curl) are implemented.**
 What works today:
 
 - Any number of positive and negative ideal point charges in vacuum, and dipoles made of two
@@ -15,8 +16,11 @@ What works today:
 - Editing: add, move (drag in 2D, gizmo in 3D, numeric input, arrow keys), rotate, scale,
   duplicate, disable and delete objects; charge magnitude (slider ±100 nC, any value by
   number), polarity flip; dipole charge and separation; snapping; adjustable bounds.
-- A probe that returns E, φ and D at a point in 64-bit precision, each charge's contribution,
-  and "undefined" exactly on a charge.
+- Divergence and curl of E and D: exact zeros away from the charges (shown as colour maps and
+  zero-vector glyphs, while E itself is nonzero), and each charge marked as a distributional
+  source with its δ³ weight. Charges off the 2D slice are drawn as projections.
+- A probe that returns E, φ, D, ∇·E, ∇×E, ∇·D and ∇×D at a point in 64-bit precision, each
+  charge's contribution, and on a charge the distributional statement instead of numbers.
 - An equation panel whose statuses are computed from the active physical model and which says
   whether the solver evaluates an equation or the field merely satisfies it.
 - Presets 1–4, saved projects, English and Hungarian, beginner and advanced levels.

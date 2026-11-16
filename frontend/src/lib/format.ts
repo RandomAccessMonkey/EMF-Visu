@@ -21,3 +21,14 @@ export const prettyUnit = (unit: string) => unit.replace(/\^2/g, '²').replace(/
 export function cn(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(' ')
 }
+
+/** A single number in scientific notation, with exact zero shown as "0". Never rounds a small
+ *  nonzero value to zero. */
+export function formatNumber(value: number | null | undefined, digits = 4): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '—'
+  if (value === 0) return '0'
+  return value.toExponential(digits - 1)
+}
+
+/** A vector as (x, y, z) with exact zeros shown as "0". */
+export const formatVector = (v: number[], digits = 4) => `(${v.map((c) => formatNumber(c, digits)).join(', ')})`

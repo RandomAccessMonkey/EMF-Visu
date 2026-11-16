@@ -3,6 +3,8 @@ import { formatSI, prettyUnit } from '@/lib/format'
 import { cssGradient, type LogScale } from '@/render/colormaps'
 import type { Legend as LegendData } from '@/render/fieldImages'
 import type { SimulationResult } from '@/api/container'
+import { SOURCE_COLORS, ZERO_VECTOR_COLOR } from '@/render/CalculusLayers'
+import { ZERO_CSS } from '@/render/fieldImages'
 import { FIELD_LINE_COLOR, isNumericalEnd, LEVEL_COLORS, NUMERICAL_LINE_COLOR } from '@/render/FieldProducts'
 import { PLANE_BASIS } from '@/sim/request'
 import { useViewStore } from '@/state/viewStore'
@@ -55,7 +57,7 @@ export function Legend({ heat, arrows, result }: { heat: LegendData | null; arro
   return (
     <>
       <div className="pointer-events-none absolute bottom-3 left-3 flex flex-col gap-2 rounded-md border border-border bg-panel/85 p-2.5 backdrop-blur">
-        {heat && v.heatmap !== 'none' && (v.mode === '2d' || v.showSliceIn3d) && (
+        {heat && v.heatmap !== 'none' && (v.mode === '2d' || v.showSliceIn3d) && !heat.zeroAware && (
           <Bar
             title={`${heat.symbol} [${prettyUnit(heat.unit)}]`}
             kind={heat.kind}
@@ -64,6 +66,21 @@ export function Legend({ heat, arrows, result }: { heat: LegendData | null; arro
               ? [formatSI(heat.min, prettyUnit(heat.unit)), '0', formatSI(heat.max, prettyUnit(heat.unit))]
               : [formatSI(heat.min, prettyUnit(heat.unit)), formatSI(heat.max, prettyUnit(heat.unit))]}
           />
+        )}
+        {heat?.zeroAware && v.heatmap !== 'none' && (v.mode === '2d' || v.showSliceIn3d || v.showVolumeScalars) && (
+          <div className="w-56 text-[11px]" data-testid="zero-legend">
+            <div className="mb-0.5 flex justify-between">
+              <span className="font-semibold text-text">{heat.symbol} [{prettyUnit(heat.unit)}]</span>
+              <span className="text-muted">{t('legend.exactAnalytical')}</span>
+            </div>
+            <p className="leading-snug text-muted">
+              <span className="mr-1 inline-block h-2.5 w-2.5 rounded-sm align-middle" style={{ background: ZERO_CSS }} />
+              {t('legend.exactZero', { n: heat.zeroAware.exactZero })}
+              {heat.zeroAware.nonzero > 0 && <> · {t('legend.nonzero', { n: heat.zeroAware.nonzero })}</>}
+              {heat.zeroAware.undefined > 0 && <> · {t('legend.undefinedSamples', { n: heat.zeroAware.undefined })}</>}
+            </p>
+            <p className="mt-0.5 text-[10px] leading-snug text-muted">{t(heat.symbol.startsWith('∇·') ? 'legend.divNote' : 'legend.curlNote')}</p>
+          </div>
         )}
         {arrows && (v.showArrows || (v.mode === '3d' && v.showLattice)) && (
           <Bar
@@ -94,6 +111,19 @@ export function Legend({ heat, arrows, result }: { heat: LegendData | null; arro
         <p className="max-w-56 text-[10px] leading-snug text-muted">
           {t(v.arrowLength === 'uniform' ? 'legend.aidUniform' : 'legend.aidLog')} {t('legend.aid')}
         </p>
+        {v.showCurl && (
+          <p className="max-w-56 text-[10px] leading-snug text-muted">
+            <span className="mr-1 inline-block h-2 w-2 rounded-full border-2 align-middle" style={{ borderColor: ZERO_VECTOR_COLOR }} />
+            {t('legend.zeroVector', { field: v.curlField })}
+          </p>
+        )}
+        {v.showSources && (result?.header.point_sources.length ?? 0) > 0 && (
+          <p className="max-w-56 text-[10px] leading-snug text-muted">
+            <span className="mr-1 inline-block h-2.5 w-2.5 rounded-full border-2 align-middle" style={{ borderColor: SOURCE_COLORS.positive }} />
+            <span className="mr-1 inline-block h-2.5 w-2.5 rounded-full border-2 align-middle" style={{ borderColor: SOURCE_COLORS.negative }} />
+            {t(v.mode === '2d' ? 'legend.sources2d' : 'legend.sources3d')}
+          </p>
+        )}
         <p className="flex items-center gap-3 text-[10px] text-muted">
           <span><span className="mr-1 inline-block h-2 w-2 rounded-full bg-positive" />q &gt; 0</span>
           <span><span className="mr-1 inline-block h-2 w-2 rounded-full bg-negative" />q &lt; 0</span>

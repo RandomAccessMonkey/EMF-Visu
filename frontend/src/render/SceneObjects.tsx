@@ -1,4 +1,4 @@
-import { TransformControls } from '@react-three/drei'
+import { Billboard, TransformControls } from '@react-three/drei'
 import { useThree, type ThreeEvent } from '@react-three/fiber'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
@@ -15,7 +15,7 @@ function chargeColor(o: SceneObject): string {
   return q > 0 ? COLORS.positive : q < 0 ? COLORS.negative : COLORS.neutral
 }
 
-function Shape({ o, marker }: { o: SceneObject; marker: number }) {
+function Shape({ o, marker, ghost }: { o: SceneObject; marker: number; ghost: boolean }) {
   const p = o.primitive
   const inert = (
     <meshStandardMaterial color={COLORS.inert} transparent opacity={0.3} roughness={0.6} side={THREE.DoubleSide} />
@@ -29,7 +29,16 @@ function Shape({ o, marker }: { o: SceneObject; marker: number }) {
         </mesh>
       )
     case 'point':
-      return (
+      // In the 2D view a charge that does not lie in the slice is drawn hollow: it is seen
+      // through the slice, not a singularity inside it.
+      return ghost ? (
+        <Billboard>
+          <mesh>
+            <ringGeometry args={[marker * 0.65, marker, 28]} />
+            <meshBasicMaterial color={chargeColor(o)} transparent opacity={0.6} toneMapped={false} />
+          </mesh>
+        </Billboard>
+      ) : (
         <mesh>
           <sphereGeometry args={[marker, 24, 16]} />
           <meshBasicMaterial color={chargeColor(o)} toneMapped={false} />
@@ -60,7 +69,7 @@ function Shape({ o, marker }: { o: SceneObject; marker: number }) {
   }
 }
 
-function ObjectNode({ o, marker }: { o: SceneObject; marker: number }) {
+function ObjectNode({ o, marker, offSlice }: { o: SceneObject; marker: number; offSlice: ReadonlySet<string> }) {
   const ref = useRef<THREE.Group>(null)
   const children = useSceneStore((s) => s.scene.objects).filter((c) => c.parent_id === o.id)
   const selected = useSceneStore((s) => s.selectedId === o.id)
@@ -127,7 +136,7 @@ function ObjectNode({ o, marker }: { o: SceneObject; marker: number }) {
         onPointerOver={() => setHover(true)}
         onPointerOut={() => setHover(false)}
       >
-        <Shape o={o} marker={marker} />
+        <Shape o={o} marker={marker} ghost={mode === '2d' && offSlice.has(o.id)} />
         {(selected || hover) && (o.primitive.type === 'point' || o.primitive.type === 'group') && (
           <mesh>
             <sphereGeometry args={[marker * 1.9, 24, 16]} />
@@ -136,7 +145,7 @@ function ObjectNode({ o, marker }: { o: SceneObject; marker: number }) {
         )}
       </group>
       {children.map((c) => (
-        <ObjectNode key={c.id} o={c} marker={marker} />
+        <ObjectNode key={c.id} o={c} marker={marker} offSlice={offSlice} />
       ))}
     </group>
   )
@@ -175,7 +184,7 @@ function Gizmo() {
   )
 }
 
-export function SceneObjects({ marker }: { marker: number }) {
+export function SceneObjects({ marker, offSlice }: { marker: number; offSlice: ReadonlySet<string> }) {
   const objects = useSceneStore((s) => s.scene.objects)
   const mode = useViewStore((s) => s.mode)
   const tool = useViewStore((s) => s.tool)
@@ -183,7 +192,7 @@ export function SceneObjects({ marker }: { marker: number }) {
   return (
     <>
       {roots.map((o) => (
-        <ObjectNode key={o.id} o={o} marker={marker} />
+        <ObjectNode key={o.id} o={o} marker={marker} offSlice={offSlice} />
       ))}
       {mode === '3d' && tool === 'select' && <Gizmo />}
     </>
