@@ -10,8 +10,9 @@ same change as any significant architectural decision.
 - **Product definition file:** [master_spec.md](master_spec.md), a verbatim copy of the original
   specification.
 - **Current state:** Phase 1 (Foundation), Phase 2A (point-charge electrostatics and field
-  visualization) and Phase 2B-1 (divergence, curl and local field analysis) are implemented.
-  Phase 2B-2 and later are not started.
+  visualization), Phase 2B-1 (divergence, curl and local field analysis) and Phase 2B-2 (closed
+  surfaces, flux, Gauss and Gauss–Ostrogradsky demonstrations) are implemented. Phase 3 and
+  later are not started.
 
 ## 1. Principles
 
@@ -102,6 +103,8 @@ EMF-Visu/
 │  │  ├─ sampling.py             plane grid, lattice, point list
 │  │  ├─ solvers/                base.py (interface), catalog.py, analytical/
 │  │  ├─ equations/              models.py, data.py, rules.py, registry.py
+│  │  ├─ geometry/surfaces.py    Gaussian surfaces: model, meshes, validation, inside/outside
+│  │  ├─ gauss_situations.py     the nine guided Gauss situations
 │  │  ├─ postprocess/            field_lines.py (ODE integration), isolines.py (contours, isosurfaces),
 │  │  │                          differential.py (finite-difference diagnostic, never a result)
 │  │  ├─ engine.py               run(): select → solve → attach equation statuses
@@ -206,7 +209,9 @@ formula), *satisfied* (it applies and the field obeys it, but nothing solves it)
 | `GET /presets` | the 20 presets; unavailable ones carry no scene |
 | `POST /simulations` | synchronous solve → EMF1 container; `X-EMF-Cache: hit\|miss`; `422 unsupported` with reasons; `413` above the synchronous point limit |
 | `POST /probe` | fields at one point as float64 JSON (not interpolated), each charge's contribution, and the singular state at a charge position |
-| `POST /equations/evaluate` | equations with status for the model this scene resolves to |
+| `POST /equations/evaluate` | equations with status for the model this scene resolves to (optionally with Gaussian surfaces) |
+| `POST /flux` | closed-surface flux (EMF1 container with a `FluxHeader`); own cache key |
+| `GET /gauss/situations` | the nine guided situations (scene + surfaces) |
 | `POST /jobs`, `GET /jobs/{id}`, `DELETE /jobs/{id}`, `GET /jobs/{id}/result` | queued solves, status, cancel, result |
 | `WS /ws/jobs/{id}` | job status stream until a terminal state |
 | `GET/POST /projects`, `GET/PUT/DELETE /projects/{id}` | saved scenes and view settings |
@@ -447,6 +452,78 @@ gained a condition explaining the distributional reading for point charges.
 so high-resolution results did not grow. Responses are gzip-compressed and the exact-zero arrays
 compress well.
 
+## 9c. Phase 2B-2: closed surfaces, flux, Gauss and Gauss–Ostrogradsky
+
+**Geometry subsystem** (`emf_core/geometry/surfaces.py`). `GaussSurface` = id, name, shape
+(`sphere`, `cube`, `box`, `cylinder`, `mesh`), centre, rotation (R = Rx Ry Rz), orientation
+(`outward` / `inward`), optional subdivision (box and cube; 1–8 cells per axis, at most 512),
+and `display` (visible, opacity, normals, colour by flux — visualization only, excluded from
+every cache key). Every surface becomes one closed triangle mesh, which is the authoritative
+geometry for rendering, classification and integration.
+
+| Shape | Preview mesh | Final mesh | Relation to the ideal shape |
+|---|---|---|---|
+| Sphere | 24 × 12 (528 triangles) | 64 × 32 (3968) | inscribed polyhedron; max deviation reported |
+| Cylinder (axis = local z) | 32 × 2 + caps (192) | 96 × 8 + caps (1728) | inscribed; deviation r(1 − cos π/n) |
+| Cube, box | 12 triangles | 12 triangles | exact |
+| Custom mesh (engine level) | as given | as given | — |
+
+Validation: finite coordinates; no degenerate triangle (area ≤ 1e-20 L²); every edge shared by
+exactly two triangles (closed, edge-manifold); every directed edge used once (consistent
+orientation); the link of every vertex is a single cycle (vertex-manifold); one connected
+component; nonzero enclosed volume. Self-intersection is **not** checked. A valid mesh is
+re-oriented to the requested orientation (signed volume decides its natural orientation).
+
+**Classification** (inside / outside / on the boundary): unsigned distance to the mesh (exact
+point–triangle distance) and ray-casting parity (Möller–Trumbore, majority of five fixed rays).
+A charge with distance ≤ τ is on the boundary; τ = max(1e-12 L, 64 ε max(L, ‖r_charge‖∞,
+‖r_vertex‖∞)) per surface (charges: the largest ‖·‖∞ of all charges), recorded in every result.
+The near-boundary highlight (≤ max(0.01 L, 10 τ)) is a visual warning only. Zero charges are
+ignored (no field, not singular).
+
+**Surface integral** (`solvers/analytical/gauss.py`): Φ_E = Σᵢ Σ_T qᵢ/(4πε₀) Ω_T,i with the
+Van Oosterom–Strackee signed solid angle Ω = 2 atan2(a·(b×c), |a||b||c| + (a·b)|c| + (a·c)|b| +
+(b·c)|a|). The expression is arranged so that reversing a triangle (swapping v1 and v2) negates
+Ω bitwise. Exact for the represented mesh up to floating point. The floating-point uncertainty
+is the measured closure residual |Σ_T Ω − 4πw| (w ∈ {−1, 0, 1}) plus 8ε per triangle, times K|q|.
+
+**Volume integral**: the sum of the Phase 2B-1 δ³ weights qᵢ/ε₀ (qᵢ) of the charges classified
+strictly inside, via `enclosed_source_weight`. It never uses solid angles; the surface path
+never uses the classification. The result reports both and their difference
+(Φ − s·∫∇·E dV with s = ±1 for the orientation). A charge on the surface makes both undefined.
+
+**Local flux density**: E·n and D·n sampled at triangle centroids (pointwise, exact values of
+the field there), |E|, and a display class (|E·n| ≤ 10⁻³|E| → "≈ 0"). The integrated triangle
+contribution is the solid-angle result, transported separately (`flux_E`, and per charge
+`charge_flux_E`).
+
+**Subdivision**: the box is split on a shared vertex grid; each cell face consists of the same
+two triangles as its neighbour's, with opposite winding, so shared faces cancel bitwise. Each
+cell gets flux per face, total flux, enclosed charge and volume integral. A charge on any cell
+boundary strictly inside the parent makes the cell-wise assignment *ambiguous* (no cell owns
+it; per-cell volume integrals are not summed), while the parent's volume integral is still
+reported.
+
+**Data flow**: the frontend sends `{scene, flux: {surfaces (physics fields only), quality}}` to
+`/flux`. Quality is `preview` while something is dragged and `final` otherwise; the quality (and
+so the mesh resolution) is part of both the client and the server cache key. The flux request is
+independent of the field solve, so moving a surface never re-solves the field. Projects store
+surfaces in the existing `view` JSON column under `gauss_surfaces` (no migration); the API
+exposes them as `ProjectIn/Out.surfaces`, and older projects load with none.
+
+**2D workspace**: the frontend intersects the engine's mesh with the slice plane (pure geometry)
+and draws that outline; all flux values remain 3D surface integrals and are labelled so.
+
+**Equation registry**: new `electric_flux`, `displacement_flux`, `gauss_integral_E`,
+`gauss_integral_D`, `divergence_theorem`, `divergence_theorem_E`, `divergence_theorem_D`. A new
+usage value `checked` marks equations whose two sides are computed independently and compared.
+Statuses depend on whether surfaces exist and whether a charge lies on one.
+
+**Schema changes (additive)**: `ModelContext` gains `gauss_surfaces`, `gauss_boundary_ambiguous`,
+`gauss_invalid`, `checked_equation_ids`; `EquationView.usage` gains `checked`; `EquationsBody`,
+`ProjectIn`, `ProjectOut` gain `surfaces`. `FluxHeader` is added to the OpenAPI components so
+the frontend types are generated.
+
 ## 10. Implementation status and roadmap
 
 | Area | Phase 1 state |
@@ -464,7 +541,8 @@ compress well.
 | Waveforms, time dependence, timeline | not started (Phase 4) |
 | Field lines, equipotentials | implemented for point charges (Phase 2A) |
 | Divergence and curl display, distributional sources | implemented (Phase 2B-1) |
-| Flux and circulation tools, Gauss demonstration, analytical conductor cases, presets 5–8 | not started (later Phase 2 milestones) |
+| Gaussian surfaces, closed-surface flux, Gauss and Gauss–Ostrogradsky demonstrations, subdivision | implemented (Phase 2B-2) |
+| Open-surface flux, circulation tools, analytical conductor cases, presets 5–8 | not started |
 | Magnetostatics, induction | not started (Phases 3, 4) |
 | FEM (DOLFINx, Gmsh), FDTD (Meep) | not started (Phase 5); reported as unavailable |
 | Circuit subsystem (MNA) | not started; reported as unavailable |
@@ -506,6 +584,11 @@ Acceptance criteria per phase are unchanged from the approved plan:
   are listed in the Results panel.
 - The finite-difference diagnostic needs a step much smaller than the distance to the nearest
   charge; within about 1e-9 m of a charge its uncertainty is dominated by round-off.
+- Gaussian surfaces: self-intersecting custom meshes are not detected; custom meshes can only
+  be created through the API (no UI import); subdivision is for boxes and cubes only; surfaces
+  cannot be dragged in the 2D view (numeric editing, or the 3D gizmo); the per-patch inspector
+  is 3D only. While a surface is dragged, the drawn mesh lags the gizmo until the preview
+  result arrives.
 - Many charges: the total number of field lines is capped at 1500 per request by lowering the
   lines per charge.
 - Arrow colour and colour-map ranges cover the 2nd–98th percentile and clamp beyond, because the

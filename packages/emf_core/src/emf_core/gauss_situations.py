@@ -73,8 +73,8 @@ SITUATIONS: list[GaussSituation] = [
                       "Egy kis gömb két külső töltés között."),
         expectation=L("Field lines cross the sphere, so the local flux density is far from zero, "
                       "but every line that enters also leaves: Φ_E = 0.",
-                      "Az erővonalak átszelik a gömböt, így a helyi fluxussűrűség messze nem nulla, "
-                      "de minden belépő vonal ki is lép: Φ_E = 0."),
+                      "Az erővonalak átszelik a gömböt, így a helyi fluxussűrűség messze nem "
+                      "nulla, de minden belépő vonal ki is lép: Φ_E = 0."),
         scene=Scene(objects=[_q("q1", "q₊", 1, (-1.3, 0, 0)), _q("q2", "q₋", -1, (1.3, 0, 0))]),
         surfaces=[_s("S1", "Sphere", {"type": "sphere", "radius_m": 0.6})]),
     GaussSituation(

@@ -7,7 +7,9 @@ import { Badge, Button, Section } from '@/components/ui/controls'
 import { useT, type MessageKey } from '@/i18n'
 import { formatNumber, formatSI, formatVector, prettyUnit } from '@/lib/format'
 import { scenePhysics } from '@/sim/request'
+import type { FluxData } from '@/sim/gauss'
 import type { Simulation } from '@/sim/useSimulation'
+import { FluxResults } from './FluxResults'
 import { useSceneStore } from '@/state/sceneStore'
 import { useViewStore } from '@/state/viewStore'
 
@@ -349,12 +351,13 @@ function DerivedProducts({ sim }: { sim: Simulation }) {
   )
 }
 
-export function ResultsPanel({ sim }: { sim: Simulation }) {
+export function ResultsPanel({ sim, flux }: { sim: Simulation; flux?: FluxData }) {
   const { t, loc } = useT()
   const advanced = useViewStore((s) => s.level === 'advanced')
   const h = sim.result?.header
   return (
     <div>
+      {!sim.error && <FluxResults flux={flux} />}
       {sim.error && (
         <div className="border-b border-border p-3">
           <SimulationError error={sim.error} />

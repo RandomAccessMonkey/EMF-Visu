@@ -1846,6 +1846,294 @@ export interface components {
             /** Context */
             ctx?: Record<string, never>;
         };
+        /** CellResult */
+        CellResult: {
+            /** Index */
+            index: [
+                number,
+                number,
+                number
+            ];
+            /** Flux E V M */
+            flux_E_V_m: number;
+            /** Flux D C */
+            flux_D_C: number;
+            /** Enclosed C */
+            enclosed_C: number | null;
+            /** Volume Integral E V M */
+            volume_integral_E_V_m: number | null;
+            /** Volume Integral D C */
+            volume_integral_D_C: number | null;
+            /** Ambiguous Object Ids */
+            ambiguous_object_ids: string[];
+        };
+        /** ChargeFlux */
+        ChargeFlux: {
+            /** Object Id */
+            object_id: string;
+            /** Position M */
+            position_m: number[];
+            /** Charge C */
+            charge_C: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "inside" | "outside" | "boundary";
+            /** Signed Distance M */
+            signed_distance_m: number;
+            /** Near Boundary */
+            near_boundary: boolean;
+            /** Ray Agreement */
+            ray_agreement: number;
+            /** Flux E V M */
+            flux_E_V_m: number | null;
+            /** Flux D C */
+            flux_D_C: number | null;
+            /** Solid Angle Sr */
+            solid_angle_sr: number | null;
+            /** Volume Weight E V M */
+            volume_weight_E_V_m: number;
+            /** Volume Weight D C */
+            volume_weight_D_C: number;
+        };
+        /** Enclosed */
+        Enclosed: {
+            /** Positive Count */
+            positive_count: number;
+            /** Negative Count */
+            negative_count: number;
+            /** Positive C */
+            positive_C: number;
+            /** Negative C */
+            negative_C: number;
+            /** Total C */
+            total_C: number;
+            /** External Count */
+            external_count: number;
+            /** Boundary Count */
+            boundary_count: number;
+        };
+        /** MeshInfo */
+        MeshInfo: {
+            /** Resolution Id */
+            resolution_id: string;
+            /**
+             * Quality
+             * @enum {string}
+             */
+            quality: "preview" | "final";
+            /** Triangles */
+            triangles: number;
+            /** Vertices */
+            vertices: number;
+            /** Area M2 */
+            area_m2: number;
+            /** Volume M3 */
+            volume_m3: number;
+            /**
+             * Representation
+             * @enum {string}
+             */
+            representation: "exact" | "inscribed_polyhedron" | "custom";
+            /** Ideal Area M2 */
+            ideal_area_m2: number | null;
+            /** Ideal Volume M3 */
+            ideal_volume_m3: number | null;
+            /** Max Deviation M */
+            max_deviation_m: number | null;
+            /**
+             * Natural Orientation
+             * @enum {string}
+             */
+            natural_orientation: "outward" | "inward";
+            /** L Char M */
+            l_char_m: number;
+            /** Tolerance M */
+            tolerance_m: number;
+            /** Near Boundary M */
+            near_boundary_m: number;
+        };
+        /** SubdivisionResult */
+        SubdivisionResult: {
+            /** N */
+            n: [
+                number,
+                number,
+                number
+            ];
+            /** Cells */
+            cells: components["schemas"]["CellResult"][];
+            /** Shared Faces */
+            shared_faces: number;
+            /** Shared Face Max Abs Sum E V M */
+            shared_face_max_abs_sum_E_V_m: number;
+            /** Sum Cell Flux E V M */
+            sum_cell_flux_E_V_m: number;
+            /** Sum Cell Flux D C */
+            sum_cell_flux_D_C: number;
+            /** Outer Flux E V M */
+            outer_flux_E_V_m: number | null;
+            /** Cell Flux Difference E V M */
+            cell_flux_difference_E_V_m: number | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "ambiguous";
+            /** Sum Cell Volume Integral E V M */
+            sum_cell_volume_integral_E_V_m: number | null;
+            /** Parent Volume Integral E V M */
+            parent_volume_integral_E_V_m: number | null;
+            /** Ambiguous Object Ids */
+            ambiguous_object_ids: string[];
+            /**
+             * Face Order
+             * @default [
+             *       "-x",
+             *       "+x",
+             *       "-y",
+             *       "+y",
+             *       "-z",
+             *       "+z"
+             *     ]
+             */
+            face_order: string[];
+        };
+        /** SurfaceFlux */
+        SurfaceFlux: {
+            /** Surface Id */
+            surface_id: string;
+            /** Index */
+            index: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "invalid" | "boundary_ambiguous";
+            /**
+             * Errors
+             * @default []
+             */
+            errors: components["schemas"]["LocalizedText"][];
+            /**
+             * Orientation
+             * @enum {string}
+             */
+            orientation: "outward" | "inward";
+            /** Orientation Sign */
+            orientation_sign: number;
+            /** @default null */
+            mesh: components["schemas"]["MeshInfo"] | null;
+            /**
+             * Charges
+             * @default []
+             */
+            charges: components["schemas"]["ChargeFlux"][];
+            /** @default null */
+            enclosed: components["schemas"]["Enclosed"] | null;
+            /**
+             * Flux E V M
+             * @default null
+             */
+            flux_E_V_m: number | null;
+            /**
+             * Flux D C
+             * @default null
+             */
+            flux_D_C: number | null;
+            /**
+             * Flux E Uncertainty V M
+             * @default null
+             */
+            flux_E_uncertainty_V_m: number | null;
+            /**
+             * Flux D Uncertainty C
+             * @default null
+             */
+            flux_D_uncertainty_C: number | null;
+            /**
+             * Volume Integral E V M
+             * @default null
+             */
+            volume_integral_E_V_m: number | null;
+            /**
+             * Volume Integral D C
+             * @default null
+             */
+            volume_integral_D_C: number | null;
+            /**
+             * Difference E V M
+             * @default null
+             */
+            difference_E_V_m: number | null;
+            /**
+             * Difference D C
+             * @default null
+             */
+            difference_D_C: number | null;
+            /**
+             * Ideal Shape Disagreement Ids
+             * @default []
+             */
+            ideal_shape_disagreement_ids: string[];
+            /** @default null */
+            subdivision: components["schemas"]["SubdivisionResult"] | null;
+            /**
+             * Value Classes
+             * @default {}
+             */
+            value_classes: {
+                [key: string]: "exact_analytical" | "exact_for_represented_mesh" | "numerical_approximation" | "numerical_diagnostic" | "undefined";
+            };
+        };
+        /** FluxHeader */
+        FluxHeader: {
+            /**
+             * Format Version
+             * @default 1
+             * @constant
+             */
+            format_version: 1;
+            /**
+             * Kind
+             * @default gauss_flux
+             * @constant
+             */
+            kind: "gauss_flux";
+            /**
+             * Status
+             * @default ok
+             * @constant
+             */
+            status: "ok";
+            /** Solver Id */
+            solver_id: string;
+            /** Solver Version */
+            solver_version: string;
+            /**
+             * Quality
+             * @enum {string}
+             */
+            quality: "preview" | "final";
+            /**
+             * Approx Zero Relative Threshold
+             * @default 0.001
+             */
+            approx_zero_relative_threshold: number;
+            local_sampling: components["schemas"]["LocalizedText"];
+            surface_method: components["schemas"]["LocalizedText"];
+            volume_method: components["schemas"]["LocalizedText"];
+            /** Surfaces */
+            surfaces: components["schemas"]["SurfaceFlux"][];
+            /** Compute Time Ms */
+            compute_time_ms: number;
+            /**
+             * Arrays
+             * @default []
+             */
+            arrays: components["schemas"]["ArrayEntry"][];
+        };
     };
     responses: never;
     parameters: never;

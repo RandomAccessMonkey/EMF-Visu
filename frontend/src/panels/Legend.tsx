@@ -3,6 +3,9 @@ import { formatSI, prettyUnit } from '@/lib/format'
 import { cssGradient, type LogScale } from '@/render/colormaps'
 import type { Legend as LegendData } from '@/render/fieldImages'
 import type { SimulationResult } from '@/api/container'
+import { CLASS_COLORS, FLUX_COLORS } from '@/render/gaussColors'
+import type { FluxData } from '@/sim/gauss'
+import { useSceneStore } from '@/state/sceneStore'
 import { SOURCE_COLORS, ZERO_VECTOR_COLOR } from '@/render/CalculusLayers'
 import { ZERO_CSS } from '@/render/fieldImages'
 import { FIELD_LINE_COLOR, isNumericalEnd, LEVEL_COLORS, NUMERICAL_LINE_COLOR } from '@/render/FieldProducts'
@@ -47,7 +50,8 @@ const Swatch = ({ color, dashed }: { color: string; dashed?: boolean }) => (
   <span className="mr-1 inline-block w-4 align-middle" style={{ borderTop: `2px ${dashed ? 'dashed' : 'solid'} ${color}` }} />
 )
 
-export function Legend({ heat, arrows, result }: { heat: LegendData | null; arrows: LogScale | null; result: SimulationResult | undefined }) {
+export function Legend({ heat, arrows, result, flux }: { heat: LegendData | null; arrows: LogScale | null; result: SimulationResult | undefined; flux?: FluxData }) {
+  const surfaces = useSceneStore((s) => s.surfaces)
   const { t } = useT()
   const v = useViewStore()
   const lines = result?.header.field_lines
@@ -123,6 +127,32 @@ export function Legend({ heat, arrows, result }: { heat: LegendData | null; arro
             <span className="mr-1 inline-block h-2.5 w-2.5 rounded-full border-2 align-middle" style={{ borderColor: SOURCE_COLORS.negative }} />
             {t(v.mode === '2d' ? 'legend.sources2d' : 'legend.sources3d')}
           </p>
+        )}
+        {flux && surfaces.length > 0 && (
+          <div className="max-w-56 text-[10px] leading-snug text-muted" data-testid="gauss-legend">
+            <p className="font-semibold text-text">{t('legend.gaussTitle')}</p>
+            <p>
+              <span className="mr-1 inline-block h-2 w-2 rounded-sm" style={{ background: FLUX_COLORS.outward }} />E·n &gt; 0{' '}
+              <span className="mx-1 inline-block h-2 w-2 rounded-sm" style={{ background: FLUX_COLORS.inward }} />E·n &lt; 0{' '}
+              <span className="mx-1 inline-block h-2 w-2 rounded-sm" style={{ background: FLUX_COLORS.zero }} />{t('legend.approxZero', { thr: flux.header.approx_zero_relative_threshold })}
+            </p>
+            <p>
+              <span className="mr-1 inline-block h-2 w-2 rounded-full border-2 align-middle" style={{ borderColor: CLASS_COLORS.inside }} />{t('state.inside')}{' '}
+              <span className="mx-1 inline-block h-2 w-2 rounded-full border-2 align-middle" style={{ borderColor: CLASS_COLORS.outside }} />{t('state.outside')}{' '}
+              <span className="mx-1 inline-block h-2 w-2 rounded-full border-2 align-middle" style={{ borderColor: CLASS_COLORS.boundary }} />{t('state.boundary')}{' '}
+              <span className="mx-1 inline-block h-2 w-2 rounded-full border-2 align-middle" style={{ borderColor: CLASS_COLORS.near }} />{t('state.near')}
+            </p>
+            {v.mode === '2d' && <p className="text-accent/90">{t('legend.gauss2d')}</p>}
+            {flux.header.surfaces.map((s) => {
+              const sf = surfaces.find((x) => x.id === s.surface_id)
+              return (
+                <p key={s.surface_id} className="font-mono text-text/90">
+                  {sf?.name || s.surface_id}: Φ_E = {s.flux_E_V_m == null ? t('flux.undefined') : formatSI(s.flux_E_V_m, 'V·m', 4)}{' '}
+                  <span className="text-muted">({t(flux.header.quality === 'final' ? 'flux.final' : 'flux.preview')})</span>
+                </p>
+              )
+            })}
+          </div>
         )}
         <p className="flex items-center gap-3 text-[10px] text-muted">
           <span><span className="mr-1 inline-block h-2 w-2 rounded-full bg-positive" />q &gt; 0</span>

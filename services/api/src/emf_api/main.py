@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.openapi.utils import get_openapi
 
+from emf_core.solvers.analytical.gauss import FluxHeader
 from emf_worker.client import JobClient
 
 from . import __version__
@@ -35,6 +38,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     for r in (system.router, simulation.router, jobs.router, projects.router):
         app.include_router(r, prefix="/api/v1")
+
+    def openapi() -> dict[str, Any]:
+        """Standard schema plus FluxHeader, which travels inside the binary /flux response and
+        is therefore not referenced by any JSON route."""
+        if app.openapi_schema:
+            return app.openapi_schema
+        schema = get_openapi(title=app.title, version=app.version, routes=app.routes)
+        extra = FluxHeader.model_json_schema(ref_template="#/components/schemas/{model}",
+                                             mode="serialization")
+        comps = schema.setdefault("components", {}).setdefault("schemas", {})
+        for name, definition in extra.pop("$defs", {}).items():
+            comps.setdefault(name, definition)
+        comps["FluxHeader"] = extra
+        app.openapi_schema = schema
+        return schema
+
+    app.openapi = openapi  # type: ignore[method-assign]
     return app
 
 

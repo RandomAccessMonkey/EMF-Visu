@@ -48,3 +48,34 @@ describe('dipole editing (two real point charges under a group)', () => {
     expect(store().scene.objects.map((o) => o.name)).toEqual(['free'])
   })
 })
+
+describe('Gaussian surfaces in the scene store', () => {
+  beforeEach(() => {
+    store().load(EMPTY_SCENE)
+    store().setSurfaces([])
+  })
+
+  it('adds, edits, reverses and removes surfaces; selection excludes object selection', () => {
+    store().add('positive_charge', 'q')
+    store().addSurface('box', 'Box 1')
+    expect(store().selectedId).toBeNull()
+    const id = store().selectedSurfaceId!
+    expect(store().surfaces[0]).toMatchObject({ id: 'S1', orientation: 'outward', shape: { type: 'box' } })
+    store().updateSurface(id, { orientation: 'inward', subdivision: [2, 2, 2] })
+    expect(store().surfaces[0]).toMatchObject({ orientation: 'inward', subdivision: [2, 2, 2] })
+    store().setSurfaceDisplay(id, { opacity: 0.7 })
+    expect(store().surfaces[0]!.display).toMatchObject({ opacity: 0.7, visible: true })
+    store().select(store().scene.objects[0]!.id)
+    expect(store().selectedSurfaceId).toBeNull()
+    store().removeSurface(id)
+    expect(store().surfaces).toEqual([])
+  })
+
+  it('new surface ids are unique', () => {
+    store().addSurface('sphere', 'a')
+    store().addSurface('cube', 'b')
+    store().removeSurface('S1')
+    store().addSurface('cylinder', 'c')
+    expect(store().surfaces.map((s) => s.id).sort()).toEqual(['S2', 'S3'])
+  })
+})

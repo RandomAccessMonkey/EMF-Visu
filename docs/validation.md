@@ -6,7 +6,7 @@ or a verification status changes.
 ## How to run
 
 ```bash
-uv run pytest                      # physics, core, API, integration (134 tests)
+uv run pytest                      # physics, core, API, integration (203 tests)
 uv run ruff check . && uv run mypy packages/emf_core/src packages/emf_worker/src services/api/src
 cd frontend && pnpm typecheck && pnpm lint && pnpm test && pnpm build
 node tests/e2e/smoke.cjs http://localhost:8080      # against a running stack
@@ -117,6 +117,35 @@ a 2D finite-difference comparison tolerance below the method's own error; and a 
 | Probe (`test_api_phase2b1`) | values, units, scalar/vector kinds, statuses; distributional block at a charge; diagnostics only at ordinary points | exact / as above |
 | Registry (`test_phase2a_models`) | new equations present, statuses for 0 and 2 charges, full-wave, inhomogeneous and homogeneous media; usage "evaluated" vs "satisfied"; bilingual derivations; δ³ unit 1/m³ | exact |
 
+## Physics validation added in Phase 2B-2
+
+| Check (file) | Method | Tolerance |
+|---|---|---|
+| Built-in meshes (`test_gauss_surfaces`) | closed, manifold, consistently outward at both resolutions, triangle counts, rotated and translated; box/cube area and volume exact; sphere/cylinder smaller than ideal | exact / 1e-12 |
+| Mesh convergence | sphere deviation and volume deficit fall as (64/24)² between preview and final; cylinder deviation = r(1 − cos π/n) | 15 % / 1e-12 |
+| Reversal | reversed triangles are the original with v1, v2 swapped; signed volume negated | exact |
+| Invalid meshes | hole, inconsistent orientation, collinear (zero-area) face, pinched vertex, non-manifold edge, two components: each rejected with a bilingual reason | exact |
+| Invalid parameters | zero radius, negative size, subdivision on a sphere, > 8 per axis, bad indices, unknown orientation | exact |
+| Classification | rotated box: inside/outside and signed distances; inside the bounding box but outside the rotated box; tolerance formula; on-face, just outside, just inside; near-boundary highlight distance; points 1e-3 … 1e-9 m from mesh vertices and edges; on a vertex and on an edge → boundary; a point on the ideal sphere above a face is outside the inscribed mesh | exact |
+| Gauss's law (`test_gauss_flux`) | +q and −q in sphere, cube, box, cylinder (rotated): Φ_E = Q/ε₀ and Φ_D = Q within the reported uncertainty; volume integral = Q/ε₀ | reported uncertainty; 1e-15 |
+| Several charges; cancelling charges | Φ = ΣQ_enc/ε₀; counts and partial sums; Q_enc = 0 gives Φ = 0 with local contributions of both signs | as above |
+| External charges | three charges outside four shapes: each contributes 0 within 1e-12 Q/ε₀; E·n takes both signs; each external charge alone sends flux in and out | 1e-12 |
+| Same charges, seven surfaces of different shape and size | flux spread < 1e-12 Q/ε₀; local E·n distributions differ by > 2× in range | 1e-12 |
+| Orientation | inward = −outward for every shape, per triangle bitwise | exact |
+| D vs E | Φ_D = ε₀Φ_E, per triangle and D·n = ε₀E·n | 1e-12 |
+| Solid-angle formula vs direct quadrature | 40 × 40 Gauss–Legendre integration of E·n on each of the 12 box triangles | 1e-8 relative |
+| Preview vs final | a charge between the two inscribed meshes: preview mesh says outside with Φ = 0, final says inside with Φ = Q/ε₀; transported triangles equal each mesh; the ideal-shape disagreement is flagged only for preview | exact |
+| Geometric vs integration error | both resolutions satisfy Gauss within ~1e-9 Q/ε₀ while the mesh deviates from the sphere by > 1e-4 m | as stated |
+| Near and on the surface | charge 1e-2 … 1e-10 m inside or outside a face: correct side, Gauss holds; on the face: status boundary-ambiguous, flux and volume integral undefined | reported uncertainty |
+| Subdivision | on the actual face data every shared face pair sums to exactly 0; shared-face count; same triangles with opposite winding; corner order stable; Σ cell flux = outer flux; Σ cell volume integrals = parent; each cell obeys Gauss; (1,1,1) to (8,8,8) | exact / 1e-12 |
+| Charge on an internal cell plane | parent unaffected; status ambiguous; 8 touching cells unassigned; no cell sum reported | exact |
+| API (`test_api_gauss`) | value classes, units, mesh info, arrays; cache hit on display/name change, miss on centre, orientation, quality; boundary and invalid surfaces; unsupported scene; all nine situations; equation statuses and usage; projects with and without surfaces | exact |
+
+Floating-point uncertainty of the solid-angle sums observed: about 1e-12 relative for the box,
+2e-12 for the sphere at the final resolution. Two first-run test failures in this phase were
+test mistakes: a hole case below the schema's minimum triangle count, and absolute thresholds
+for per-triangle flux on a 3968-triangle mesh (and one cell-ownership assumption).
+
 ## Other automated tests
 
 - **Scene and solver support** (`tests/core`): rotation convention, parent transforms, eight
@@ -211,3 +240,21 @@ not evaluated, δ weights, zero distributional curl); ten further visual-only ac
 physics requests (four divergence/curl colour maps, curl vectors and their field, source markers
 off and on, volume vectors, volume scalars); off-slice ghost with Δz and its return; equations
 dialog for the new equations; finite-difference diagnostics at the advanced level.
+
+## Verification record for the Phase 2B-2 run
+
+| Item | Result |
+|---|---|
+| Python tests | 203 passed (134 from earlier phases, all unchanged and passing; 69 new) |
+| ruff, mypy (strict) | clean |
+| Frontend type-check (strict), lint, production build | clean |
+| Frontend unit tests | 43 passed (35 earlier, 8 new) |
+| End-to-end script, native stack | 35 of 35 checks passed, four runs |
+| End-to-end script, container stack rebuilt from this code | 35 of 35 checks passed, twice |
+
+New end-to-end checks cover: flux results with classes and units; seven visual-only surface
+actions with neither a field nor a flux request; charge movement, surface size and orientation
+each triggering a flux request with the expected result; subdivision with a charge on an
+internal plane (ambiguous) and with 4×3×3 cells (75 shared faces cancelling exactly); the patch
+inspector; preview-mesh requests during a drag followed by a final-mesh request; a charge on the
+surface; the same flux through three shapes; equation usage; project persistence; Hungarian.

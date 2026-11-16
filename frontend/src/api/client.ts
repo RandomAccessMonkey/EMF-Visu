@@ -1,6 +1,8 @@
 import { decodeContainer, type SimulationResult } from './container'
 import type {
   EquationsResponse,
+  GaussSituation,
+  GaussSurface,
   ErrorBody,
   Health,
   JobCreated,
@@ -94,10 +96,17 @@ export const api = {
     return (await res.json()) as ProbeResponse
   },
 
-  async equations(scene: Scene, signal?: AbortSignal): Promise<EquationsResponse> {
-    const res = await request('/equations/evaluate', json({ scene }, 'POST', signal))
+  async equations(scene: Scene, signal?: AbortSignal, surfaces: GaussSurface[] = []): Promise<EquationsResponse> {
+    const res = await request('/equations/evaluate', json({ scene, surfaces }, 'POST', signal))
     return (await res.json()) as EquationsResponse
   },
+
+  /** Flux through closed Gaussian surfaces (EMF1 container with a FluxHeader). */
+  async flux(body: unknown, signal?: AbortSignal): Promise<SimulationResult> {
+    const res = await request('/flux', json(body, 'POST', signal))
+    return decodeContainer(await res.arrayBuffer())
+  },
+  gaussSituations: () => get<GaussSituation[]>('/gauss/situations'),
 
   async createJob(scene: Scene, req: SolveRequest): Promise<JobCreated> {
     return (await (await request('/jobs', json({ scene, request: req }))).json()) as JobCreated
@@ -143,8 +152,9 @@ export const api = {
     scene: Scene,
     view: Record<string, unknown>,
     id?: string,
+    surfaces: GaussSurface[] = [],
   ): Promise<ProjectOut> {
-    const init = json({ name, scene, view }, id ? 'PUT' : 'POST')
+    const init = json({ name, scene, view, surfaces }, id ? 'PUT' : 'POST')
     return (await (await request(id ? `/projects/${id}` : '/projects', init)).json()) as ProjectOut
   },
   async deleteProject(id: string): Promise<void> {

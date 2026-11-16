@@ -16,6 +16,13 @@ async function main() {
   page.on('console', (m) => m.type() === 'error' && errors.push(m.text()))
   page.on('pageerror', (e) => errors.push(String(e)))
   page.on('request', (r) => r.url().endsWith('/api/v1/simulations') && solves++)
+  let fluxes = 0
+  const fluxQualities = []
+  page.on('request', (r) => {
+    if (!r.url().endsWith('/api/v1/flux')) return
+    fluxes++
+    try { fluxQualities.push(JSON.parse(r.postData()).flux.quality) } catch { /* ignore */ }
+  })
   const shot = async (name) => SHOTS && page.screenshot({ path: path.join(SHOTS, `${name}.png`) })
   const settled = () => page.getByText('Field is up to date').waitFor({ timeout: 15000 })
   const step = (msg) => console.log(`ok  ${msg}`)
@@ -34,9 +41,11 @@ async function main() {
   const quiet = async (label, action) => {
     await settled()
     const before = solves
+    const beforeFlux = fluxes
     await action()
     await page.waitForTimeout(700)
     assert.equal(solves, before, `visual-only change "${label}" triggered a physics request`)
+    assert.equal(fluxes, beforeFlux, `visual-only change "${label}" triggered a flux request`)
   }
   const solved = async (label, action) => {
     const before = solves
@@ -345,6 +354,176 @@ async function main() {
   const rowsNeg = page.getByRole('table', { name: 'Field-line start and end reasons' })
   assert.ok(await rowsNeg.getByRole('row', { name: /edge of the region.*negative charge \d+/ }).isVisible())
   step('presets 1–4 load; a lone negative charge receives its lines from the boundary')
+
+
+  // ---------------------------------------------------------------- Phase 2B-2: Gauss
+  const fluxSettled = () => page.waitForFunction(() => !document.body.innerText.includes('…'), null, { timeout: 15000 })
+  const fluxed = async (label, action) => {
+    const before = fluxes
+    await action()
+    const deadline = Date.now() + 10000
+    while (fluxes === before && Date.now() < deadline) await page.waitForTimeout(50)
+    assert.ok(fluxes > before, `change "${label}" did not trigger a flux request`)
+    await page.waitForTimeout(400)
+    await settled()
+  }
+  const fluxTable = () => page.getByRole('table', { name: 'Flux results' })
+  const fluxRow = (label) => fluxTable().getByRole('row', { name: label })
+  await page.getByRole('tab', { name: 'Gauss' }).click()
+  await fluxed('load situation 5', () => page.getByRole('button', { name: /One enclosed charge plus several external charges/ }).click())
+  const explanation = page.getByTestId('gauss-explanation')
+  await explanation.getByText('This surface encloses 1 positive and 0 negative charge(s): Q_enc = 1.00 nC.').waitFor()
+  assert.ok(await explanation.getByText(/3 external charge\(s\) change the field/).isVisible())
+  await page.getByRole('tab', { name: 'Results' }).click()
+  await fluxRow(/Φ_E = ∮ E·dA\s*112\.941 V·m\s*Exact for the triangulated surface/).waitFor()
+  assert.ok(await fluxRow(/Φ_D = ∮ D·dA\s*1000\.00 pC/).isVisible())
+  assert.ok(await fluxRow(/Volume integral ∫ ∇·E dV\s*112\.941 V·m\s*Exact analytical/).isVisible())
+  assert.ok(await fluxRow(/External charges\s*3/).isVisible())
+  assert.ok(await page.getByText('Final', { exact: true }).first().isVisible())
+  const contributions = page.getByRole('table', { name: 'Charges and their contributions' })
+  assert.equal(await contributions.getByText('outside').count(), 3)
+  await shot('11-gauss-results')
+  step('Gauss: enclosed + external charges; Φ_E = Q/ε₀ and the volume integral agree; external charges counted')
+
+  // Visual-only surface settings: no field and no flux request.
+  await page.getByRole('tab', { name: 'Gauss' }).click()
+  await quiet('surface opacity', async () => { await page.getByLabel('Opacity').focus(); await page.keyboard.press('ArrowRight') })
+  await quiet('surface normals', () => page.getByLabel('Show normals').click())
+  await quiet('colour by flux off', () => page.getByLabel('Colour by local flux density E·n').click())
+  await quiet('colour by flux on', () => page.getByLabel('Colour by local flux density E·n').click())
+  await quiet('surface hidden', () => page.getByLabel('Show surface').click())
+  await quiet('surface shown', () => page.getByLabel('Show surface').click())
+  await quiet('rename surface', () => page.getByLabel('Surface name').fill('Gauss box'))
+  step('surface opacity, normals, colouring, visibility and name are visual-only')
+
+  // Physical changes: charge position, surface size, orientation.
+  await rows().first().click() // q₁, the enclosed charge
+  await page.getByRole('tab', { name: 'Parameters' }).click()
+  await fluxed('move charge outside', () => page.getByLabel('Position x').fill('0.8'))
+  await page.getByRole('tab', { name: 'Gauss' }).click()
+  await explanation.getByText('This surface encloses 0 positive and 0 negative charge(s): Q_enc = 0 C.').waitFor()
+  await page.getByRole('tab', { name: 'Results' }).click()
+  assert.ok(await fluxRow(/Enclosed charge Q_enc\s*0 C/).isVisible())
+  step('moving the charge out of the box changes Q_enc and the flux to 0')
+  await page.getByRole('tab', { name: 'Gauss' }).click()
+  await page.getByRole('button', { name: /^Gauss box Φ_E/ }).click()
+  await fluxed('enlarge box', () => page.getByLabel('Size x').fill('2'))
+  await page.getByRole('tab', { name: 'Results' }).click()
+  await fluxRow(/Φ_E = ∮ E·dA\s*112\.941 V·m/).waitFor()
+  step('enlarging the surface re-encloses the charge: Φ_E = Q/ε₀ again')
+  await page.getByRole('tab', { name: 'Gauss' }).click()
+  await fluxed('reverse orientation', () => page.getByRole('button', { name: 'Reverse' }).click())
+  await page.getByRole('tab', { name: 'Results' }).click()
+  await fluxRow(/Φ_E = ∮ E·dA\s*-112\.941 V·m/).waitFor()
+  assert.ok(await fluxRow(/Orientation\s*inward normals \(reversed\)/).isVisible())
+  await page.getByRole('tab', { name: 'Gauss' }).click()
+  // Back to outward: a state already computed, served from the cache.
+  await page.getByRole('button', { name: 'Reverse' }).click()
+  await page.getByText('outward normals', { exact: true }).first().waitFor()
+  step('reversing the orientation flips the sign of the flux')
+
+  // Subdivision: shared faces cancel; per-cell face fluxes shown in 3D.
+  await fluxed('subdivide', () => page.getByLabel('Subdivide into cells').click())
+  await page.getByRole('tab', { name: 'Results' }).click()
+  const subd = page.getByTestId('subdivision-results')
+  // q₁ sits at y = z = 0, on internal planes of the 4×4×4 grid: no cell owns it.
+  await subd.getByText('cell-wise assignment ambiguous').waitFor()
+  assert.ok(await subd.getByText(/q₁ lies on an internal cell boundary/).isVisible())
+  assert.ok(await subd.getByRole('row', { name: /∫_V ∇·E dV\s*112\.941 V·m/ }).isVisible())
+  await page.getByRole('tab', { name: 'Gauss' }).click()
+  await fluxed('3 cells along y', () => page.getByLabel('Cells along y').selectOption('3'))
+  await fluxed('3 cells along z', () => page.getByLabel('Cells along z').selectOption('3'))
+  await page.getByRole('tab', { name: 'Results' }).click()
+  await subd.getByText('cell-wise comparison valid').waitFor()
+  assert.ok(await subd.getByRole('row', { name: /Shared internal faces\s*75/ }).isVisible())
+  assert.ok(await subd.getByRole('row', { name: /Σ ∫_cell ∇·E dV\s*112\.941 V·m/ }).isVisible())
+  assert.ok(await subd.getByRole('row', { name: /Largest \|Φ_A \+ Φ_B\| on a shared face\s*0 V·m/ }).isVisible())
+  await page.getByRole('radio', { name: '3D' }).click()
+  await settled()
+  await page.getByTestId('cell-face-label').nth(5).waitFor()
+  assert.equal(await page.getByTestId('cell-face-label').count(), 6)
+  await page.waitForTimeout(800)
+  await shot('12-gauss-subdivision-3d')
+  step('subdivision: a charge on an internal plane is ambiguous; with 4×3×3 cells 75 shared faces cancel exactly')
+
+  // Patch inspection: click the selected surface in 3D.
+  await page.getByRole('tab', { name: 'Gauss' }).click()
+  await page.getByLabel('Subdivide into cells').click()
+  await settled()
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+  await page.getByRole('tab', { name: 'Results' }).click()
+  await page.getByTestId('patch-inspector').waitFor({ timeout: 10000 })
+  assert.ok(await page.getByTestId('patch-inspector').getByText(/integrated over the triangle/).isVisible())
+  assert.ok(await page.getByTestId('patch-inspector').getByText(/at the centroid/).first().isVisible())
+  step('a surface patch shows pointwise E·n at its centroid and its integrated flux separately')
+
+  // Preview while dragging, final after release (2D charge drag).
+  await page.getByRole('radio', { name: '2D' }).click()
+  await settled()
+  await page.getByRole('tab', { name: 'Gauss' }).click()
+  await fluxed('situation 1', () => page.getByRole('button', { name: /One positive charge inside a sphere/ }).click())
+  fluxQualities.length = 0
+  await page.mouse.move(cx, cy)
+  await page.mouse.down()
+  for (let k = 1; k <= 8; k++) {
+    await page.mouse.move(cx + 0.05 * k * zoom, cy, { steps: 2 })
+    await page.waitForTimeout(60)
+  }
+  await page.mouse.up()
+  await settled()
+  await page.waitForTimeout(800)
+  assert.ok(fluxQualities.includes('preview'), `no preview flux request during drag: ${fluxQualities}`)
+  assert.equal(fluxQualities[fluxQualities.length - 1], 'final')
+  assert.ok(await page.getByText('Final mesh resolution.').isVisible())
+  assert.ok(await page.getByTestId('gauss-legend').getByText(/2D: lines are where the 3D surfaces cross this slice/).isVisible())
+  await shot('13-gauss-2d-cross-section')
+  step('dragging uses the preview mesh; the final mesh result follows on release; 2D shows the cross-section')
+
+  // A charge on the surface; the same charges in three shapes.
+  await fluxed('situation 8', () => page.getByRole('button', { name: /A charge exactly on the surface/ }).click())
+  await explanation.getByText(/lie exactly on the surface/).waitFor()
+  await page.getByRole('tab', { name: 'Results' }).click()
+  assert.ok(await fluxRow(/Φ_E = ∮ E·dA\s*undefined\s*Undefined \(charge on boundary\)/).isVisible())
+  assert.ok(await page.getByRole('alert').getByText(/A charge lies on this surface/).isVisible())
+  step('a charge exactly on the surface: classification "on the surface", flux undefined')
+  await page.getByRole('tab', { name: 'Gauss' }).click()
+  await fluxed('situation 9', () => page.getByRole('button', { name: /Same enclosed charges: sphere, box and cylinder/ }).click())
+  const list = page.getByRole('list', { name: 'Gaussian surfaces' })
+  await list.getByText(/Φ_E = 56\.4705 V·m/).nth(2).waitFor()
+  assert.equal(await list.getByText(/Φ_E = 56\.4705 V·m/).count(), 3)
+  step('sphere, box and cylinder around the same charges give the same flux')
+
+  // Equations reflect the surfaces.
+  await page.getByRole('tab', { name: 'Equations' }).click()
+  await page.getByRole('button', { name: /Gauss's law \(closed surface, E\)/ }).click()
+  assert.ok(await page.getByRole('dialog').getByText('Both sides computed and compared').isVisible())
+  await page.keyboard.press('Escape')
+  step('equation registry: Gauss and divergence-theorem equations marked as computed and compared')
+
+  // Saved with the project.
+  const gname = `gauss ${Date.now()}`
+  await page.getByRole('button', { name: 'Projects' }).click()
+  await page.getByLabel('Project name').fill(gname)
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await page.getByText(gname).first().waitFor()
+  await page.reload()
+  await page.getByRole('button', { name: 'Projects' }).click()
+  await page.locator('li', { hasText: gname }).getByRole('button', { name: 'Load' }).click()
+  await page.getByRole('tab', { name: 'Gauss' }).click()
+  await list.getByText(/Φ_E = 56\.4705 V·m/).nth(2).waitFor({ timeout: 15000 })
+  await page.getByRole('button', { name: 'Projects' }).click()
+  await page.locator('li', { hasText: gname }).getByRole('button', { name: 'Delete' }).click()
+  await page.keyboard.press('Escape')
+  step('Gaussian surfaces are saved and restored with the project')
+
+  // Hungarian.
+  await page.getByRole('radio', { name: 'HU' }).click()
+  await page.getByRole('tab', { name: 'Eredmények' }).click()
+  await page.getByText('Fluxus a Gauss-felületen át').waitFor()
+  assert.ok(await page.getByText('Egzakt a háromszögelt felületre').first().isVisible())
+  await shot('14-gauss-hungarian')
+  await page.getByRole('radio', { name: 'EN' }).click()
+  step('Gauss results in Hungarian')
 
   assert.deepEqual(errors, [], 'browser console errors')
   step('no browser console errors')

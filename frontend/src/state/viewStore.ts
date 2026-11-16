@@ -67,6 +67,9 @@ interface ViewState extends ViewSettings {
   tool: 'select' | 'probe'
   transformMode: 'translate' | 'rotate' | 'scale'
   dragging: boolean
+  /** Selected triangle of the selected Gaussian surface, and selected subdivision cell. */
+  selectedPatch: number | null
+  selectedCell: number | null
   probePoint: Vec3 | null
   cameraResetToken: number
   set: (patch: Partial<ViewState>) => void
@@ -90,6 +93,8 @@ export const useViewStore = create<ViewState>((set, get) => ({
   tool: 'select',
   transformMode: 'translate',
   dragging: false,
+  selectedPatch: null,
+  selectedCell: null,
   probePoint: null,
   cameraResetToken: 0,
   set: (patch) => {

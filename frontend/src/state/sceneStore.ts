@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Domain, PrimitiveType, Scene, SceneObject, Transform } from '@/api/types'
+import type { Domain, GaussSurface, PrimitiveType, Scene, SceneObject, SurfaceDisplay, Transform } from '@/api/types'
 
 export const EMPTY_SCENE: Scene = {
   schema_version: 1,
@@ -89,13 +89,51 @@ export function dipoleInfo(scene: Scene, groupId: string): DipoleInfo | null {
   }
 }
 
+export type SurfaceKind = 'sphere' | 'cube' | 'box' | 'cylinder'
+
+export const DEFAULT_DISPLAY: SurfaceDisplay = { visible: true, opacity: 0.3, show_normals: false, color_by_flux: true }
+
+const SURFACE_DEFAULTS: Record<SurfaceKind, GaussSurface['shape']> = {
+  sphere: { type: 'sphere', radius_m: 0.8 },
+  cube: { type: 'cube', side_m: 1.0 },
+  box: { type: 'box', size_m: [1.2, 0.8, 1.0] },
+  cylinder: { type: 'cylinder', radius_m: 0.6, height_m: 1.2 },
+}
+
+export function makeSurface(existing: GaussSurface[], kind: SurfaceKind, name: string): GaussSurface {
+  const used = new Set(existing.map((s) => s.id))
+  let n = existing.length + 1
+  while (used.has(`S${n}`)) n++
+  return {
+    id: `S${n}`,
+    name,
+    shape: SURFACE_DEFAULTS[kind],
+    center_m: [0, 0, 0],
+    rotation_euler_xyz_rad: [0, 0, 0],
+    orientation: 'outward',
+    subdivision: null,
+    display: { ...DEFAULT_DISPLAY },
+  }
+}
+
+export const displayOf = (s: GaussSurface): SurfaceDisplay => s.display ?? DEFAULT_DISPLAY
+
 interface SceneState {
   scene: Scene
   selectedId: string | null
+  /** Gaussian surfaces: mathematical integration surfaces, not part of the field model. */
+  surfaces: GaussSurface[]
+  selectedSurfaceId: string | null
   projectId: string | null
   projectName: string
   presetId: string | null
   select: (id: string | null) => void
+  selectSurface: (id: string | null) => void
+  addSurface: (kind: SurfaceKind, name: string) => void
+  updateSurface: (id: string, patch: Partial<GaussSurface>) => void
+  setSurfaceDisplay: (id: string, patch: Partial<SurfaceDisplay>) => void
+  removeSurface: (id: string) => void
+  setSurfaces: (surfaces: GaussSurface[]) => void
   add: (kind: NewObjectKind, name: string) => void
   addDipole: (name: string) => void
   setDipole: (groupId: string, charge_C: number, separation_m: number) => void
@@ -115,10 +153,25 @@ const mapObject = (scene: Scene, id: string, f: (o: SceneObject) => SceneObject)
 export const useSceneStore = create<SceneState>((set) => ({
   scene: EMPTY_SCENE,
   selectedId: null,
+  surfaces: [],
+  selectedSurfaceId: null,
   projectId: null,
   projectName: '',
   presetId: null,
-  select: (id) => set({ selectedId: id }),
+  // Selecting an object and selecting a surface are mutually exclusive (one gizmo at a time).
+  select: (id) => set(id ? { selectedId: id, selectedSurfaceId: null } : { selectedId: null }),
+  selectSurface: (id) => set(id ? { selectedSurfaceId: id, selectedId: null } : { selectedSurfaceId: null }),
+  addSurface: (kind, name) =>
+    set((s) => {
+      const surface = makeSurface(s.surfaces, kind, name)
+      return { surfaces: [...s.surfaces, surface], selectedSurfaceId: surface.id, selectedId: null }
+    }),
+  updateSurface: (id, patch) => set((s) => ({ surfaces: s.surfaces.map((x) => (x.id === id ? { ...x, ...patch } : x)) })),
+  setSurfaceDisplay: (id, patch) =>
+    set((s) => ({ surfaces: s.surfaces.map((x) => (x.id === id ? { ...x, display: { ...displayOf(x), ...patch } } : x)) })),
+  removeSurface: (id) =>
+    set((s) => ({ surfaces: s.surfaces.filter((x) => x.id !== id), selectedSurfaceId: s.selectedSurfaceId === id ? null : s.selectedSurfaceId })),
+  setSurfaces: (surfaces) => set({ surfaces, selectedSurfaceId: surfaces[0]?.id ?? null }),
   add: (kind, name) =>
     set((s) => {
       const obj = makeObject(s.scene, kind, name)

@@ -275,6 +275,11 @@ def test_shared_internal_faces_cancel_exactly_on_the_actual_face_data():
                 assert face[ci, f] + face[cj, opposite] == 0.0  # bitwise cancellation
                 pairs += 1
     assert pairs == 2 * d.shared_faces and d.shared_face_max_abs_sum_E_V_m == 0.0
+    # Cell corners in grid order m = dx + 2dy + 4dz: corner 7 of a cell is corner 0 of its
+    # diagonal neighbour, and neighbouring cells share their common corners.
+    corners = arrays["surf0.cells.corners"]
+    assert np.array_equal(corners[0, 1], corners[(1 * 4 + 0) * 2 + 0, 0])  # (0,0,0) +x neighbour
+    assert np.array_equal(corners[0, 7], corners[(1 * 4 + 1) * 2 + 1, 0])
     assert d.shared_faces == (2 * 4 * 2) + (3 * 3 * 2) + (3 * 4 * 1)
     # The shared faces are made of the same triangles with opposite winding.
     verts, cells, faces = geo.grid_box_cells((1.2, 1.0, 0.8), (3, 4, 2))

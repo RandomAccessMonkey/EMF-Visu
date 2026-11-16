@@ -11,6 +11,8 @@ import { ArrowField } from './ArrowField'
 import type { LogScale } from './colormaps'
 import { CurlGlyphs, SourceMarkers, VolumeScalars } from './CalculusLayers'
 import { Contours, FieldLines, Isosurfaces } from './FieldProducts'
+import { GaussLayer } from './GaussLayer'
+import type { FluxData } from '@/sim/gauss'
 import { magnitudes, sampling, type HeatImage } from './fieldImages'
 import { SceneObjects } from './SceneObjects'
 
@@ -229,12 +231,17 @@ function Invalidator({ deps }: { deps: unknown[] }) {
 }
 
 interface Props {
+  flux?: FluxData | undefined
   result: SimulationResult | undefined
   image: HeatImage | null
   arrowScale: LogScale | null
 }
 
-export function Viewport({ result, image, arrowScale }: Props) {
+export function Viewport({ result, image, arrowScale, flux }: Props) {
+  const surfaces = useSceneStore((s) => s.surfaces)
+  const selectedSurfaceId = useSceneStore((s) => s.selectedSurfaceId)
+  const patch = useViewStore((s) => s.selectedPatch)
+  const cell = useViewStore((s) => s.selectedCell)
   const scene = useSceneStore((s) => s.scene)
   const selectedId = useSceneStore((s) => s.selectedId)
   const v = useViewStore()
@@ -253,14 +260,19 @@ export function Viewport({ result, image, arrowScale }: Props) {
       frameloop="demand"
       dpr={[1, 2]}
       gl={{ antialias: true, preserveDrawingBuffer: true }}
-      onPointerMissed={() => v.tool === 'select' && useSceneStore.getState().select(null)}
+      onPointerMissed={() => {
+        if (v.tool !== 'select') return
+        useSceneStore.getState().select(null)
+        useSceneStore.getState().selectSurface(null)
+        useViewStore.getState().set({ selectedPatch: null })
+      }}
       style={{ cursor: v.tool === 'probe' ? 'crosshair' : 'default', touchAction: 'none' }}
     >
       <color attach="background" args={['#070b14']} />
       <ambientLight intensity={1.4} />
       <directionalLight position={[3, -4, 6]} intensity={1.6} />
       <Cameras domain={domain} />
-      <Invalidator deps={[scene, selectedId, v.mode, v.plane, v.offset, v.probePoint, v.showGrid, v.tool, result, v.showFieldLines, v.lineDensity, v.showContours, v.showIsosurfaces, v.showCurl, v.curlField, v.showSources, v.showVolumeScalars, v.heatmap]} />
+      <Invalidator deps={[scene, selectedId, v.mode, v.plane, v.offset, v.probePoint, v.showGrid, v.tool, result, v.showFieldLines, v.lineDensity, v.showContours, v.showIsosurfaces, v.showCurl, v.curlField, v.showSources, v.showVolumeScalars, v.heatmap, flux, surfaces, selectedSurfaceId, patch, cell]} />
       {v.mode === '3d' && <DomainFrame domain={domain} />}
       {v.showGrid && <GridAxes domain={domain} />}
       {grid && <SlicePlane image={image} grid={grid} visible={sliceVisible && v.heatmap !== 'none'} />}
@@ -277,6 +289,7 @@ export function Viewport({ result, image, arrowScale }: Props) {
       {result && v.showCurl && v.mode === '3d' && v.showLattice && <CurlGlyphs result={result} id="vol" field={v.curlField} />}
       {result && v.mode === '3d' && v.showVolumeScalars && v.heatmap !== 'none' && <VolumeScalars result={result} kind={v.heatmap} />}
       {result && v.showSources && <SourceMarkers result={result} size={marker} />}
+      <GaussLayer flux={flux} marker={marker} />
       <SceneObjects marker={marker} offSlice={offSlice} />
       <ProbeMarker size={marker} />
     </Canvas>

@@ -4475,6 +4475,765 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "CellResult": {
+        "properties": {
+          "index": {
+            "maxItems": 3,
+            "minItems": 3,
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Index",
+            "type": "array"
+          },
+          "flux_E_V_m": {
+            "title": "Flux E V M",
+            "type": "number"
+          },
+          "flux_D_C": {
+            "title": "Flux D C",
+            "type": "number"
+          },
+          "enclosed_C": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enclosed C"
+          },
+          "volume_integral_E_V_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volume Integral E V M"
+          },
+          "volume_integral_D_C": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volume Integral D C"
+          },
+          "ambiguous_object_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Ambiguous Object Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "index",
+          "flux_E_V_m",
+          "flux_D_C",
+          "enclosed_C",
+          "volume_integral_E_V_m",
+          "volume_integral_D_C",
+          "ambiguous_object_ids"
+        ],
+        "title": "CellResult",
+        "type": "object"
+      },
+      "ChargeFlux": {
+        "properties": {
+          "object_id": {
+            "title": "Object Id",
+            "type": "string"
+          },
+          "position_m": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Position M",
+            "type": "array"
+          },
+          "charge_C": {
+            "title": "Charge C",
+            "type": "number"
+          },
+          "state": {
+            "enum": [
+              "inside",
+              "outside",
+              "boundary"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "signed_distance_m": {
+            "title": "Signed Distance M",
+            "type": "number"
+          },
+          "near_boundary": {
+            "title": "Near Boundary",
+            "type": "boolean"
+          },
+          "ray_agreement": {
+            "title": "Ray Agreement",
+            "type": "integer"
+          },
+          "flux_E_V_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flux E V M"
+          },
+          "flux_D_C": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flux D C"
+          },
+          "solid_angle_sr": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Solid Angle Sr"
+          },
+          "volume_weight_E_V_m": {
+            "title": "Volume Weight E V M",
+            "type": "number"
+          },
+          "volume_weight_D_C": {
+            "title": "Volume Weight D C",
+            "type": "number"
+          }
+        },
+        "required": [
+          "object_id",
+          "position_m",
+          "charge_C",
+          "state",
+          "signed_distance_m",
+          "near_boundary",
+          "ray_agreement",
+          "flux_E_V_m",
+          "flux_D_C",
+          "solid_angle_sr",
+          "volume_weight_E_V_m",
+          "volume_weight_D_C"
+        ],
+        "title": "ChargeFlux",
+        "type": "object"
+      },
+      "Enclosed": {
+        "properties": {
+          "positive_count": {
+            "title": "Positive Count",
+            "type": "integer"
+          },
+          "negative_count": {
+            "title": "Negative Count",
+            "type": "integer"
+          },
+          "positive_C": {
+            "title": "Positive C",
+            "type": "number"
+          },
+          "negative_C": {
+            "title": "Negative C",
+            "type": "number"
+          },
+          "total_C": {
+            "title": "Total C",
+            "type": "number"
+          },
+          "external_count": {
+            "title": "External Count",
+            "type": "integer"
+          },
+          "boundary_count": {
+            "title": "Boundary Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "positive_count",
+          "negative_count",
+          "positive_C",
+          "negative_C",
+          "total_C",
+          "external_count",
+          "boundary_count"
+        ],
+        "title": "Enclosed",
+        "type": "object"
+      },
+      "MeshInfo": {
+        "properties": {
+          "resolution_id": {
+            "title": "Resolution Id",
+            "type": "string"
+          },
+          "quality": {
+            "enum": [
+              "preview",
+              "final"
+            ],
+            "title": "Quality",
+            "type": "string"
+          },
+          "triangles": {
+            "title": "Triangles",
+            "type": "integer"
+          },
+          "vertices": {
+            "title": "Vertices",
+            "type": "integer"
+          },
+          "area_m2": {
+            "title": "Area M2",
+            "type": "number"
+          },
+          "volume_m3": {
+            "title": "Volume M3",
+            "type": "number"
+          },
+          "representation": {
+            "enum": [
+              "exact",
+              "inscribed_polyhedron",
+              "custom"
+            ],
+            "title": "Representation",
+            "type": "string"
+          },
+          "ideal_area_m2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ideal Area M2"
+          },
+          "ideal_volume_m3": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ideal Volume M3"
+          },
+          "max_deviation_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Deviation M"
+          },
+          "natural_orientation": {
+            "enum": [
+              "outward",
+              "inward"
+            ],
+            "title": "Natural Orientation",
+            "type": "string"
+          },
+          "l_char_m": {
+            "title": "L Char M",
+            "type": "number"
+          },
+          "tolerance_m": {
+            "title": "Tolerance M",
+            "type": "number"
+          },
+          "near_boundary_m": {
+            "title": "Near Boundary M",
+            "type": "number"
+          }
+        },
+        "required": [
+          "resolution_id",
+          "quality",
+          "triangles",
+          "vertices",
+          "area_m2",
+          "volume_m3",
+          "representation",
+          "ideal_area_m2",
+          "ideal_volume_m3",
+          "max_deviation_m",
+          "natural_orientation",
+          "l_char_m",
+          "tolerance_m",
+          "near_boundary_m"
+        ],
+        "title": "MeshInfo",
+        "type": "object"
+      },
+      "SubdivisionResult": {
+        "properties": {
+          "n": {
+            "maxItems": 3,
+            "minItems": 3,
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "N",
+            "type": "array"
+          },
+          "cells": {
+            "items": {
+              "$ref": "#/components/schemas/CellResult"
+            },
+            "title": "Cells",
+            "type": "array"
+          },
+          "shared_faces": {
+            "title": "Shared Faces",
+            "type": "integer"
+          },
+          "shared_face_max_abs_sum_E_V_m": {
+            "title": "Shared Face Max Abs Sum E V M",
+            "type": "number"
+          },
+          "sum_cell_flux_E_V_m": {
+            "title": "Sum Cell Flux E V M",
+            "type": "number"
+          },
+          "sum_cell_flux_D_C": {
+            "title": "Sum Cell Flux D C",
+            "type": "number"
+          },
+          "outer_flux_E_V_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outer Flux E V M"
+          },
+          "cell_flux_difference_E_V_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cell Flux Difference E V M"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "ambiguous"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "sum_cell_volume_integral_E_V_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sum Cell Volume Integral E V M"
+          },
+          "parent_volume_integral_E_V_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Volume Integral E V M"
+          },
+          "ambiguous_object_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Ambiguous Object Ids",
+            "type": "array"
+          },
+          "face_order": {
+            "default": [
+              "-x",
+              "+x",
+              "-y",
+              "+y",
+              "-z",
+              "+z"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "title": "Face Order",
+            "type": "array"
+          }
+        },
+        "required": [
+          "n",
+          "cells",
+          "shared_faces",
+          "shared_face_max_abs_sum_E_V_m",
+          "sum_cell_flux_E_V_m",
+          "sum_cell_flux_D_C",
+          "outer_flux_E_V_m",
+          "cell_flux_difference_E_V_m",
+          "status",
+          "sum_cell_volume_integral_E_V_m",
+          "parent_volume_integral_E_V_m",
+          "ambiguous_object_ids"
+        ],
+        "title": "SubdivisionResult",
+        "type": "object"
+      },
+      "SurfaceFlux": {
+        "properties": {
+          "surface_id": {
+            "title": "Surface Id",
+            "type": "string"
+          },
+          "index": {
+            "title": "Index",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "invalid",
+              "boundary_ambiguous"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "errors": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/LocalizedText"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "orientation": {
+            "enum": [
+              "outward",
+              "inward"
+            ],
+            "title": "Orientation",
+            "type": "string"
+          },
+          "orientation_sign": {
+            "title": "Orientation Sign",
+            "type": "integer"
+          },
+          "mesh": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MeshInfo"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "charges": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ChargeFlux"
+            },
+            "title": "Charges",
+            "type": "array"
+          },
+          "enclosed": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Enclosed"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "flux_E_V_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Flux E V M"
+          },
+          "flux_D_C": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Flux D C"
+          },
+          "flux_E_uncertainty_V_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Flux E Uncertainty V M"
+          },
+          "flux_D_uncertainty_C": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Flux D Uncertainty C"
+          },
+          "volume_integral_E_V_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Volume Integral E V M"
+          },
+          "volume_integral_D_C": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Volume Integral D C"
+          },
+          "difference_E_V_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Difference E V M"
+          },
+          "difference_D_C": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Difference D C"
+          },
+          "ideal_shape_disagreement_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Ideal Shape Disagreement Ids",
+            "type": "array"
+          },
+          "subdivision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SubdivisionResult"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "value_classes": {
+            "additionalProperties": {
+              "enum": [
+                "exact_analytical",
+                "exact_for_represented_mesh",
+                "numerical_approximation",
+                "numerical_diagnostic",
+                "undefined"
+              ],
+              "type": "string"
+            },
+            "default": {},
+            "title": "Value Classes",
+            "type": "object"
+          }
+        },
+        "required": [
+          "surface_id",
+          "index",
+          "status",
+          "orientation",
+          "orientation_sign"
+        ],
+        "title": "SurfaceFlux",
+        "type": "object"
+      },
+      "FluxHeader": {
+        "properties": {
+          "format_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Format Version",
+            "type": "integer"
+          },
+          "kind": {
+            "const": "gauss_flux",
+            "default": "gauss_flux",
+            "title": "Kind",
+            "type": "string"
+          },
+          "status": {
+            "const": "ok",
+            "default": "ok",
+            "title": "Status",
+            "type": "string"
+          },
+          "solver_id": {
+            "title": "Solver Id",
+            "type": "string"
+          },
+          "solver_version": {
+            "title": "Solver Version",
+            "type": "string"
+          },
+          "quality": {
+            "enum": [
+              "preview",
+              "final"
+            ],
+            "title": "Quality",
+            "type": "string"
+          },
+          "approx_zero_relative_threshold": {
+            "default": 0.001,
+            "title": "Approx Zero Relative Threshold",
+            "type": "number"
+          },
+          "local_sampling": {
+            "$ref": "#/components/schemas/LocalizedText"
+          },
+          "surface_method": {
+            "$ref": "#/components/schemas/LocalizedText"
+          },
+          "volume_method": {
+            "$ref": "#/components/schemas/LocalizedText"
+          },
+          "surfaces": {
+            "items": {
+              "$ref": "#/components/schemas/SurfaceFlux"
+            },
+            "title": "Surfaces",
+            "type": "array"
+          },
+          "compute_time_ms": {
+            "title": "Compute Time Ms",
+            "type": "number"
+          },
+          "arrays": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ArrayEntry"
+            },
+            "title": "Arrays",
+            "type": "array"
+          }
+        },
+        "required": [
+          "solver_id",
+          "solver_version",
+          "quality",
+          "local_sampling",
+          "surface_method",
+          "volume_method",
+          "surfaces",
+          "compute_time_ms"
+        ],
+        "title": "FluxHeader",
+        "type": "object"
       }
     }
   }

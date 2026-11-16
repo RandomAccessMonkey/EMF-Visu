@@ -272,7 +272,6 @@ def _subdivide(surface: geo.GaussSurface, ids: list[str], positions: Arr, charge
             t_idx = geo.reverse(t_idx)
         tri = world[t_idx]
         all_tri.append(tri)
-        corners[ci] = np.unique(world[t_idx].reshape(-1, 3), axis=0)[:8]
         dist = geo.point_mesh_distance(positions, tri) if len(ids) else np.zeros(0)
         inside, _ = geo.ray_parity_inside(positions, tri) if len(ids) else (np.zeros(0, bool), 0)
         boundary_ids = [ids[k] for k in range(len(ids)) if dist[k] <= tau]
@@ -297,6 +296,11 @@ def _subdivide(surface: geo.GaussSurface, ids: list[str], positions: Arr, charge
             _, _, _, _, _, vol_e, vol_d = _surface_and_volume(tri, ids, positions, charges, cls,
                                                               sources)
         idx = (ci // (n[1] * n[2]), (ci // n[2]) % n[1], ci % n[2])
+        # Corner m = dx + 2 dy + 4 dz of the cell, in grid order (stable under rotation).
+        for m in range(8):
+            dx, dy, dz = m & 1, (m >> 1) & 1, (m >> 2) & 1
+            corners[ci, m] = world[((idx[0] + dx) * (n[1] + 1) + idx[1] + dy) * (n[2] + 1)
+                                   + idx[2] + dz]
         results.append(CellResult(index=idx, flux_E_V_m=float(face_e[ci].sum()),
                                   flux_D_C=float(face_d[ci].sum()), enclosed_C=enc,
                                   volume_integral_E_V_m=vol_e, volume_integral_D_C=vol_d,

@@ -17,7 +17,7 @@ export function ProjectsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
   const refresh = () => client.invalidateQueries({ queryKey: ['projects'] })
   const save = useMutation({
     mutationFn: (asNew: boolean) =>
-      api.saveProject(effectiveName.trim(), useSceneStore.getState().scene, { ...useViewStore.getState().settings() }, asNew ? undefined : (projectId ?? undefined)),
+      api.saveProject(effectiveName.trim(), useSceneStore.getState().scene, { ...useViewStore.getState().settings() }, asNew ? undefined : (projectId ?? undefined), useSceneStore.getState().surfaces),
     onSuccess: (p) => {
       useSceneStore.setState({ projectId: p.id, projectName: p.name })
       setName('')
@@ -28,6 +28,7 @@ export function ProjectsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
     mutationFn: api.project,
     onSuccess: (p) => {
       useSceneStore.getState().load(p.scene, { projectId: p.id, name: p.name })
+      useSceneStore.getState().setSurfaces(p.surfaces ?? [])
       useViewStore.getState().set({ ...sanitizeView(p.view), probePoint: null })
       onOpenChange(false)
     },

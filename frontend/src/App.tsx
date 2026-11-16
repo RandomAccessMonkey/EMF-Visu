@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useMemo } from 'react'
 import { useT, type MessageKey } from '@/i18n'
 import { EquationsPanel } from '@/panels/EquationsPanel'
+import { GaussPanel } from '@/panels/GaussPanel'
 import { Legend, ViewStatement } from '@/panels/Legend'
 import { ObjectsPanel } from '@/panels/ObjectsPanel'
 import { ParametersPanel } from '@/panels/ParametersPanel'
@@ -12,11 +13,12 @@ import { TopBar } from '@/panels/TopBar'
 import { VisualizationPanel } from '@/panels/VisualizationPanel'
 import { heatImage, magnitudeScale, magnitudes } from '@/render/fieldImages'
 import { Viewport } from '@/render/Viewport'
+import { useFlux } from '@/sim/useFlux'
 import { useSimulation } from '@/sim/useSimulation'
 import { useSceneStore } from '@/state/sceneStore'
 import { useViewStore } from '@/state/viewStore'
 
-const TABS = ['parameters', 'visualization', 'equations', 'results'] as const
+const TABS = ['parameters', 'visualization', 'gauss', 'equations', 'results'] as const
 
 function useKeyboardShortcuts() {
   useEffect(() => {
@@ -50,6 +52,7 @@ function useKeyboardShortcuts() {
 export default function App() {
   const { t, lang } = useT()
   const sim = useSimulation()
+  const flux = useFlux()
   const heatKind = useViewStore((s) => s.heatmap)
   useKeyboardShortcuts()
   useEffect(() => {
@@ -77,8 +80,8 @@ export default function App() {
         <main className="order-1 flex min-h-[45vh] min-w-0 flex-1 flex-col lg:order-2">
           <ViewStatement />
           <div className="relative min-h-0 flex-1">
-          <Viewport result={sim.error ? undefined : sim.result} image={sim.error ? null : image} arrowScale={sim.error ? null : arrowScale} />
-          <Legend heat={sim.error ? null : (image?.legend ?? null)} arrows={sim.error ? null : arrowScale} result={sim.error ? undefined : sim.result} />
+          <Viewport flux={sim.error ? undefined : flux.data} result={sim.error ? undefined : sim.result} image={sim.error ? null : image} arrowScale={sim.error ? null : arrowScale} />
+          <Legend heat={sim.error ? null : (image?.legend ?? null)} arrows={sim.error ? null : arrowScale} result={sim.error ? undefined : sim.result} flux={sim.error ? undefined : flux.data} />
           <AnimatePresence>
             {sim.error && (
               <motion.div
@@ -108,8 +111,9 @@ export default function App() {
           <div className="min-h-0 flex-1 overflow-y-auto">
             <Tabs.Content value="parameters"><ParametersPanel /></Tabs.Content>
             <Tabs.Content value="visualization"><VisualizationPanel sim={sim} /></Tabs.Content>
+            <Tabs.Content value="gauss"><GaussPanel flux={flux.data} /></Tabs.Content>
             <Tabs.Content value="equations"><EquationsPanel /></Tabs.Content>
-            <Tabs.Content value="results"><ResultsPanel sim={sim} /></Tabs.Content>
+            <Tabs.Content value="results"><ResultsPanel sim={sim} flux={flux.data} /></Tabs.Content>
           </div>
         </Tabs.Root>
       </div>

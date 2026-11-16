@@ -4,8 +4,9 @@ An interactive electromagnetic field laboratory in which every picture is backed
 calculation. Build a configuration, change a parameter, see the field respond, and read which
 equations govern it and under what assumptions.
 
-**Status: Phase 1 (Foundation), Phase 2A (point-charge electrostatics) and Phase 2B-1
-(divergence and curl) are implemented.**
+**Status: Phase 1 (Foundation), Phase 2A (point-charge electrostatics), Phase 2B-1
+(divergence and curl) and Phase 2B-2 (Gauss's law and the divergence theorem) are
+implemented.**
 What works today:
 
 - Any number of positive and negative ideal point charges in vacuum, and dipoles made of two
@@ -23,6 +24,10 @@ What works today:
   charge's contribution, and on a charge the distributional statement instead of numbers.
 - An equation panel whose statuses are computed from the active physical model and which says
   whether the solver evaluates an equation or the field merely satisfies it.
+- Gaussian surfaces (sphere, cube, box, cylinder): flux through them computed exactly over
+  the triangulated surface and compared with the enclosed charge, local flux density on the
+  surface, inside/outside/boundary classification, subdivision into cells with cancelling
+  internal faces, and nine guided situations (Gauss tab).
 - Presets 1–4, saved projects, English and Hungarian, beginner and advanced levels.
 - High-resolution solves as cancellable jobs on a separate worker, with live progress.
 
