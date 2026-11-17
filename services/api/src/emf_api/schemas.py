@@ -5,6 +5,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from emf_core.ampere import AmperePath, AmpereRequest
 from emf_core.equations import EquationView
 from emf_core.geometry.surfaces import GaussSurface
 from emf_core.i18n import LocalizedText
@@ -82,36 +83,78 @@ class ProbeContribution(BaseModel):
     phi_V: float | None
 
 
+SourceKind = Literal["infinite_wire", "circular_loop", "solenoid", "toroid_finite",
+                     "toroid_ideal", "permanent_magnet"]
+
+
 class MagneticContribution(BaseModel):
-    """Field of one current source at the probe point (Phase 3A)."""
+    """Field of one magnetic source at the probe point (Phase 3A; kinds extended in 3B)."""
 
     object_id: str
     name: str
-    kind: Literal["infinite_wire", "circular_loop"]
-    current_A: float
-    distance_m: float  # to the wire axis, or to the loop wire
+    kind: SourceKind
+    current_A: float  # per turn; 0 for a magnet
+    turns: int = 1
+    magnetization_A_per_m: float | None = None
+    # to the wire axis or loop wire; nearest turn; a magnet's surface; the ideal core surface
+    distance_m: float
     B_T: list[float] | None
     B_magnitude_T: float | None
     H_A_per_m: list[float] | None
     H_magnitude_A_per_m: float | None
 
 
+class OneSidedValue(BaseModel):
+    """A one-sided limit at a sheet or core boundary, evaluated at ±offset along the normal."""
+
+    side: Literal["inside", "outside"]
+    offset_m: float
+    B_T: list[float] | None
+    H_A_per_m: list[float] | None
+
+
+class ProbeComparison(BaseModel):
+    """An idealized or approximate model evaluated at the probe point for comparison. Never
+    the solver's field; ``applicable`` says whether its assumptions hold at this point."""
+
+    object_id: str
+    kind: Literal["ideal_long_solenoid", "ideal_toroid", "finite_toroid", "dipole_far_field"]
+    B_T: list[float] | None
+    H_A_per_m: list[float] | None
+    applicable: bool
+    note: LocalizedText
+
+
 class ProbeMagnetic(BaseModel):
-    """Magnetic part of the probe (Phase 3A); present when the scene has current sources."""
+    """Magnetic part of the probe; present when the scene has magnetic sources."""
 
     solver_id: str
     solver_version: str
     classification: Classification
     defined: bool
+    # Phase 3B: defined, on a filament (singular), on a magnet's current sheet, on an end face
+    # (B defined, H one-sided), on the ideal core surface.
+    status: Literal["defined", "singular", "sheet", "end_face", "core_boundary"] = "defined"
     singular_tolerance_m: float
+    boundary_tolerance_m: float | None = None
     # On an ideal filament: which source makes B and H singular there, and its kind.
     singular_object_id: str | None = None
-    singular_kind: Literal["infinite_wire", "circular_loop"] | None = None
+    singular_kind: SourceKind | None = None
     values: list[ProbeValue]  # B, H, div_B, div_H
     nearest_source_id: str | None
     nearest_source_distance_m: float | None
     contributions: list[MagneticContribution]
     mu0_H_per_m: float  # the constant of B = mu0 H used
+    # Phase 3B (additive):
+    material: Literal["vacuum", "magnet", "core"] = "vacuum"
+    constitutive: Literal["vacuum", "magnetization", "linear_core"] = "vacuum"
+    M_A_per_m: list[float] | None = None  # only inside a magnet
+    relative_permeability: float | None = None  # only inside the ideal core
+    nearest_magnet_id: str | None = None
+    nearest_magnet_boundary_m: float | None = None
+    one_sided: list[OneSidedValue] = []
+    comparisons: list[ProbeComparison] = []
+    quadrature_converged: bool = True
 
 
 class ProbeResponse(BaseModel):
@@ -135,6 +178,13 @@ class EquationsBody(BaseModel):
     scene: Scene
     # Gaussian surfaces, so that flux equations get statuses for the actual configuration.
     surfaces: list[GaussSurface] = Field(default=[], max_length=16)
+    # Ampère paths (Phase 3B), for the statuses of the integral Ampère law.
+    paths: list[AmperePath] = Field(default=[], max_length=16)
+
+
+class AmpereBody(BaseModel):
+    scene: Scene
+    ampere: AmpereRequest
 
 
 class FluxBody(BaseModel):
@@ -180,6 +230,8 @@ class ProjectIn(BaseModel):
     # Gaussian surfaces (Phase 2B-2). Stored inside the view JSON column, so no database
     # migration is needed; projects saved earlier simply have none.
     surfaces: list[GaussSurface] = Field(default=[], max_length=16)
+    # Ampère paths (Phase 3B), stored the same way under "ampere_paths".
+    paths: list[AmperePath] = Field(default=[], max_length=16)
 
 
 class ProjectSummary(BaseModel):
@@ -193,3 +245,4 @@ class ProjectOut(ProjectSummary):
     scene: Scene
     view: dict[str, Any]
     surfaces: list[GaussSurface] = []
+    paths: list[AmperePath] = []

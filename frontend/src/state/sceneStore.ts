@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Domain, GaussSurface, PrimitiveType, Scene, SceneObject, Source, SurfaceDisplay, Transform, Vec3 } from '@/api/types'
+import type { AmperePath, Domain, GaussSurface, PathDisplay, PrimitiveType, Scene, SceneObject, Source, SurfaceDisplay, Transform, Vec3 } from '@/api/types'
 
 export const EMPTY_SCENE: Scene = {
   schema_version: 1,
@@ -39,21 +39,39 @@ const PRIMITIVE_DEFAULTS: { [K in PrimitiveType]: Extract<SceneObject['primitive
   ring: { type: 'ring', radius_m: 0.3 },
   plane: { type: 'plane', width_m: 1, height_m: 1 },
   line: { type: 'line', length_m: 1 },
+  coil: { type: 'coil', radius_m: 0.04, length_m: 0.2, turns: 20 },
+  torus: { type: 'torus', major_radius_m: 0.12, winding_radius_m: 0.03, core_radius_m: 0.03, turns: 24, phase_rad: 0 },
 }
 
-export type NewObjectKind = 'positive_charge' | 'negative_charge' | 'wire' | 'loop' | Exclude<PrimitiveType, 'point' | 'group'>
+export type NewObjectKind =
+  | 'positive_charge'
+  | 'negative_charge'
+  | 'wire'
+  | 'loop'
+  | 'solenoid'
+  | 'toroid'
+  | 'magnet'
+  | Exclude<PrimitiveType, 'point' | 'group' | 'coil' | 'torus'>
 
 export type ChargeSource = Extract<Source, { type: 'point_charge' }>
-export type CurrentSource = Extract<Source, { type: 'infinite_wire' | 'circular_loop' }>
+/** Every free-current source; all carry a signed current per turn (A). */
+export type CurrentSource = Extract<Source, { current_A: number }>
+export type MagnetSource = Extract<Source, { type: 'permanent_magnet' }>
+export type ToroidSource = Extract<Source, { type: 'toroid_finite' | 'toroid_ideal' }>
 export type ChargeObject = SceneObject & { source: ChargeSource }
 
 /** Charge of a point-charge object, undefined for anything else. */
 export const chargeOf = (o: SceneObject): number | undefined =>
   o.source?.type === 'point_charge' ? o.source.charge_C : undefined
-/** Current of a wire or loop object (A), undefined for anything else. */
+/** Current (per turn, A) of a free-current object, undefined for anything else. */
 export const currentOf = (o: SceneObject): number | undefined =>
-  o.source && o.source.type !== 'point_charge' ? o.source.current_A : undefined
+  o.source && 'current_A' in o.source ? o.source.current_A : undefined
+/** Magnetization (A/m, along local +z) of a permanent magnet, undefined otherwise. */
+export const magnetizationOf = (o: SceneObject): number | undefined =>
+  o.source?.type === 'permanent_magnet' ? o.source.magnetization_A_per_m : undefined
 export const isCurrentSource = (o: SceneObject): boolean => o.role === 'current_source'
+/** Objects the magnetostatic model reads: free currents and magnetized material. */
+export const isMagneticSource = (o: SceneObject): boolean => o.role === 'current_source' || o.role === 'magnetic_material'
 export const isChargeSource = (o: SceneObject): boolean => o.role === 'charge_source'
 
 /** Rotation (Euler XYZ, radians) that turns local +z into the unit vector d. Geometry only:
@@ -88,6 +106,20 @@ export function makeObject(scene: Scene, kind: NewObjectKind, name: string): Sce
   }
   if (kind === 'loop') {
     return { ...base, primitive: { type: 'ring', radius_m: 0.5 }, role: 'current_source', source: { type: 'circular_loop', current_A: 10 } }
+  }
+  if (kind === 'solenoid') {
+    return { ...base, primitive: PRIMITIVE_DEFAULTS.coil, role: 'current_source', source: { type: 'solenoid', current_A: 1 } }
+  }
+  if (kind === 'toroid') {
+    return { ...base, primitive: PRIMITIVE_DEFAULTS.torus, role: 'current_source', source: { type: 'toroid_finite', current_A: 1 } }
+  }
+  if (kind === 'magnet') {
+    return {
+      ...base,
+      primitive: { type: 'cylinder', radius_m: 0.04, height_m: 0.08 },
+      role: 'magnetic_material',
+      source: { type: 'permanent_magnet', magnetization_A_per_m: 5e5 },
+    }
   }
   if (kind === 'positive_charge' || kind === 'negative_charge') {
     return {
@@ -155,6 +187,57 @@ export function makeSurface(existing: GaussSurface[], kind: SurfaceKind, name: s
 
 export const displayOf = (s: GaussSurface): SurfaceDisplay => s.display ?? DEFAULT_DISPLAY
 
+export type PathKind = 'circle' | 'rectangle' | 'polygon'
+
+export const DEFAULT_PATH_DISPLAY: PathDisplay = { visible: true, show_normal: true, show_crossings: true, show_surface: false }
+
+/** Default Ampère path sizes, relative to the domain so they are visible in any scene. */
+export function makePath(existing: AmperePath[], kind: PathKind, name: string, domain: Domain): AmperePath {
+  const used = new Set(existing.map((p) => p.id))
+  let n = existing.length + 1
+  while (used.has(`A${n}`)) n++
+  const span = Math.min(...[0, 1, 2].map((a) => domain.max_m[a]! - domain.min_m[a]!))
+  const r = Math.round(span * 0.25 * 1000) / 1000
+  const shape: AmperePath['shape'] =
+    kind === 'circle'
+      ? { type: 'circle', radius_m: r }
+      : kind === 'rectangle'
+        ? { type: 'rectangle', width_m: 2 * r, height_m: r }
+        : { type: 'polygon', closed: true, vertices_m: [[-r, -r, 0], [r, -r, 0], [r * 0.6, r, 0], [-r * 0.6, r * 0.8, 0]] }
+  return {
+    id: `A${n}`,
+    name,
+    shape,
+    center_m: [0, 0, 0],
+    rotation_euler_xyz_rad: [0, 0, 0],
+    reversed: false,
+    rtol: 1e-4,
+    display: { ...DEFAULT_PATH_DISPLAY },
+  }
+}
+
+export const pathDisplayOf = (p: AmperePath): PathDisplay => p.display ?? DEFAULT_PATH_DISPLAY
+
+/** Physics-relevant part of a path (display and name excluded): for cache keys. */
+export const pathPhysics = (p: AmperePath): unknown => ({ ...p, name: '', display: null })
+
+/** Last relative permeability per ideal toroid, so switching to the finite model and back
+ *  restores it (the finite model has no core). Display/editing memory only. */
+const toroidMu = new Map<string, number>()
+
+/** Switch a toroid between the finite-turn and the ideal model. The primitive keeps both radii
+ *  (winding radius for the finite model, core radius for the ideal one), so neither is lost. */
+export function toroidWithModel(o: SceneObject, model: ToroidSource['type']): SceneObject {
+  const src = o.source
+  if (!src || (src.type !== 'toroid_finite' && src.type !== 'toroid_ideal') || src.type === model) return o
+  if (src.type === 'toroid_ideal') toroidMu.set(o.id, src.relative_permeability)
+  const source: ToroidSource =
+    model === 'toroid_ideal'
+      ? { type: 'toroid_ideal', current_A: src.current_A, relative_permeability: toroidMu.get(o.id) ?? 1 }
+      : { type: 'toroid_finite', current_A: src.current_A }
+  return { ...o, source }
+}
+
 interface SceneState {
   scene: Scene
   selectedId: string | null
@@ -173,6 +256,15 @@ interface SceneState {
   setSurfaceDisplay: (id: string, patch: Partial<SurfaceDisplay>) => void
   removeSurface: (id: string) => void
   setSurfaces: (surfaces: GaussSurface[]) => void
+  /** Ampère paths: mathematical integration paths, not part of the field model (Phase 3B). */
+  paths: AmperePath[]
+  selectedPathId: string | null
+  selectPath: (id: string | null) => void
+  addPath: (kind: PathKind, name: string) => void
+  updatePath: (id: string, patch: Partial<AmperePath>) => void
+  setPathDisplay: (id: string, patch: Partial<PathDisplay>) => void
+  removePath: (id: string) => void
+  setPaths: (paths: AmperePath[]) => void
   add: (kind: NewObjectKind, name: string) => void
   addDipole: (name: string) => void
   setDipole: (groupId: string, charge_C: number, separation_m: number) => void
@@ -213,6 +305,20 @@ export const useSceneStore = create<SceneState>((set) => ({
   removeSurface: (id) =>
     set((s) => ({ surfaces: s.surfaces.filter((x) => x.id !== id), selectedSurfaceId: s.selectedSurfaceId === id ? null : s.selectedSurfaceId })),
   setSurfaces: (surfaces) => set({ surfaces, selectedSurfaceId: surfaces[0]?.id ?? null }),
+  paths: [],
+  selectedPathId: null,
+  selectPath: (id) => set({ selectedPathId: id }),
+  addPath: (kind, name) =>
+    set((s) => {
+      const path = makePath(s.paths, kind, name, s.scene.domain)
+      return { paths: [...s.paths, path], selectedPathId: path.id }
+    }),
+  updatePath: (id, patch) => set((s) => ({ paths: s.paths.map((x) => (x.id === id ? { ...x, ...patch } : x)) })),
+  setPathDisplay: (id, patch) =>
+    set((s) => ({ paths: s.paths.map((x) => (x.id === id ? { ...x, display: { ...pathDisplayOf(x), ...patch } } : x)) })),
+  removePath: (id) =>
+    set((s) => ({ paths: s.paths.filter((x) => x.id !== id), selectedPathId: s.selectedPathId === id ? null : s.selectedPathId })),
+  setPaths: (paths) => set({ paths, selectedPathId: paths[0]?.id ?? null }),
   add: (kind, name) =>
     set((s) => {
       const obj = makeObject(s.scene, kind, name)

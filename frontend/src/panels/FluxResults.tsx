@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import type { SurfaceFlux } from '@/api/types'
 import { Badge, Section } from '@/components/ui/controls'
 import { useT, type MessageKey } from '@/i18n'
-import { formatNumber, formatSI, formatVector, prettyUnit } from '@/lib/format'
+import { formatNumber, formatPlain, formatSI, formatVector, prettyUnit } from '@/lib/format'
 import { surfaceResult, type FluxData } from '@/sim/gauss'
 import { useSceneStore } from '@/state/sceneStore'
 import { useViewStore } from '@/state/viewStore'
@@ -122,7 +122,7 @@ export function FluxResults({ flux }: { flux: FluxData | undefined }) {
                 <tr><td className="text-muted">{t('flux.deviation')}</td><td className="text-right">{formatSI(m.max_deviation_m, 'm')}</td></tr>
               )}
               {m.ideal_area_m2 != null && m.representation !== 'exact' && (
-                <tr><td className="text-muted">{t('flux.areaVsIdeal')}</td><td className="text-right">{formatSI(m.area_m2, 'm²', 5)} / {formatSI(m.ideal_area_m2, 'm²', 5)}</td></tr>
+                <tr><td className="text-muted">{t('flux.areaVsIdeal')}</td><td className="text-right">{formatPlain(m.area_m2, 'm²', 5)} / {formatPlain(m.ideal_area_m2, 'm²', 5)}</td></tr>
               )}
               <tr><td className="text-muted">{t('flux.tolerance')}</td><td className="text-right">{formatNumber(m.tolerance_m, 2)} m</td></tr>
               <tr><td className="text-muted">{t('flux.nearDistance')}</td><td className="text-right">{formatSI(m.near_boundary_m, 'm')}</td></tr>

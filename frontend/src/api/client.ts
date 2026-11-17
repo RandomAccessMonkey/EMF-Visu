@@ -1,5 +1,7 @@
 import { decodeContainer, type SimulationResult } from './container'
 import type {
+  AmpereHeader,
+  AmperePath,
   EquationsResponse,
   GaussSituation,
   GaussSurface,
@@ -96,8 +98,8 @@ export const api = {
     return (await res.json()) as ProbeResponse
   },
 
-  async equations(scene: Scene, signal?: AbortSignal, surfaces: GaussSurface[] = []): Promise<EquationsResponse> {
-    const res = await request('/equations/evaluate', json({ scene, surfaces }, 'POST', signal))
+  async equations(scene: Scene, signal?: AbortSignal, surfaces: GaussSurface[] = [], paths: AmperePath[] = []): Promise<EquationsResponse> {
+    const res = await request('/equations/evaluate', json({ scene, surfaces, paths }, 'POST', signal))
     return (await res.json()) as EquationsResponse
   },
 
@@ -105,6 +107,12 @@ export const api = {
   async flux(body: unknown, signal?: AbortSignal): Promise<SimulationResult> {
     const res = await request('/flux', json(body, 'POST', signal))
     return decodeContainer(await res.arrayBuffer())
+  },
+  /** Ampère's law on closed planar paths (JSON). */
+  async ampere(scene: Scene, paths: AmperePath[], signal?: AbortSignal): Promise<AmpereHeader & { cache: 'hit' | 'miss' }> {
+    const res = await request('/ampere', json({ scene, ampere: { paths } }, 'POST', signal))
+    const body = (await res.json()) as AmpereHeader
+    return { ...body, cache: res.headers.get('X-EMF-Cache') === 'hit' ? 'hit' : 'miss' }
   },
   gaussSituations: () => get<GaussSituation[]>('/gauss/situations'),
 
@@ -153,8 +161,9 @@ export const api = {
     view: Record<string, unknown>,
     id?: string,
     surfaces: GaussSurface[] = [],
+    paths: AmperePath[] = [],
   ): Promise<ProjectOut> {
-    const init = json({ name, scene, view, surfaces }, id ? 'PUT' : 'POST')
+    const init = json({ name, scene, view, surfaces, paths }, id ? 'PUT' : 'POST')
     return (await (await request(id ? `/projects/${id}` : '/projects', init)).json()) as ProjectOut
   },
   async deleteProject(id: string): Promise<void> {

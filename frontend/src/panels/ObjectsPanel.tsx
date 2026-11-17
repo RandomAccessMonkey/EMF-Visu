@@ -1,15 +1,15 @@
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeftRight, Box, Circle, CircleDot, Copy, Cylinder, Eye, EyeOff, Minus, Plus, Square, Trash2, Zap } from 'lucide-react'
+import { ArrowLeftRight, Box, Circle, CircleDot, Copy, Cylinder, Eye, EyeOff, Donut, Magnet, Minus, Plus, Square, Trash2, Waves, Zap } from 'lucide-react'
 import { api } from '@/api/client'
-import type { Preset, PrimitiveType, SceneObject } from '@/api/types'
+import type { Preset, PrimitiveType, SceneObject, Vec3 } from '@/api/types'
 import { Badge, Button, Section } from '@/components/ui/controls'
 import { useT, type MessageKey } from '@/i18n'
 import { cn, formatSI } from '@/lib/format'
-import { chargeOf, currentOf, dipoleInfo, useSceneStore, type NewObjectKind } from '@/state/sceneStore'
+import { chargeOf, currentOf, dipoleInfo, magnetizationOf, useSceneStore, type NewObjectKind } from '@/state/sceneStore'
 import { useViewStore } from '@/state/viewStore'
-import { MAGNETIC_SOURCE_COLOR } from '@/render/magneticColors'
+import { MAGNET_COLOR, MAGNETIC_SOURCE_COLOR } from '@/render/magneticColors'
 
-const GEOMETRY: { kind: Exclude<PrimitiveType, 'point' | 'group'>; icon: typeof Box }[] = [
+const GEOMETRY: { kind: Exclude<PrimitiveType, 'point' | 'group' | 'coil' | 'torus'>; icon: typeof Box }[] = [
   { kind: 'sphere', icon: Circle },
   { kind: 'box', icon: Box },
   { kind: 'cylinder', icon: Cylinder },
@@ -21,9 +21,11 @@ const GEOMETRY: { kind: Exclude<PrimitiveType, 'point' | 'group'>; icon: typeof 
 /** Load a preset (or one of its variants) and apply its view hint (display only). */
 function loadPreset(p: Preset, scene: NonNullable<Preset['scene']>) {
   useSceneStore.getState().load(scene, { presetId: p.id, presetScene: scene })
+  // A preset's Ampère paths (Phase 3B) replace the current ones; presets without paths keep them.
+  if (p.ampere_paths.length > 0) useSceneStore.getState().setPaths(p.ampere_paths)
   const hint = p.view_hint
   useViewStore.getState().set({
-    probePoint: null,
+    probePoint: (hint?.probe_m as Vec3 | null | undefined) ?? null,
     ...(hint?.mode ? { mode: hint.mode } : {}),
     ...(hint?.plane ? { plane: hint.plane, offset: 0 } : {}),
   })
@@ -92,6 +94,16 @@ function Presets() {
   )
 }
 
+const SHORT: Record<NonNullable<SceneObject['source']>['type'], MessageKey> = {
+  point_charge: 'objects.charge',
+  infinite_wire: 'objects.wireShort',
+  circular_loop: 'objects.loopShort',
+  solenoid: 'objects.solenoidShort',
+  toroid_finite: 'objects.toroidShort',
+  toroid_ideal: 'objects.toroidIdealShort',
+  permanent_magnet: 'objects.magnet',
+}
+
 function ObjectRow({ o, depth }: { o: SceneObject; depth: number }) {
   const { t } = useT()
   const selected = useSceneStore((s) => s.selectedId === o.id)
@@ -102,6 +114,8 @@ function ObjectRow({ o, depth }: { o: SceneObject; depth: number }) {
   const { select, update, remove, duplicate } = useSceneStore.getState()
   const q = chargeOf(o)
   const current = currentOf(o)
+  const magnetization = magnetizationOf(o)
+  const turns = o.primitive.type === 'coil' || o.primitive.type === 'torus' ? o.primitive.turns : 1
   const label = o.name || o.id
   const isGroup = o.primitive.type === 'group'
   const summary = isGroup
@@ -111,8 +125,10 @@ function ObjectRow({ o, depth }: { o: SceneObject; depth: number }) {
     : q !== undefined
       ? formatSI(q, 'C')
       : current !== undefined
-        ? `${formatSI(current, 'A')} · ${t(o.source?.type === 'infinite_wire' ? 'objects.wireShort' : 'objects.loopShort')}`
-        : t(`primitive.${o.primitive.type}` as MessageKey)
+        ? `${turns > 1 ? `${turns}×` : ''}${formatSI(current, 'A')} · ${t(SHORT[o.source!.type])}`
+        : magnetization !== undefined
+          ? `M = ${formatSI(magnetization, 'A/m')}`
+          : t(`primitive.${o.primitive.type}` as MessageKey)
   return (
     <>
       <li
@@ -128,6 +144,8 @@ function ObjectRow({ o, depth }: { o: SceneObject; depth: number }) {
             <ArrowLeftRight size={11} className="shrink-0 text-accent-2" />
           ) : current !== undefined ? (
             <Zap size={11} className="shrink-0" style={{ color: MAGNETIC_SOURCE_COLOR }} />
+          ) : magnetization !== undefined ? (
+            <Magnet size={11} className="shrink-0" style={{ color: MAGNET_COLOR }} />
           ) : (
             <span
               className="h-2.5 w-2.5 shrink-0 rounded-full"
@@ -178,6 +196,17 @@ export function ObjectsPanel() {
           </Button>
           <Button className="flex-1" onClick={() => add('loop', 'objects.loop')} title={t('objects.addLoopHint')}>
             <CircleDot size={13} /> {t('objects.addLoop')}
+          </Button>
+        </div>
+        <div className="flex gap-1.5">
+          <Button className="flex-1" onClick={() => add('solenoid', 'objects.solenoid')} title={t('objects.addSolenoidHint')}>
+            <Waves size={13} /> {t('objects.solenoid')}
+          </Button>
+          <Button className="flex-1" onClick={() => add('toroid', 'objects.toroid')} title={t('objects.addToroidHint')}>
+            <Donut size={13} /> {t('objects.toroid')}
+          </Button>
+          <Button className="flex-1" onClick={() => add('magnet', 'objects.magnet')} title={t('objects.addMagnetHint')}>
+            <Magnet size={13} /> {t('objects.magnet')}
           </Button>
         </div>
         <Button onClick={() => useSceneStore.getState().addDipole(`${t('objects.dipole')} ${objects.filter((o) => o.primitive.type === 'group').length + 1}`)} title={t('objects.addDipoleHint')}>

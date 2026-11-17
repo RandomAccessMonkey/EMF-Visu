@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from emf_core.ampere import AmperePath
 from emf_core.geometry.surfaces import GaussSurface
 from emf_core.scene.models import Scene
 
@@ -27,18 +28,22 @@ def _get(db: Session, project_id: str) -> ProjectRow:
 
 
 SURFACES_KEY = "gauss_surfaces"
+PATHS_KEY = "ampere_paths"
 
 
 def _out(row: ProjectRow) -> ProjectOut:
     view = dict(row.view or {})
     surfaces = view.pop(SURFACES_KEY, [])
+    paths = view.pop(PATHS_KEY, [])
     return ProjectOut(id=row.id, name=row.name, created_at=row.created_at,
                       updated_at=row.updated_at, scene=Scene.model_validate(row.scene), view=view,
-                      surfaces=[GaussSurface.model_validate(s) for s in surfaces])
+                      surfaces=[GaussSurface.model_validate(s) for s in surfaces],
+                      paths=[AmperePath.model_validate(p) for p in paths])
 
 
 def _view(body: ProjectIn) -> dict[str, object]:
-    return {**body.view, SURFACES_KEY: [s.model_dump(mode="json") for s in body.surfaces]}
+    return {**body.view, SURFACES_KEY: [s.model_dump(mode="json") for s in body.surfaces],
+            PATHS_KEY: [p.model_dump(mode="json") for p in body.paths]}
 
 
 @router.get("", responses=_ERR)

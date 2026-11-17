@@ -11,7 +11,9 @@ import { ArrowField } from './ArrowField'
 import type { LogScale } from './colormaps'
 import { CurlGlyphs, SourceMarkers, VolumeScalars } from './CalculusLayers'
 import { Contours, FieldLines, Isosurfaces } from './FieldProducts'
+import { AmpereLayer } from './AmpereLayer'
 import { GaussLayer } from './GaussLayer'
+import type { AmpereData } from '@/sim/useAmpere'
 import type { FluxData } from '@/sim/gauss'
 import { isMagneticKind, magnitudes, sampling, type HeatImage } from './fieldImages'
 import { SceneObjects } from './SceneObjects'
@@ -240,10 +242,14 @@ interface Props {
   image: HeatImage | null
   arrowScale: LogScale | null
   magneticArrowScale?: LogScale | null
+  /** Ampère's law results (Phase 3B), for the crossing markers of the paths. */
+  ampere?: AmpereData | undefined
 }
 
-export function Viewport({ result, magnetic, image, arrowScale, magneticArrowScale, flux }: Props) {
+export function Viewport({ result, magnetic, image, arrowScale, magneticArrowScale, flux, ampere }: Props) {
   const surfaces = useSceneStore((s) => s.surfaces)
+  const paths = useSceneStore((s) => s.paths)
+  const selectedPathId = useSceneStore((s) => s.selectedPathId)
   const selectedSurfaceId = useSceneStore((s) => s.selectedSurfaceId)
   const patch = useViewStore((s) => s.selectedPatch)
   const cell = useViewStore((s) => s.selectedCell)
@@ -278,7 +284,7 @@ export function Viewport({ result, magnetic, image, arrowScale, magneticArrowSca
       <ambientLight intensity={1.4} />
       <directionalLight position={[3, -4, 6]} intensity={1.6} />
       <Cameras domain={domain} />
-      <Invalidator deps={[scene, selectedId, v.mode, v.plane, v.offset, v.probePoint, v.showGrid, v.tool, result, v.showFieldLines, v.lineDensity, v.showContours, v.showIsosurfaces, v.showCurl, v.curlField, v.showSources, v.showVolumeScalars, v.heatmap, flux, surfaces, selectedSurfaceId, patch, cell, magnetic, v.showBArrows, v.magneticField, v.showBLines, v.showCurrents, v.showCurrentDirection, v.contribution]} />
+      <Invalidator deps={[scene, selectedId, v.mode, v.plane, v.offset, v.probePoint, v.showGrid, v.tool, result, v.showFieldLines, v.lineDensity, v.showContours, v.showIsosurfaces, v.showCurl, v.curlField, v.showSources, v.showVolumeScalars, v.heatmap, flux, surfaces, selectedSurfaceId, patch, cell, magnetic, v.showBArrows, v.magneticField, v.showBLines, v.showCurrents, v.showCurrentDirection, v.contribution, paths, ampere, selectedPathId]} />
       {v.mode === '3d' && <DomainFrame domain={domain} />}
       {v.showGrid && <GridAxes domain={domain} />}
       {grid && <SlicePlane image={image} grid={grid} visible={sliceVisible && v.heatmap !== 'none'} />}
@@ -302,6 +308,7 @@ export function Viewport({ result, magnetic, image, arrowScale, magneticArrowSca
       {magnetic && v.showBLines && <FieldLines result={magnetic} level={v.lineDensity} markerSize={marker * 0.9} color={MAGNETIC_LINE_COLOR} numericalColor={MAGNETIC_NUMERICAL_LINE_COLOR} />}
       {magnetic && <CurrentMarkers result={magnetic} size={marker} />}
       <GaussLayer flux={flux} marker={marker} />
+      <AmpereLayer ampere={ampere} marker={marker} />
       <SceneObjects marker={marker} offSlice={offSlice} wireLength={diag} />
       <ProbeMarker size={marker} />
     </Canvas>

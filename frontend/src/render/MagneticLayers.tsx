@@ -90,12 +90,39 @@ interface Crossing {
   p: Vec3
   sign: number // +1 current towards the viewer (⊙), -1 away (⊗)
   label: string
+  /** Gap to the neighbouring turn's crossing (coils, finite toroids), so markers can be drawn
+   *  small enough not to overlap. Undefined for single filaments. */
+  gap?: number
+}
+
+/** Where one circular filament (centre c, unit normal nl, radius a) crosses the plane through
+ *  c0 with unit normal n, and the sign of its current there along n (geometry only). */
+function circleCrossings(cl: THREE.Vector3, nl: THREE.Vector3, a: number, current: number, c0: THREE.Vector3, n: THREE.Vector3): { p: Vec3; sign: number; branch: number }[] {
+  // Points of the circle on the plane: cl + a(cos t e1 + sin t e2) with (·)·n = (c0 - cl)·n
+  const e1 = new THREE.Vector3().crossVectors(nl, n)
+  if (e1.lengthSq() < 1e-18 || !(a > 0)) return [] // parallel to the slice: no crossing
+  e1.normalize()
+  const e2 = new THREE.Vector3().crossVectors(nl, e1) // in the circle's plane, ⊥ e1
+  const k = e2.dot(n)
+  const rhs = c0.clone().sub(cl).dot(n) / a
+  if (Math.abs(k) < 1e-12 || Math.abs(rhs / k) > 1) return []
+  const st = rhs / k
+  const out: { p: Vec3; sign: number; branch: number }[] = []
+  for (const ct of [Math.sqrt(1 - st * st), -Math.sqrt(1 - st * st)]) {
+    const radial = e1.clone().multiplyScalar(ct).add(e2.clone().multiplyScalar(st))
+    const p = cl.clone().add(radial.clone().multiplyScalar(a))
+    const tangent = new THREE.Vector3().crossVectors(nl, radial).multiplyScalar(Math.sign(current))
+    const sign = Math.sign(tangent.dot(n))
+    if (sign !== 0) out.push({ p: p.toArray() as Vec3, sign, branch: ct > 0 ? 1 : 2 })
+  }
+  return out
 }
 
 /** Where the current sources cross the 2D slice, with the current direction relative to the
- *  viewer: ⊙ out of the screen, ⊗ into it. Wires: from the engine's table. Loops: the circle
- *  is intersected with the slice plane (geometry), and the sign is that of the loop tangent
- *  (normal × radial, times the sign of I) along the plane normal. */
+ *  viewer: ⊙ out of the screen, ⊗ into it. Wires: from the engine's table. Loops, solenoid and
+ *  finite-toroid turns: each turn circle is intersected with the slice plane (geometry), and
+ *  the sign is that of the turn tangent (normal × radial, times the sign of I) along the plane
+ *  normal. The ideal toroid has no discrete turns and a magnet no free current: none drawn. */
 export function currentCrossings(sources: CurrentSourceInfo[], center: Vec3, normal: Vec3, samplingId: string): Crossing[] {
   const n = new THREE.Vector3(...normal)
   const c0 = new THREE.Vector3(...center)
@@ -108,30 +135,34 @@ export function currentCrossings(sources: CurrentSourceInfo[], center: Vec3, nor
       if (p && sign !== 0) out.push({ key: s.object_id, p: p as Vec3, sign, label })
       continue
     }
-    const nl = new THREE.Vector3(...s.direction)
-    const cl = new THREE.Vector3(...s.point_m)
-    const a = s.radius_m ?? 0
-    // Points of the loop circle on the plane: cl + a(cos t e1 + sin t e2) with (·)·n = (c0 - cl)·n
-    const e1 = new THREE.Vector3().crossVectors(nl, n)
-    if (e1.lengthSq() < 1e-18) continue // loop parallel to the slice: it does not cross it
-    e1.normalize()
-    const e2 = new THREE.Vector3().crossVectors(nl, e1) // in the loop plane, ⊥ e1
-    const k = e2.dot(n)
-    const rhs = c0.clone().sub(cl).dot(n) / a
-    if (Math.abs(k) < 1e-12 || Math.abs(rhs / k) > 1) continue
-    const st = rhs / k
-    for (const ct of [Math.sqrt(1 - st * st), -Math.sqrt(1 - st * st)]) {
-      const radial = e1.clone().multiplyScalar(ct).add(e2.clone().multiplyScalar(st))
-      const p = cl.clone().add(radial.clone().multiplyScalar(a))
-      const tangent = new THREE.Vector3().crossVectors(nl, radial).multiplyScalar(Math.sign(s.current_A))
-      const sign = Math.sign(tangent.dot(n))
-      if (sign !== 0) out.push({ key: `${s.object_id}:${ct > 0 ? 1 : 2}`, p: p.toArray() as Vec3, sign, label })
-    }
+    if (s.kind === 'toroid_ideal' || s.kind === 'permanent_magnet') continue
+    // Closest distance between neighbouring turns (geometry): the solenoid's turn spacing, or
+    // the finite toroid's gap at the inner edge of the winding, 2(R − b) sin(π/N).
+    const gap =
+      s.turns > 1
+        ? s.kind === 'solenoid'
+          ? (s.turn_spacing_m ?? undefined)
+          : 2 * ((s.major_radius_m ?? 0) - (s.winding_radius_m ?? 0)) * Math.sin(Math.PI / s.turns)
+        : undefined
+    const turns =
+      s.turns_geometry.length > 0
+        ? s.turns_geometry
+        : [{ center_m: s.point_m, normal: s.direction, radius_m: s.radius_m ?? 0 }]
+    turns.forEach((tg, i) => {
+      for (const c of circleCrossings(new THREE.Vector3(...tg.center_m), new THREE.Vector3(...tg.normal), tg.radius_m, s.current_A, c0, n)) {
+        const key = turns.length > 1 ? `${s.object_id}:${i}:${c.branch}` : `${s.object_id}:${c.branch}`
+        out.push({ key, p: c.p, sign: c.sign, label, ...(gap !== undefined ? { gap } : {}) })
+      }
+    })
   }
   return out
 }
 
-export function CurrentMarkers({ result, size }: { result: SimulationResult; size: number }) {
+/** Label only the selected source's crossings, and for a coil or toroid only its first turn. */
+const labelled = (c: Crossing, id: string) =>
+  (c.key === id || c.key.startsWith(`${id}:`)) && (c.gap === undefined || c.key.endsWith(':0:1'))
+
+export function CurrentMarkers({ result, size: base }: { result: SimulationResult; size: number }) {
   const mode = useViewStore((s) => s.mode)
   const plane = useViewStore((s) => s.plane)
   const showDir = useViewStore((s) => s.showCurrentDirection)
@@ -144,7 +175,10 @@ export function CurrentMarkers({ result, size }: { result: SimulationResult; siz
   if (mode !== '2d' || !showDir) return null
   return (
     <>
-      {crossings.map((c) => (
+      {crossings.map((c) => {
+        // Outer ring radius 1.9·r must stay below half the gap to the neighbouring turn.
+        const size = c.gap ? Math.min(base, c.gap / (2 * 1.9 * 1.1)) : base
+        return (
         <Billboard key={c.key} position={c.p}>
           <mesh renderOrder={6}>
             <ringGeometry args={[size * 1.5, size * 1.9, 32]} />
@@ -163,7 +197,7 @@ export function CurrentMarkers({ result, size }: { result: SimulationResult; siz
               </mesh>
             ))
           )}
-          {selectedId && c.key.startsWith(selectedId) && (
+          {selectedId && labelled(c, selectedId) && (
             <Html position={[size * 2.4, size * 2.4, 0]} style={{ pointerEvents: 'none' }} zIndexRange={[10, 0]}>
               <span className="select-none whitespace-nowrap font-mono text-[10px]" style={{ color: MAGNETIC_SOURCE_COLOR }}>
                 {c.sign > 0 ? '⊙' : '⊗'} {c.label}
@@ -171,7 +205,8 @@ export function CurrentMarkers({ result, size }: { result: SimulationResult; siz
             </Html>
           )}
         </Billboard>
-      ))}
+        )
+      })}
     </>
   )
 }

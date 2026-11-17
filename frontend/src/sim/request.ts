@@ -147,8 +147,28 @@ export function requestKind(request: SolveRequest): FieldKind {
   return (request.quantities as string[]).some((q) => q === 'B' || q === 'H' || q === 'div_B' || q === 'div_H') ? 'magnetic' : 'electric'
 }
 
-const isWellFormedCurrent = (o: SceneObject) =>
-  (o.source?.type === 'infinite_wire' && o.primitive.type === 'line') || (o.source?.type === 'circular_loop' && o.primitive.type === 'ring')
+const rigid = (o: SceneObject) => o.transform.scale.every((v) => v === 1)
+
+/** Sources the magnetostatic model accepts (bookkeeping mirror of `current_sources`): the
+ *  source type on its matching primitive; coils, tori and magnets must not be scaled. */
+const isWellFormedMagnetic = (o: SceneObject) => {
+  switch (o.source?.type) {
+    case 'infinite_wire':
+      return o.primitive.type === 'line'
+    case 'circular_loop':
+      return o.primitive.type === 'ring'
+    case 'solenoid':
+      return o.primitive.type === 'coil' && rigid(o)
+    case 'toroid_finite':
+    case 'toroid_ideal':
+      return o.primitive.type === 'torus' && rigid(o)
+    case 'permanent_magnet':
+      return o.primitive.type === 'cylinder' && rigid(o)
+    default:
+      return false
+  }
+}
+const isMagneticRole = (o: SceneObject) => o.role === 'current_source' || o.role === 'magnetic_material'
 
 /** Mirror of the engine's `field_subscene` (bookkeeping, not physics): the objects that can
  *  affect a field of one kind. Used for cache keys, so moving a wire never re-solves the
@@ -156,7 +176,7 @@ const isWellFormedCurrent = (o: SceneObject) =>
 export function fieldScene(scene: Scene, kind: FieldKind): Scene {
   const drop = new Set(
     scene.objects
-      .filter((o) => (kind === 'electric' ? o.role === 'current_source' && (isWellFormedCurrent(o) || !o.enabled) : o.role === 'charge_source' && o.source?.type === 'point_charge'))
+      .filter((o) => (kind === 'electric' ? isMagneticRole(o) && (isWellFormedMagnetic(o) || !o.enabled) : o.role === 'charge_source' && o.source?.type === 'point_charge'))
       .map((o) => o.id),
   )
   for (;;) {
@@ -172,12 +192,12 @@ export function fieldScene(scene: Scene, kind: FieldKind): Scene {
   return { ...scene, objects: scene.objects.filter((o) => !drop.has(o.id)) }
 }
 
-/** Which solves a scene needs: magnetic with current sources; electric with charges or when
- *  there are no current sources (so scenes without currents behave as before). Mirrors
- *  `engine.field_kinds`. */
+/** Which solves a scene needs: magnetic with current sources or magnets; electric with charges
+ *  or when there are no magnetic sources (so scenes without currents behave as before).
+ *  Mirrors `engine.field_kinds`. */
 export function fieldKinds(scene: Scene): FieldKind[] {
   const live = scene.objects.filter((o) => o.enabled)
-  const currents = live.some((o) => o.role === 'current_source')
+  const currents = live.some(isMagneticRole)
   const charges = live.some((o) => o.role === 'charge_source')
   const out: FieldKind[] = []
   if (charges || !currents) out.push('electric')

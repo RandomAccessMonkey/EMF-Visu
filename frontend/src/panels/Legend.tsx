@@ -10,7 +10,7 @@ import { useSceneStore } from '@/state/sceneStore'
 import { SOURCE_COLORS, ZERO_VECTOR_COLOR } from '@/render/CalculusLayers'
 import { ZERO_CSS } from '@/render/fieldImages'
 import { FIELD_LINE_COLOR, isNumericalBEnd, isNumericalEnd, LEVEL_COLORS, NUMERICAL_LINE_COLOR } from '@/render/FieldProducts'
-import { MAGNETIC_LINE_COLOR, MAGNETIC_NUMERICAL_LINE_COLOR, MAGNETIC_SOURCE_COLOR } from '@/render/magneticColors'
+import { AMPERE_PATH_COLOR, CORE_COLOR, MAGNETIC_LINE_COLOR, MAGNETIC_NUMERICAL_LINE_COLOR, MAGNETIC_SOURCE_COLOR, MAGNET_COLOR, MAGNET_SOUTH_COLOR } from '@/render/magneticColors'
 import { contributionColor, effectiveContribution } from '@/render/MagneticLayers'
 import { PLANE_BASIS } from '@/sim/request'
 import { useViewStore } from '@/state/viewStore'
@@ -66,6 +66,8 @@ function MagneticLegend({ result, arrows }: { result: SimulationResult; arrows: 
   const numerical = shown.filter(isNumericalBEnd).length
   const unit = v.magneticField === 'B' ? 'T' : 'A/m'
   const ids = result.header.current_sources.map((c) => c.object_id)
+  const kinds = new Set(result.header.current_sources.map((c) => c.kind))
+  const paths = useSceneStore((s) => s.paths)
   const contribution = effectiveContribution(v.contribution, ids)
   const which = contribution === 'total' ? t('legend.mTotal') : contribution === 'all' ? t('legend.mAll') : t('legend.mSingle', { name: names[contribution] ?? contribution })
   return (
@@ -102,7 +104,24 @@ function MagneticLegend({ result, arrows }: { result: SimulationResult; arrows: 
         </p>
       )}
       {v.mode === '2d' && v.showCurrentDirection && <p className="max-w-56 text-[10px] leading-snug text-muted">{t('legend.currentSymbols')}</p>}
-      <p className="max-w-56 text-[10px] leading-snug text-muted">{t('legend.bh')}</p>
+      {kinds.has('permanent_magnet') && (
+        <p className="max-w-56 text-[10px] leading-snug text-muted">
+          <Swatch color={MAGNET_COLOR} />N <Swatch color={MAGNET_SOUTH_COLOR} />S · {t('legend.magnet')}
+        </p>
+      )}
+      {kinds.has('toroid_ideal') && (
+        <p className="max-w-56 text-[10px] leading-snug text-muted">
+          <Swatch color={CORE_COLOR} />
+          {t('legend.core')}
+        </p>
+      )}
+      {paths.length > 0 && (
+        <p className="max-w-56 text-[10px] leading-snug text-muted">
+          <Swatch color={AMPERE_PATH_COLOR} />
+          {t('legend.amperePath')}
+        </p>
+      )}
+      <p className="max-w-56 text-[10px] leading-snug text-muted">{t(kinds.has('permanent_magnet') ? 'legend.bhMagnet' : kinds.has('toroid_ideal') ? 'legend.bhCore' : 'legend.bh')}</p>
     </div>
   )
 }

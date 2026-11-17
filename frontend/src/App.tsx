@@ -2,6 +2,7 @@ import * as Tabs from '@radix-ui/react-tabs'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useMemo } from 'react'
 import { useT, type MessageKey } from '@/i18n'
+import { AmperePanel } from '@/panels/AmperePanel'
 import { EquationsPanel } from '@/panels/EquationsPanel'
 import { GaussPanel } from '@/panels/GaussPanel'
 import { Legend, ViewStatement } from '@/panels/Legend'
@@ -14,12 +15,13 @@ import { VisualizationPanel } from '@/panels/VisualizationPanel'
 import { heatImage, isMagneticKind, magnitudeScale, magnitudes } from '@/render/fieldImages'
 import { effectiveContribution, magneticArrayName } from '@/render/MagneticLayers'
 import { Viewport } from '@/render/Viewport'
+import { useAmpere } from '@/sim/useAmpere'
 import { useFlux } from '@/sim/useFlux'
 import { useSimulation } from '@/sim/useSimulation'
 import { useSceneStore } from '@/state/sceneStore'
 import { useViewStore } from '@/state/viewStore'
 
-const TABS = ['parameters', 'visualization', 'gauss', 'equations', 'results'] as const
+const TABS = ['parameters', 'visualization', 'gauss', 'ampere', 'equations', 'results'] as const
 
 function useKeyboardShortcuts() {
   useEffect(() => {
@@ -54,6 +56,7 @@ export default function App() {
   const { t, lang } = useT()
   const sim = useSimulation()
   const flux = useFlux()
+  const ampere = useAmpere()
   const heatKind = useViewStore((s) => s.heatmap)
   useKeyboardShortcuts()
   useEffect(() => {
@@ -100,6 +103,7 @@ export default function App() {
             image={(isMagneticKind(heatKind) ? sim.magnetic.error : sim.error) ? null : image}
             arrowScale={sim.error ? null : arrowScale}
             magneticArrowScale={sim.magnetic.error ? null : magneticArrowScale}
+            ampere={ampere.data}
           />
           <Legend
             heat={(isMagneticKind(heatKind) ? sim.magnetic.error : sim.error) ? null : (image?.legend ?? null)}
@@ -136,9 +140,10 @@ export default function App() {
             ))}
           </Tabs.List>
           <div className="min-h-0 flex-1 overflow-y-auto">
-            <Tabs.Content value="parameters"><ParametersPanel /></Tabs.Content>
+            <Tabs.Content value="parameters"><ParametersPanel magnetic={sim.magnetic.error ? undefined : sim.magnetic.result} /></Tabs.Content>
             <Tabs.Content value="visualization"><VisualizationPanel sim={sim} /></Tabs.Content>
             <Tabs.Content value="gauss"><GaussPanel flux={flux.data} /></Tabs.Content>
+            <Tabs.Content value="ampere"><AmperePanel ampere={ampere.data} stale={ampere.isStale} error={ampere.error} /></Tabs.Content>
             <Tabs.Content value="equations"><EquationsPanel /></Tabs.Content>
             <Tabs.Content value="results"><ResultsPanel sim={sim} flux={flux.data} /></Tabs.Content>
           </div>

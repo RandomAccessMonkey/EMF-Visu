@@ -116,6 +116,36 @@ SYMBOLS: dict[str, SymbolDef] = {
                               "parameter m = 4aρ/((a+ρ)² + z²)",
                               "első- és másodfajú teljes elliptikus integrálok, m = "
                               "4aρ/((a+ρ)² + z²) paraméterrel")),
+    "N": SymbolDef(latex=r"N", unit="1", meaning=L("number of turns", "menetszám")),
+    "Lsol": SymbolDef(latex=r"L", unit="m",
+                      meaning=L("winding length: distance between the first and last turn centres",
+                                "tekercshossz: az első és az utolsó menet középpontjának "
+                                "távolsága")),
+    "zk": SymbolDef(latex=r"z_k", unit="m",
+                    meaning=L("axial position of turn k", "a k-adik menet tengelyirányú helye")),
+    "nturns": SymbolDef(latex=r"n", unit="1/m",
+                        meaning=L("turns per unit length", "egységnyi hosszra eső menetszám")),
+    "mur": SymbolDef(latex=r"\mu_r", unit="1",
+                     meaning=L("relative permeability of the core", "a mag relatív "
+                               "permeabilitása")),
+    "Mvec": SymbolDef(latex=r"\mathbf{M}", unit="A/m",
+                      meaning=L("magnetization (prescribed, uniform)", "mágnesezettség (előírt, "
+                                "egyenletes)")),
+    "Lmag": SymbolDef(latex=r"L", unit="m", meaning=L("magnet length", "a mágnes hossza")),
+    "Jb": SymbolDef(latex=r"\mathbf{J}_b", unit="A/m^2",
+                    meaning=L("bound volume current density", "kötött térfogati áramsűrűség")),
+    "Kb": SymbolDef(latex=r"\mathbf{K}_b", unit="A/m",
+                    meaning=L("bound surface current density", "kötött felületi áramsűrűség")),
+    "nhat": SymbolDef(latex=r"\hat{\mathbf{n}}", unit="1",
+                      meaning=L("outward unit normal of the surface", "a felület kifelé mutató "
+                                "egységnormálisa")),
+    "mmom": SymbolDef(latex=r"\mathbf{m}", unit="A*m^2",
+                      meaning=L("magnetic dipole moment", "mágneses dipólusmomentum")),
+    "Ienc": SymbolDef(latex=r"I_{\text{free,enc}}", unit="A",
+                      meaning=L("signed free current through a surface bounded by C (bound "
+                                "currents excluded)",
+                                "a C által határolt felületen átfolyó előjeles szabad áram (a "
+                                "kötött áramok nélkül)")),
     "Bi": SymbolDef(latex=r"\mathbf{B}_i", unit="T",
                     meaning=L("magnetic flux density of current source i alone",
                               "az i-edik áramforrás saját mágneses indukciója")),
@@ -823,6 +853,286 @@ EQUATIONS: list[Equation] = [
         symbols=["H", "B", "mu0"],
         assumptions=[L("Vacuum (M = 0).", "Vákuum (M = 0).")],
         used_by=[MS],
+    ),
+    Equation(
+        id="finite_solenoid_superposition", category="magnetostatics",
+        name=L("Finite solenoid: sum of its turns", "Véges szolenoid: a menetek összege"),
+        latex=r"\mathbf{B}_{\text{sol}}(\mathbf{r}) = \sum_{k=0}^{N-1} \mathbf{B}_{\text{loop}}(\mathbf{r};\,a,\,z_k,\,I),\qquad z_k = -\tfrac{L}{2} + k\,\tfrac{L}{N-1}",
+        meaning=L("The field of a finite solenoid, computed as the sum of the exact fields of its N "
+                  "circular turns.",
+                  "A véges szolenoid tere, N kör alakú menete egzakt terének összegeként számítva."),
+        intuition=L("Each turn's field points along the axis near the centre; inside the coil they "
+                    "add up to a strong, nearly uniform field. Near the ends there are fewer turns "
+                    "on one side, so the field weakens and spreads out (fringe field).",
+                    "Minden menet tere a középpont közelében tengelyirányú; a tekercs belsejében "
+                    "ezek erős, közel homogén térré adódnak össze. A végek közelében az egyik "
+                    "oldalon kevesebb menet van, ezért a tér gyengül és szétterül (szórt tér)."),
+        symbols=["B", "N", "a_loop", "I", "Lsol", "zk"],
+        assumptions=[L("Discrete coaxial circular turns of zero thickness, steady current, vacuum. "
+                       "Helical connections and lead wires are not modelled.",
+                       "Diszkrét, koaxiális, nulla vastagságú kör alakú menetek, stacionárius áram, "
+                       "vákuum. A csavarvonalas összeköttetéseket és a hozzávezetéseket nem "
+                       "modellezzük.")],
+        limitations=[L("Exact for the represented turns; a real helical winding differs slightly, "
+                       "mostly near the turns themselves.",
+                       "Az ábrázolt menetekre egzakt; egy valódi csavarvonalas tekercs kissé "
+                       "eltér, főleg a menetek közvetlen közelében.")],
+        used_by=[MS],
+    ),
+    Equation(
+        id="solenoid_turn_spacing", category="magnetostatics",
+        name=L("Turn spacing", "Menetköz"),
+        latex=r"\Delta z = \frac{L}{N-1}\quad (N > 1)",
+        meaning=L("Distance between neighbouring turn centres, derived from the winding length L "
+                  "(first to last turn centre) and the number of turns.",
+                  "A szomszédos menetközéppontok távolsága, a tekercshosszból (első és utolsó "
+                  "menet középpontja között) és a menetszámból származtatva."),
+        intuition=L("Spacing is not an independent input: changing N or L changes it.",
+                    "A menetköz nem független bemenet: N vagy L módosítása megváltoztatja."),
+        symbols=["Lsol", "N"],
+        assumptions=[L("Evenly spaced turns; for N = 1 the single turn sits at the centre.",
+                       "Egyenletesen elosztott menetek; N = 1 esetén az egyetlen menet a "
+                       "középpontban van.")],
+        used_by=[MS],
+    ),
+    Equation(
+        id="solenoid_turn_density", category="magnetostatics",
+        name=L("Turns per unit length", "Egységnyi hosszra eső menetszám"),
+        latex=r"n = \frac{N}{L}",
+        meaning=L("Winding density used by the ideal long-solenoid approximation.",
+                  "Az ideális hosszú szolenoid közelítés tekercssűrűsége."),
+        intuition=L("More turns per metre give a stronger field inside a long coil.",
+                    "Méterenként több menet erősebb teret ad egy hosszú tekercs belsejében."),
+        symbols=["nturns", "N", "Lsol"],
+        idealized=True,
+    ),
+    Equation(
+        id="ideal_solenoid_H", category="magnetostatics",
+        name=L("Ideal long solenoid: H", "Ideális hosszú szolenoid: H"),
+        latex=r"H \approx n I",
+        meaning=L("Field strength inside an infinitely long, densely wound solenoid.",
+                  "A térerősség egy végtelen hosszú, sűrűn tekercselt szolenoid belsejében."),
+        intuition=L("Follows from Ampère's law on a rectangle with one side inside the coil.",
+                    "Az Ampère-törvényből következik egy olyan téglalapra, amelynek egyik oldala a "
+                    "tekercsen belül van."),
+        symbols=["H", "nturns", "I"],
+        assumptions=[L("Long coil (L ≫ a), central region far from the ends, vacuum or air core.",
+                       "Hosszú tekercs (L ≫ a), a végektől távoli középső tartomány, vákuum vagy "
+                       "levegő mag.")],
+        limitations=[L("An idealized comparison value, never the solver's result: the finite "
+                       "solenoid is always computed from its turns. Wrong near the ends and "
+                       "outside the coil.",
+                       "Idealizált összehasonlító érték, sosem a megoldó eredménye: a véges "
+                       "szolenoidot mindig a meneteiből számítjuk. A végek közelében és a "
+                       "tekercsen kívül hibás.")],
+        idealized=True,
+    ),
+    Equation(
+        id="ideal_solenoid_B", category="magnetostatics",
+        name=L("Ideal long solenoid: B", "Ideális hosszú szolenoid: B"),
+        latex=r"B \approx \mu_0 n I",
+        meaning=L("Flux density inside an infinitely long, densely wound air-core solenoid.",
+                  "Az indukció egy végtelen hosszú, sűrűn tekercselt, légmagos szolenoid "
+                  "belsejében."),
+        intuition=L("The finite solenoid's central field approaches this value as the coil gets "
+                    "longer relative to its radius.",
+                    "A véges szolenoid középponti tere ehhez az értékhez közelít, ahogy a tekercs "
+                    "a sugarához képest hosszabb lesz."),
+        symbols=["B", "mu0", "nturns", "I"],
+        assumptions=[L("Long coil (L ≫ a), central region, vacuum.",
+                       "Hosszú tekercs (L ≫ a), középső tartomány, vákuum.")],
+        limitations=[L("Idealized comparison only; see the probe for where it applies.",
+                       "Csak idealizált összehasonlítás; a szonda mutatja, hol alkalmazható.")],
+        idealized=True,
+    ),
+    Equation(
+        id="finite_toroid_superposition", category="magnetostatics",
+        name=L("Finite-turn toroid: sum of its turns", "Véges menetszámú toroid: a menetek összege"),
+        latex=r"\mathbf{B}_{\text{tor}}(\mathbf{r}) = \sum_{k=0}^{N-1}\mathbf{B}_{\text{loop},k}(\mathbf{r}),\qquad \mathbf{H}_{\text{tor}} = \mathbf{B}_{\text{tor}}/\mu_0",
+        meaning=L("The field of N circular turns arranged around a toroidal centreline, each in a "
+                  "meridional plane.",
+                  "Egy tóruszalakú középvonal mentén elrendezett, meridiánsíkokban fekvő N kör "
+                  "alakú menet tere."),
+        intuition=L("Inside the winding the turns' fields add up around the ring; outside they "
+                    "almost cancel, but not exactly: the discrete turns leak a little field.",
+                    "A tekercselésen belül a menetek terei körben összeadódnak; kívül majdnem "
+                    "kioltják egymást, de nem pontosan: a diszkrét menetekből kevés tér szivárog "
+                    "ki."),
+        symbols=["B", "H", "mu0", "N"],
+        assumptions=[L("Thin circular turns, steady current, vacuum (no core).",
+                       "Vékony kör alakú menetek, stacionárius áram, vákuum (nincs mag).")],
+        used_by=[MS],
+    ),
+    Equation(
+        id="ideal_toroid_H", category="magnetostatics",
+        name=L("Ideal toroid: H in the core", "Ideális toroid: H a magban"),
+        latex=r"H_\varphi = \frac{N I}{2\pi\rho}\quad\text{inside the core},\qquad \mathbf{H} = 0\ \text{outside}",
+        meaning=L("Field strength of an ideal continuous toroidal winding, from Ampère's law on a "
+                  "coaxial circle.",
+                  "Ideális, folytonos toroid tekercselés térerőssége, egy koaxiális körre "
+                  "felírt Ampère-törvényből."),
+        intuition=L("A circle of radius ρ inside the core links all N turns: 2πρ H = NI.",
+                    "A magon belüli ρ sugarú kör mind az N menetet körülöleli: 2πρ H = NI."),
+        symbols=["H", "N", "I", "rho_cyl"],
+        assumptions=[L("Continuous winding, circular core, no leakage or fringing (idealization).",
+                       "Folytonos tekercselés, kör keresztmetszetű mag, szórt tér és perem nélkül "
+                       "(idealizáció).")],
+        limitations=[L("Not the field of a real or finite-turn toroid outside the core (there it "
+                       "is not zero).",
+                       "Nem egy valódi vagy véges menetszámú toroid tere a magon kívül (ott nem "
+                       "nulla).")],
+        used_by=[MS], idealized=True,
+    ),
+    Equation(
+        id="ideal_toroid_B", category="magnetostatics",
+        name=L("Ideal toroid: B in a linear core", "Ideális toroid: B lineáris magban"),
+        latex=r"B_\varphi = \frac{\mu_0\mu_r N I}{2\pi\rho}",
+        meaning=L("Flux density in a homogeneous, linear, isotropic core of the ideal toroid.",
+                  "Az ideális toroid homogén, lineáris, izotrop magjában az indukció."),
+        intuition=L("H is set by the current alone; the core multiplies B by μᵣ.",
+                    "H-t egyedül az áram határozza meg; a mag μᵣ-szeresére növeli B-t."),
+        symbols=["B", "mu0", "mur", "N", "I", "rho_cyl"],
+        assumptions=[L("Linear, isotropic, time-independent core; ideal confinement.",
+                       "Lineáris, izotrop, időfüggetlen mag; ideális térbezárás.")],
+        used_by=[MS], idealized=True,
+    ),
+    Equation(
+        id="magnet_sheet_field", category="magnetostatics",
+        name=L("Uniformly magnetized cylinder: field of its bound current",
+               "Egyenletesen mágnesezett henger: a kötött áram tere"),
+        latex=r"\mathbf{B}(\mathbf{r}) = \int_{-L/2}^{L/2} M\,\mathbf{B}_{\text{loop}}(\mathbf{r};\,a,\,z',\,1\,\text{A})\,dz'",
+        meaning=L("The bound surface current K = M e_φ on the side wall is a continuous stack of "
+                  "circular loops carrying M dz' each; their fields are integrated numerically.",
+                  "A palást K = M e_φ kötött felületi árama körhurkok folytonos halmaza, "
+                  "mindegyik M dz' árammal; ezek terét numerikusan integráljuk."),
+        intuition=L("A magnet's field is the field of its surface current: like a solenoid with "
+                    "infinitely many, infinitely thin turns.",
+                    "A mágnes tere a felületi áramának tere: mint egy szolenoid végtelen sok, "
+                    "végtelenül vékony menettel."),
+        symbols=["B", "Mvec", "a_loop", "Lmag"],
+        assumptions=[L("Uniform axial magnetization, no other material.",
+                       "Egyenletes tengelyirányú mágnesezettség, nincs más anyag.")],
+        limitations=[L("Adaptive Gauss–Kronrod quadrature (stated tolerance); on the side wall "
+                       "itself the tangential B has two one-sided limits.",
+                       "Adaptív Gauss–Kronrod kvadratúra (megadott tűréssel); magán a palaston a "
+                       "tangenciális B-nek két egyoldali határértéke van.")],
+        used_by=[MS],
+    ),
+    Equation(
+        id="h_from_b_m", category="constitutive",
+        name=L("H inside a magnetized material", "H mágnesezett anyagban"),
+        latex=r"\mathbf{H} = \frac{\mathbf{B}}{\mu_0} - \mathbf{M}",
+        meaning=L("How the solver obtains H from B where a prescribed magnetization M exists; "
+                  "outside the magnet M = 0 and H = B/μ₀.",
+                  "Ahogyan a megoldó B-ből H-t kapja ott, ahol előírt M mágnesezettség van; a "
+                  "mágnesen kívül M = 0 és H = B/μ₀."),
+        intuition=L("Inside a bar magnet H points backwards (from N to S inside), opposite to B.",
+                    "Egy rúdmágnes belsejében H visszafelé mutat (belül É-tól D felé), B-vel "
+                    "ellentétesen."),
+        symbols=["H", "B", "mu0", "Mvec"],
+        assumptions=[L("Prescribed magnetization (no hysteresis or demagnetization curve).",
+                       "Előírt mágnesezettség (nincs hiszterézis vagy lemágnesezési görbe).")],
+        used_by=[MS],
+    ),
+    Equation(
+        id="bound_currents", category="constitutive",
+        name=L("Bound (magnetization) currents", "Kötött (mágnesezési) áramok"),
+        latex=r"\mathbf{J}_b = \nabla\times\mathbf{M},\qquad \mathbf{K}_b = \mathbf{M}\times\hat{\mathbf{n}}",
+        meaning=L("A magnetization is equivalent to bound currents: a volume current where M "
+                  "varies and a surface current where it ends. For a uniform axial cylinder "
+                  "J_b = 0, K_b = M e_φ on the side wall, and K_b = 0 on the end faces.",
+                  "A mágnesezettség kötött áramokkal egyenértékű: térfogati áram, ahol M változik, "
+                  "és felületi áram, ahol véget ér. Egyenletes, tengelyirányú hengernél J_b = 0, "
+                  "a palaston K_b = M e_φ, a véglapokon K_b = 0."),
+        intuition=L("Bound currents produce B like any current, but they are not free current: "
+                    "they do not appear in Ampère's law for H.",
+                    "A kötött áramok minden áramhoz hasonlóan B-t keltenek, de nem szabad áramok: "
+                    "nem szerepelnek a H-ra vonatkozó Ampère-törvényben."),
+        symbols=["Jb", "Kb", "Mvec", "nhat"],
+        used_by=[MS],
+    ),
+    Equation(
+        id="magnetic_moment", category="magnetostatics",
+        name=L("Magnetic moment of the magnet", "A mágnes mágneses momentuma"),
+        latex=r"\mathbf{m} = \mathbf{M}\,V = M\,\pi a^2 L\,\hat{\mathbf{e}}_{\text{axis}}",
+        meaning=L("Total magnetic dipole moment of the uniformly magnetized cylinder.",
+                  "Az egyenletesen mágnesezett henger teljes mágneses dipólusmomentuma."),
+        intuition=L("Sets the strength of the field far away from the magnet.",
+                    "Ez határozza meg a tér erősségét a mágnestől távol."),
+        symbols=["mmom", "Mvec", "a_loop", "Lmag"],
+        used_by=[MS],
+    ),
+    Equation(
+        id="dipole_far_field", category="magnetostatics",
+        name=L("Far field of a magnetic dipole", "Mágneses dipólus távoltere"),
+        latex=r"\mathbf{B} \approx \frac{\mu_0}{4\pi r^3}\left[3(\mathbf{m}\cdot\hat{\mathbf{r}})\hat{\mathbf{r}} - \mathbf{m}\right]",
+        meaning=L("At distances much larger than the magnet, its field approaches that of a point "
+                  "dipole.",
+                  "A mágnes méreténél jóval nagyobb távolságban a tere egy pontszerű dipólus "
+                  "teréhez közelít."),
+        intuition=L("Falls off as 1/r³; the probe compares it with the full result.",
+                    "1/r³ szerint csökken; a szonda összeveti a teljes eredménnyel."),
+        symbols=["B", "mu0", "mmom", "r"],
+        assumptions=[L("r much larger than the magnet's dimensions (here: r ≥ 5 × size).",
+                       "r jóval nagyobb a mágnes méreteinél (itt: r ≥ 5 × méret).")],
+        limitations=[L("A labelled comparison only; the solver always uses the full surface-"
+                       "current model.",
+                       "Csak jelölt összehasonlítás; a megoldó mindig a teljes felületi áramos "
+                       "modellt használja.")],
+        idealized=True,
+    ),
+    Equation(
+        id="ampere_integral", category="magnetostatics",
+        name=L("Ampère's law (integral form)", "Ampère-törvény (integrális alak)"),
+        latex=r"\oint_C \mathbf{H}\cdot d\boldsymbol{\ell} = I_{\text{free,enc}}",
+        meaning=L("The circulation of H around any closed path equals the free current through "
+                  "any surface bounded by it (signed by the right-hand rule).",
+                  "H körintegrálja bármely zárt görbe mentén egyenlő a görbe által határolt "
+                  "felületen átfolyó szabad árammal (előjel a jobbkéz-szabály szerint)."),
+        intuition=L("Curl the right-hand fingers along the path: currents along the thumb count "
+                    "positive. Currents outside the path, and bound currents of magnets, do not "
+                    "count.",
+                    "Ha jobb kezünk ujjai az út irányában hajlanak, a hüvelykujj irányába folyó "
+                    "áramok pozitívak. Az úton kívüli áramok és a mágnesek kötött áramai nem "
+                    "számítanak."),
+        symbols=["H", "dl", "Ienc"],
+        assumptions=[L("Magnetostatics: steady currents, ∂D/∂t neglected.",
+                       "Magnetosztatika: stacionárius áramok, ∂D/∂t elhanyagolva.")],
+        limitations=[L("Checked on the Ampère paths: the left side by adaptive numerical "
+                       "integration of H from the solver, the right side independently from the "
+                       "signed crossings of the current filaments with the spanning surface.",
+                       "Az Ampère-utakon ellenőrizve: a bal oldal a megoldó H terének adaptív "
+                       "numerikus integráljával, a jobb oldal függetlenül, az áramszálak és a "
+                       "kifeszített felület előjeles metszéspontjaiból.")],
+    ),
+    Equation(
+        id="ampere_vacuum_B", category="magnetostatics",
+        name=L("Ampère's law for B in vacuum", "Ampère-törvény B-re vákuumban"),
+        latex=r"\oint_C \mathbf{B}\cdot d\boldsymbol{\ell} = \mu_0 I_{\text{enc}}",
+        meaning=L("Vacuum form: valid only where there is no magnetization (M = 0) along and "
+                  "inside the path.",
+                  "Vákuumbeli alak: csak ott érvényes, ahol az út mentén és belsejében nincs "
+                  "mágnesezettség (M = 0)."),
+        intuition=L("With magnets, ∮B·dl also counts their bound current; that is why the law "
+                    "in matter is written for H.",
+                    "Mágnesek jelenlétében ∮B·dl a kötött áramukat is beszámítja; ezért írjuk az "
+                    "anyagbeli törvényt H-ra."),
+        symbols=["B", "dl", "mu0", "Ienc"],
+        assumptions=[L("Vacuum, M = 0.", "Vákuum, M = 0.")],
+    ),
+    Equation(
+        id="free_bound_currents", category="magnetostatics",
+        name=L("Free and bound current", "Szabad és kötött áram"),
+        latex=r"\nabla\times\mathbf{B} = \mu_0\left(\mathbf{J}_{\text{free}} + \mathbf{J}_b\right),\qquad \nabla\times\mathbf{H} = \mathbf{J}_{\text{free}}",
+        meaning=L("B is produced by free and bound currents together; H only 'sees' the free "
+                  "current in its curl.",
+                  "B-t a szabad és a kötött áramok együtt keltik; H rotációjában csak a szabad "
+                  "áram jelenik meg."),
+        intuition=L("A permanent magnet with no wires has ∮H·dl = 0 around every path, although "
+                    "B is far from zero.",
+                    "Egy vezeték nélküli állandó mágnes körül minden útra ∮H·dl = 0, noha B "
+                    "korántsem nulla."),
+        symbols=["B", "H", "mu0", "J", "Jb"],
     ),
     Equation(
         id="constitutive_d_general", category="constitutive",

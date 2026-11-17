@@ -170,6 +170,12 @@ class ModelContext(BaseModel):
     source_count: int = 0  # number of non-zero sources in the model (charges, or currents)
     # Kinds of current source present (Phase 3A): "infinite_wire", "circular_loop".
     current_source_kinds: list[str] = []
+    # Phase 3B: prescribed magnetization present (permanent magnets); a linear magnetic core
+    # present (ideal toroid); Ampère paths in the request and their verification outcome.
+    has_magnetization: bool = False
+    has_linear_core: bool = False
+    ampere_paths: int = 0
+    ampere_unverified: bool = False
     # Gaussian surfaces in the request (Phase 2B-2): how many, and whether any of them has a
     # charge on its boundary (flux undefined) or failed validation.
     gauss_surfaces: int = 0
@@ -305,16 +311,47 @@ class PointSourceInfo(BaseModel):
     in_plane: dict[str, bool] = {}
 
 
+class TurnGeometry(BaseModel):
+    """One circular filament (a loop, or one turn of a solenoid or finite toroid), world."""
+
+    center_m: list[float]
+    normal: list[float]  # positive current circulates counter-clockwise about it
+    radius_m: float
+
+
+class IdealSolenoidInfo(BaseModel):
+    """Ideal long-solenoid comparison values (an idealization, never the solver's field)."""
+
+    turns_per_m: float  # n = N / L
+    B_T: float  # mu0 n I along the axis direction (signed with I)
+    H_A_per_m: float  # n I
+
+
 class CurrentSourceInfo(BaseModel):
     """One ideal current filament (Phase 3A), in world coordinates, with its relation to every
     plane-grid sampling (for drawing ⊙/⊗ crossings and projections; geometry only)."""
 
     object_id: str
-    kind: Literal["infinite_wire", "circular_loop"]
-    current_A: float
-    point_m: list[float]  # wire: a point on the axis; loop: the centre
-    direction: list[float]  # wire: unit axis direction (positive current); loop: unit normal
-    radius_m: float | None = None  # loop only
+    kind: Literal["infinite_wire", "circular_loop", "solenoid", "toroid_finite", "toroid_ideal",
+                  "permanent_magnet"]
+    current_A: float  # per turn; 0 for a permanent magnet (no free current)
+    point_m: list[float]  # wire: a point on the axis; others: the centre
+    # wire: unit axis direction (positive current); loop: unit normal; solenoid, toroid,
+    # magnet: unit symmetry axis (local +z)
+    direction: list[float]
+    radius_m: float | None = None  # loop, solenoid: radius; magnet: cylinder radius
+    # Phase 3B (additive):
+    turns: int = 1
+    turns_geometry: list[TurnGeometry] = []  # loops, solenoid and finite-toroid turns
+    length_m: float | None = None  # solenoid winding length; magnet length
+    turn_spacing_m: float | None = None  # solenoid, derived L/(N-1)
+    ideal_long_solenoid: IdealSolenoidInfo | None = None
+    major_radius_m: float | None = None  # toroids
+    winding_radius_m: float | None = None  # finite toroid
+    core_radius_m: float | None = None  # ideal toroid
+    relative_permeability: float | None = None  # ideal toroid core
+    magnetization_A_per_m: float | None = None  # magnet (signed along the axis)
+    moment_A_m2: list[float] | None = None  # magnet: m = M pi a^2 L axis
     # wire: the point where the axis crosses each sampling plane (None if parallel to it), and
     # the sign of d·(u×v): +1 current out of the 2D view, -1 into it, 0 parallel.
     plane_crossing_m: dict[str, list[float] | None] = {}

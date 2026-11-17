@@ -8,7 +8,7 @@ import { useT, type MessageKey } from '@/i18n'
 import { prettyUnit } from '@/lib/format'
 import { surfacePhysics } from '@/sim/gauss'
 import { scenePhysics } from '@/sim/request'
-import { useSceneStore } from '@/state/sceneStore'
+import { pathPhysics, useSceneStore } from '@/state/sceneStore'
 import { useViewStore } from '@/state/viewStore'
 
 const TONE: Record<EquationStatus, 'ok' | 'accent' | 'muted' | 'warn'> = {
@@ -45,7 +45,7 @@ function Details({ eq }: { eq: EquationView }) {
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <Badge tone={TONE[eq.status]}>{t(`eq.status.${eq.status}` as MessageKey)}</Badge>
-        {eq.usage !== 'not_used' && <Badge tone={eq.usage === 'evaluated' ? 'accent' : eq.usage === 'checked' ? 'ok' : 'muted'}>{t(`eq.usage.${eq.usage}` as MessageKey)}</Badge>}
+        {eq.usage !== 'not_used' && <Badge tone={eq.usage === 'evaluated' ? 'accent' : eq.usage === 'checked' ? 'ok' : eq.usage === 'approximation' ? 'warn' : 'muted'}>{t(`eq.usage.${eq.usage}` as MessageKey)}</Badge>}
       </div>
       {eq.usage !== 'not_used' && <p className="text-xs text-muted">{loc(eq.usage_note)}</p>}
       {eq.status_reason && <p className="rounded-md border border-border bg-panel-2 p-2 text-xs">{loc(eq.status_reason)}</p>}
@@ -82,13 +82,17 @@ export function EquationsPanel() {
   const { t, loc } = useT()
   const scene = useSceneStore((s) => s.scene)
   const surfaces = useSceneStore((s) => s.surfaces)
+  const paths = useSceneStore((s) => s.paths)
   const dragging = useViewStore((s) => s.dragging)
   const beginner = useViewStore((s) => s.level === 'beginner')
   // Statuses depend on the physical model, not on where objects are: key on the physics subset.
-  const key = useMemo(() => JSON.stringify({ scene: scenePhysics(scene), surfaces: surfaces.map(surfacePhysics) }), [scene, surfaces])
+  const key = useMemo(
+    () => JSON.stringify({ scene: scenePhysics(scene), surfaces: surfaces.map(surfacePhysics), paths: paths.map(pathPhysics) }),
+    [scene, surfaces, paths],
+  )
   const query = useQuery({
     queryKey: ['equations', key],
-    queryFn: ({ signal }) => api.equations(scene, signal, surfaces.map(surfacePhysics)),
+    queryFn: ({ signal }) => api.equations(scene, signal, surfaces.map(surfacePhysics), paths),
     enabled: !dragging,
     placeholderData: keepPreviousData,
     staleTime: Infinity,
@@ -129,7 +133,7 @@ export function EquationsPanel() {
                   <span className="text-xs font-medium">{loc(eq.name)}</span>
                   <span className="flex shrink-0 flex-col items-end gap-1">
                     <Badge tone={TONE[eq.status]}>{t(`eq.status.${eq.status}` as MessageKey)}</Badge>
-                    {eq.usage !== 'not_used' && <Badge tone={eq.usage === 'evaluated' ? 'accent' : eq.usage === 'checked' ? 'ok' : 'muted'}>{t(`eq.usage.${eq.usage}` as MessageKey)}</Badge>}
+                    {eq.usage !== 'not_used' && <Badge tone={eq.usage === 'evaluated' ? 'accent' : eq.usage === 'checked' ? 'ok' : eq.usage === 'approximation' ? 'warn' : 'muted'}>{t(`eq.usage.${eq.usage}` as MessageKey)}</Badge>}
                   </span>
                 </div>
                 <div className="overflow-x-auto py-1 text-[13px]">

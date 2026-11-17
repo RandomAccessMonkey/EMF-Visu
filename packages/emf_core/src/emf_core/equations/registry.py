@@ -34,7 +34,7 @@ class EquationRegistry:
             if status != "applicable" and reason is None:
                 raise ValueError(f"rule for '{e.id}' returned '{status}' without a reason")
             evaluated = e.id in ctx.evaluated_equation_ids
-            usage: Literal["evaluated", "checked", "satisfied", "not_used"]
+            usage: Literal["evaluated", "checked", "satisfied", "approximation", "not_used"]
             checked = e.id in ctx.checked_equation_ids
             if checked and status in ("applicable", "applicable_under_assumptions"):
                 usage, note = "checked", L(
@@ -48,6 +48,12 @@ class EquationRegistry:
                 usage, note = "evaluated", L(
                     "Evaluated directly by the active solver to produce the displayed fields.",
                     "Az aktív megoldó közvetlenül kiértékeli a megjelenített mezők előállításához.")
+            elif status in ("applicable", "applicable_under_assumptions") and e.idealized:
+                usage, note = "approximation", L(
+                    "An idealized approximation shown for comparison. It is not the field the "
+                    "solver computes for this scene.",
+                    "Összehasonlításként megjelenített idealizált közelítés. Nem az a tér, amelyet "
+                    "a megoldó erre a jelenetre számít.")
             elif status in ("applicable", "applicable_under_assumptions") and e.satisfied_note:
                 usage, note = "satisfied", e.satisfied_note
             elif status in ("applicable", "applicable_under_assumptions"):
@@ -62,7 +68,7 @@ class EquationRegistry:
                 usage, note = "not_used", L(
                     "Not used by the active model.", "Az aktív modell nem használja.")
             views.append(EquationView(
-                **e.model_dump(exclude={"symbols", "satisfied_note"}),
+                **e.model_dump(exclude={"symbols", "satisfied_note", "idealized"}),
                 symbols=[self._symbols[s] for s in e.symbols],
                 status=status, status_reason=reason,
                 evaluated_by_solver=evaluated, usage=usage, usage_note=note,
@@ -79,7 +85,8 @@ class EquationRegistry:
             return self.evaluate(contexts[0])
         status_rank = {"applicable": 0, "applicable_under_assumptions": 1, "not_evaluated": 2,
                        "not_applicable": 3}
-        usage_rank = {"checked": 0, "evaluated": 1, "satisfied": 2, "not_used": 3}
+        usage_rank = {"checked": 0, "evaluated": 1, "satisfied": 2, "approximation": 3,
+                      "not_used": 4}
         per_ctx = [self.evaluate(c) for c in contexts]
         out: list[EquationView] = []
         for views in zip(*per_ctx, strict=True):

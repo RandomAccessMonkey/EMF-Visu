@@ -349,3 +349,87 @@ sources refused with reasons; projects with currents persisted; old projects loa
 | Docker images | not rebuilt in this phase (no Docker-related file changed) |
 | Windows | not executed (no Windows machine); the native workflow was run on Linux |
 
+
+## Verification record for Phase 3B (solenoids, toroids, permanent magnets, Ampère's law)
+
+Development environment: Linux x86_64, Python 3.12, PostgreSQL 16 (native cluster), Node 22,
+Redis 7 with the solver worker.
+
+**Independent references** (`emf_core.verification.biot_savart`, never used by the solver):
+closed-form loop axis field; numerical Biot–Savart line integral per turn (trapezoidal rule,
+refined until two levels agree); a direct 2D surface Biot–Savart integral of the magnet's sheet
+current K = M e_φ (no circular-loop formula); the continuous current-sheet axis formula.
+
+**Sources** (`tests/physics/test_phase3b_sources.py`, 50 tests):
+
+| Check | Reference | Tolerance | Result |
+|---|---|---|---|
+| Solenoid N = 1 equals one loop (L ignored) | the circular-loop source | bitwise | pass |
+| Turn positions z_k = −L/2 + kL/(N−1), spacing L/(N−1), n = N/L | geometry | 1e-14 | pass |
+| Solenoid axis field, 5 positions inside, at and beyond the ends | Σ closed-form loop axis fields | 1e-13 | pass |
+| Solenoid off axis, tilted and shifted coil | Σ numerical Biot–Savart per turn | 1e-10 | pass |
+| N = 64 and 256 against the continuous sheet (effective length L·N/(N−1)) | sheet axis formula | 2e-3, 2e-4 | pass |
+| Ideal long solenoid approached only at the centre of long coils; end ratio | μ₀nI; sheet end/centre ratio | offset ≈ 1/(N−1); 2 % | pass |
+| End effects, weak reversed field outside, reversal, scaling, parameter dependence, translation and rotation covariance | | 1e-12 … bitwise | pass |
+| Invalid coils (N = 0, N > 1 with L = 0, a ≤ 0 or NaN) and scaled coils refused | | | pass |
+| Toroid turn geometry and orientation (normal e_φ for every turn) | geometry | 1e-16 | pass |
+| Finite toroid at 3 points (inside, hole, outside) | Σ numerical Biot–Savart per turn | 1e-10 | pass |
+| Rotation by 2π/N, reversal, outside field nonzero but small, whole-toroid rigid motion | | 1e-12 | pass |
+| More turns approach the continuous winding between turns | μ₀NI/(2πR) | monotone | pass |
+| Ideal toroid: H = NI/(2πρ) e_φ, B = μ₀μᵣH in the core, exactly 0 outside; core boundary undefined | closed form | 1e-14 | pass |
+| Finite and ideal models do not read each other's radius | | bitwise | pass |
+| Magnet axis B and H, 7 positions inside and outside | sheet axis formula; H = B/μ₀ − M inside | 1e-11, 1e-10 | pass |
+| Magnet off axis, 4 points, tilted and shifted magnet | direct surface integral | 1e-8 | pass |
+| Quadrature convergence near the wall and the rim (rtol 1e-5 … 1e-13) | finest result | 1e-4, 1e-7, 1e-10 | pass |
+| One-sided limits: tangential jump μ₀M across the wall, normal B continuous, end face B continuous with H jump −M | K = M × n | 1e-4 at ±1e-7 m | pass |
+| m = Mπa²L; inside H opposes B; ∇×B = ∇×H = 0 and ∇·B = 0 (finite differences) | | | pass |
+| Dipole far field approached monotonically (r = 0.4, 1, 3 m) | μ₀/(4πr³)(3(m·r̂)r̂ − m) | < 1e-3 at 3 m | pass |
+| Sheet, rim and end-face statuses; overlapping magnets refused, touching accepted | | | pass |
+| Superposition of solenoid + toroid + magnet; ∇·B; cache keys; old scenes unchanged | | 1e-12 | pass |
+
+**Ampère's law** (`tests/physics/test_ampere.py`, 29 tests): path geometry (normal and
+traversal by the right-hand rule, perimeter and area, reversal); invalid paths rejected with a
+reason (open, fewer than three vertices, collinear, self-intersecting, non-planar, zero-length
+edge) and bad parameters as schema errors; wires (enclosed, off-centre, reversed, outside,
+rectangle and polygon, signed sums, tilted wire and tilted path, wire parallel to the surface);
+shape independence; loops linked and unlinked; solenoid whole and partial windings (counts the
+enclosed turns exactly) and the bore; finite toroid coaxial (24 A), hole, outside and around one
+leg (0); ideal toroid coaxial (24 A), offset coaxial, outside, unsupported for a non-coaxial
+path, ∮B·dl = μ₀μᵣNI; magnet: no free current, Γ_H within tolerance of 0, bound current
+∮B·dl/μ₀ = ML; magnet plus wire; paths through a wire or a loop wire reported, not integrated;
+a path 0.1 mm from a wire still verified and flagged; charges have no effect; accuracy follows
+the requested tolerance (1e-3 … 1e-9); rigid motion of the whole scene; fingerprints.
+
+**API** (`tests/api/test_api_phase3b.py`, 12 tests): `/ampere` results and its cache (charges
+and display settings do not change the key, geometry does); invalid and unsupported requests;
+the documented values of the preset paths (12 A, 24 A finite and ideal, 0 A with bound current
+M·L); probe for a solenoid (contributions with turns, ideal comparison), the ideal core (μᵣ,
+core boundary with one-sided limits) and a magnet (M, H = B/μ₀ − M, dipole comparison, sheet with
+one-sided limits); equation statuses for the new sources incl. the new usage "approximation";
+`ampere_integral` checked only with paths; presets 12–14; persistence of paths and new sources,
+old projects load with no paths; the cost guard (413); magnets dropped from the electric
+subscene.
+
+**Changes to existing tests (intended behaviour changes, nothing weakened):** the number of
+available presets is 10 instead of 7 (`tests/api/test_api.py`); preset 11's view hint has the new
+`probe_m` field (`tests/api/test_api_phase3a.py`); the end-to-end check "unimplemented presets are
+disabled" uses a still-planned preset (Faraday induction) because the solenoid preset is now
+available.
+
+**Fixes found by the new tests:** `crosses_material` was false for an Ampère path lying wholly
+inside a magnet or the ideal core (only boundary crossings were detected); fixed. Display: areas
+in m² and densities in m⁻¹ were shown with SI prefixes ("7.2 mm²" for 0.0072 m²); a prefix-free
+formatter is now used (also for the Gaussian-surface area, a Phase 2B-2 display bug).
+
+| Item | Result |
+|---|---|
+| Python tests | 367 passed (276 earlier, 2 updated as listed above; 91 new), incl. the 5 integration tests against PostgreSQL and Redis |
+| ruff, mypy (strict) | clean |
+| Frontend type-check, lint, production build | clean |
+| Frontend unit tests | 63 passed (50 earlier, 13 new) |
+| End-to-end script, native stack (`scripts/native.py`) with Redis and worker | 53 of 53 checks (46 earlier + 7 for Phase 3B: presets 12–14, Ampère verification, display-only path settings, path reversal, persistence of paths, toroid model switch, probe in the core and the magnet, sheet one-sided limits, N = 1, Hungarian) |
+| Synchronous solve times, normal quality (193² map, 49² vectors, field lines) | preset 12: 1.5 s; 13 finite: 2.3 s; 13 ideal: 2.3 s; 14: 3.3 s (preview 2.5 s); peak memory < 180 MB |
+| Visual inspection (screenshots) | solenoid with its Ampère rectangle and axis profile, finite and ideal toroid, magnet with N/S halves and closed B lines |
+| End-to-end without a worker (`EMF_E2E_NO_WORKER=1`) | not run in this phase |
+| Docker images | not rebuilt or run in this phase |
+| Windows | not executed (no Windows machine); the native workflow was run on Linux |

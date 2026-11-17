@@ -5,8 +5,9 @@ calculation. Build a configuration, change a parameter, see the field respond, a
 equations govern it and under what assumptions.
 
 **Status: Phase 1 (Foundation), Phase 2A (point-charge electrostatics), Phase 2B-1
-(divergence and curl), Phase 2B-2 (Gauss's law and the divergence theorem) and Phase 3A
-(magnetostatic sources: wires and loops) are implemented.**
+(divergence and curl), Phase 2B-2 (Gauss's law and the divergence theorem), Phase 3A
+(magnetostatic sources: wires and loops) and Phase 3B (solenoids, toroids, permanent magnets and
+Ampère's law) are implemented.**
 What works today:
 
 - Any number of positive and negative ideal point charges in vacuum, and dipoles made of two
@@ -33,15 +34,24 @@ What works today:
   closed forms (elliptic integrals for the loop, with a stable near-axis series), superposition
   with each source's own contribution, magnetic field lines with detected closed loops, ⊙/⊗
   current markers, ∇·B = 0, E and B side by side in the probe, and the magnetostatic equations.
-- Presets 1–4 and 9–11, saved projects, English and Hungarian, beginner and advanced levels.
+- Coils and magnets (Phase 3B): finite solenoids made of N discrete turns (turn spacing derived,
+  ideal long-solenoid value shown only as a labelled comparison, field profile along the axis);
+  toroids as N discrete turns in vacuum or as the ideal continuous winding on a linear core;
+  uniformly magnetized cylindrical permanent magnets, computed from their bound surface current,
+  with H = B/μ₀ − M inside, N/S ends, and one-sided limits on the magnet surface.
+- Ampère's law (Ampère tab): circular, rectangular and polygonal closed paths; the circulation of
+  H is integrated numerically along the path and compared with the free current counted
+  independently from where currents cross the path's surface; the result is reported as
+  verified, not converged, ambiguous, unsupported or a mismatch.
+- Presets 1–4 and 9–14, saved projects, English and Hungarian, beginner and advanced levels.
 - High-resolution solves as cancellable jobs on a separate worker, with live progress.
 
 Field lines, contours and surfaces are numerical constructions on top of the exact field; the
 Results panel states the method and its limits for each.
 
 Everything else in the product definition (conductors, dielectrics, extended charge
-distributions, solenoids, toroids, magnets and magnetic materials, magnetic flux, Ampère
-circulation, induction, FEM, FDTD, circuits, open-surface flux tools) is **not implemented
+distributions, nonlinear or field-dependent magnetic materials, induction, FEM, FDTD,
+circuits, open-surface flux tools) is **not implemented
 yet**. Such features are disabled or refused with a reason; nothing is approximated silently.
 See [docs/architecture.md](docs/architecture.md) for the full status table.
 
@@ -169,6 +179,8 @@ handle fails the type-check.
   move it; right-drag pans; the wheel zooms.
 - **3D view**: drag to orbit; select an object to move, rotate or scale it with the gizmo.
 - **Probe** (key `P`): click the slice plane to read exact field values.
+- **Ampère tab**: add a circular, rectangular or polygonal path, place and orient it
+  numerically; the result compares ∮H·dl with the enclosed free current.
 - Keys: `2` / `3` switch views, arrow keys nudge the selection, `Delete` removes it, `Esc`
   deselects.
 - **Advanced** level adds solver details, numerical diagnostics, the equations that do not apply

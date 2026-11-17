@@ -272,6 +272,68 @@
         }
       }
     },
+    "/api/v1/ampere": {
+      "post": {
+        "tags": [
+          "simulation"
+        ],
+        "summary": "Ampere Law",
+        "description": "Amp\u00e8re's law on closed planar paths: the numerical circulation of H (adaptive\nGauss\u2013Kronrod over the exact path, H from the solver) and, independently, the signed free\ncurrent through the spanning surface from the source geometry.",
+        "operationId": "ampere_law_api_v1_ampere_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AmpereBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AmpereHeader"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request Entity Too Large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/gauss/situations": {
       "get": {
         "tags": [
@@ -866,6 +928,186 @@
   },
   "components": {
     "schemas": {
+      "AmpereBody": {
+        "properties": {
+          "scene": {
+            "$ref": "#/components/schemas/Scene"
+          },
+          "ampere": {
+            "$ref": "#/components/schemas/AmpereRequest"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scene",
+          "ampere"
+        ],
+        "title": "AmpereBody"
+      },
+      "AmpereHeader": {
+        "properties": {
+          "solver_id": {
+            "type": "string",
+            "title": "Solver Id"
+          },
+          "solver_version": {
+            "type": "string",
+            "title": "Solver Version"
+          },
+          "current_scale_A": {
+            "type": "number",
+            "title": "Current Scale A"
+          },
+          "method": {
+            "$ref": "#/components/schemas/LocalizedText"
+          },
+          "paths": {
+            "items": {
+              "$ref": "#/components/schemas/PathResult"
+            },
+            "type": "array",
+            "title": "Paths"
+          }
+        },
+        "type": "object",
+        "required": [
+          "solver_id",
+          "solver_version",
+          "current_scale_A",
+          "method",
+          "paths"
+        ],
+        "title": "AmpereHeader"
+      },
+      "AmperePath": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "default": ""
+          },
+          "shape": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CirclePath"
+              },
+              {
+                "$ref": "#/components/schemas/RectanglePath"
+              },
+              {
+                "$ref": "#/components/schemas/PolygonPath"
+              }
+            ],
+            "title": "Shape",
+            "discriminator": {
+              "propertyName": "type",
+              "mapping": {
+                "circle": "#/components/schemas/CirclePath",
+                "polygon": "#/components/schemas/PolygonPath",
+                "rectangle": "#/components/schemas/RectanglePath"
+              }
+            }
+          },
+          "center_m": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Center M",
+            "default": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          },
+          "rotation_euler_xyz_rad": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Rotation Euler Xyz Rad",
+            "default": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          },
+          "reversed": {
+            "type": "boolean",
+            "title": "Reversed",
+            "default": false
+          },
+          "rtol": {
+            "type": "number",
+            "maximum": 0.01,
+            "minimum": 1e-10,
+            "title": "Rtol",
+            "default": 0.0001
+          },
+          "display": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PathDisplay"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "shape"
+        ],
+        "title": "AmperePath"
+      },
+      "AmpereRequest": {
+        "properties": {
+          "paths": {
+            "items": {
+              "$ref": "#/components/schemas/AmperePath"
+            },
+            "type": "array",
+            "maxItems": 16,
+            "minItems": 1,
+            "title": "Paths"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "paths"
+        ],
+        "title": "AmpereRequest"
+      },
       "ArrayEntry": {
         "properties": {
           "name": {
@@ -1105,6 +1347,25 @@
         "title": "BoxShape",
         "description": "Width (local x), depth (local y), height (local z)."
       },
+      "CirclePath": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "circle",
+            "title": "Type",
+            "default": "circle"
+          },
+          "radius_m": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Radius M",
+            "default": 0.1
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "CirclePath"
+      },
       "CircularLoopSource": {
         "properties": {
           "type": {
@@ -1123,6 +1384,38 @@
         "type": "object",
         "title": "CircularLoopSource",
         "description": "Ideal thin circular filament carrying a steady current (Phase 3A).\n\nCarried by a ``ring`` primitive with role ``current_source``: centre = world position,\nradius = ``radius_m`` times the in-plane world scale, normal n = normalised (c_x x c_y) of the\nworld matrix. Positive ``current_A`` circulates counter-clockwise about +n (right-hand rule:\nB points along +n on the axis). Electrically neutral."
+      },
+      "CoilPrimitive": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "coil",
+            "title": "Type",
+            "default": "coil"
+          },
+          "radius_m": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Radius M",
+            "default": 0.04
+          },
+          "length_m": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Length M",
+            "default": 0.2
+          },
+          "turns": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Turns",
+            "default": 20
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "CoilPrimitive",
+        "description": "Geometry of a finite solenoid (Phase 3B): N coaxial circular turns of radius ``radius_m``\nabout local +z, turn centres at z_k = -L/2 + k L/(N - 1) (k = 0..N-1); N = 1 is one turn at\nz = 0 and ``length_m`` is then not used. L is the distance between the first and last turn\ncentres; the turn spacing L/(N - 1) is derived, never an input."
       },
       "ComponentHealth": {
         "properties": {
@@ -1147,6 +1440,57 @@
           "ok"
         ],
         "title": "ComponentHealth"
+      },
+      "Crossing": {
+        "properties": {
+          "object_id": {
+            "type": "string",
+            "title": "Object Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "point_m": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Point M"
+          },
+          "sign": {
+            "type": "integer",
+            "title": "Sign"
+          },
+          "current_A": {
+            "type": "number",
+            "title": "Current A"
+          },
+          "contribution_A": {
+            "type": "number",
+            "title": "Contribution A"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "inside",
+              "on_path",
+              "ambiguous"
+            ],
+            "title": "State"
+          }
+        },
+        "type": "object",
+        "required": [
+          "object_id",
+          "kind",
+          "point_m",
+          "sign",
+          "current_A",
+          "contribution_A",
+          "state"
+        ],
+        "title": "Crossing"
       },
       "CubeShape": {
         "properties": {
@@ -1177,7 +1521,11 @@
             "type": "string",
             "enum": [
               "infinite_wire",
-              "circular_loop"
+              "circular_loop",
+              "solenoid",
+              "toroid_finite",
+              "toroid_ideal",
+              "permanent_magnet"
             ],
             "title": "Kind"
           },
@@ -1209,6 +1557,120 @@
               }
             ],
             "title": "Radius M"
+          },
+          "turns": {
+            "type": "integer",
+            "title": "Turns",
+            "default": 1
+          },
+          "turns_geometry": {
+            "items": {
+              "$ref": "#/components/schemas/TurnGeometry"
+            },
+            "type": "array",
+            "title": "Turns Geometry",
+            "default": []
+          },
+          "length_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Length M"
+          },
+          "turn_spacing_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Turn Spacing M"
+          },
+          "ideal_long_solenoid": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IdealSolenoidInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "major_radius_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Major Radius M"
+          },
+          "winding_radius_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Winding Radius M"
+          },
+          "core_radius_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Core Radius M"
+          },
+          "relative_permeability": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relative Permeability"
+          },
+          "magnetization_A_per_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Magnetization A Per M"
+          },
+          "moment_A_m2": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moment A M2"
           },
           "plane_crossing_m": {
             "additionalProperties": {
@@ -1371,6 +1833,58 @@
         "title": "Domain",
         "description": "Axis-aligned region of interest. It bounds sampling and visualization; the Phase 1\nanalytical model itself is unbounded (potential reference at infinity)."
       },
+      "Enclosure": {
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "title": "Available"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "ambiguous",
+              "on_path",
+              "unsupported"
+            ],
+            "title": "Status"
+          },
+          "value_A": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value A"
+          },
+          "crossings": {
+            "items": {
+              "$ref": "#/components/schemas/Crossing"
+            },
+            "type": "array",
+            "title": "Crossings"
+          },
+          "notes": {
+            "items": {
+              "$ref": "#/components/schemas/LocalizedText"
+            },
+            "type": "array",
+            "title": "Notes",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "available",
+          "status",
+          "value_A",
+          "crossings"
+        ],
+        "title": "Enclosure"
+      },
       "EquationStatusEntry": {
         "properties": {
           "equation_id": {
@@ -1519,6 +2033,7 @@
               "evaluated",
               "checked",
               "satisfied",
+              "approximation",
               "not_used"
             ],
             "title": "Usage"
@@ -1563,6 +2078,15 @@
             "type": "array",
             "maxItems": 16,
             "title": "Surfaces",
+            "default": []
+          },
+          "paths": {
+            "items": {
+              "$ref": "#/components/schemas/AmperePath"
+            },
+            "type": "array",
+            "maxItems": 16,
+            "title": "Paths",
             "default": []
           }
         },
@@ -2249,6 +2773,30 @@
         ],
         "title": "Health"
       },
+      "IdealSolenoidInfo": {
+        "properties": {
+          "turns_per_m": {
+            "type": "number",
+            "title": "Turns Per M"
+          },
+          "B_T": {
+            "type": "number",
+            "title": "B T"
+          },
+          "H_A_per_m": {
+            "type": "number",
+            "title": "H A Per M"
+          }
+        },
+        "type": "object",
+        "required": [
+          "turns_per_m",
+          "B_T",
+          "H_A_per_m"
+        ],
+        "title": "IdealSolenoidInfo",
+        "description": "Ideal long-solenoid comparison values (an idealization, never the solver's field)."
+      },
       "InfiniteWireSource": {
         "properties": {
           "type": {
@@ -2603,13 +3151,33 @@
             "type": "string",
             "enum": [
               "infinite_wire",
-              "circular_loop"
+              "circular_loop",
+              "solenoid",
+              "toroid_finite",
+              "toroid_ideal",
+              "permanent_magnet"
             ],
             "title": "Kind"
           },
           "current_A": {
             "type": "number",
             "title": "Current A"
+          },
+          "turns": {
+            "type": "integer",
+            "title": "Turns",
+            "default": 1
+          },
+          "magnetization_A_per_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Magnetization A Per M"
           },
           "distance_m": {
             "type": "number",
@@ -2679,7 +3247,7 @@
           "H_magnitude_A_per_m"
         ],
         "title": "MagneticContribution",
-        "description": "Field of one current source at the probe point (Phase 3A)."
+        "description": "Field of one magnetic source at the probe point (Phase 3A; kinds extended in 3B)."
       },
       "Material": {
         "properties": {
@@ -2916,6 +3484,26 @@
             "title": "Current Source Kinds",
             "default": []
           },
+          "has_magnetization": {
+            "type": "boolean",
+            "title": "Has Magnetization",
+            "default": false
+          },
+          "has_linear_core": {
+            "type": "boolean",
+            "title": "Has Linear Core",
+            "default": false
+          },
+          "ampere_paths": {
+            "type": "integer",
+            "title": "Ampere Paths",
+            "default": 0
+          },
+          "ampere_unverified": {
+            "type": "boolean",
+            "title": "Ampere Unverified",
+            "default": false
+          },
           "gauss_surfaces": {
             "type": "integer",
             "title": "Gauss Surfaces",
@@ -2962,6 +3550,348 @@
         ],
         "title": "ModelContext",
         "description": "What physical model produced a result. The equation registry derives every equation's\napplicability status from this, so statuses are computed rather than hard-coded."
+      },
+      "OneSidedValue": {
+        "properties": {
+          "side": {
+            "type": "string",
+            "enum": [
+              "inside",
+              "outside"
+            ],
+            "title": "Side"
+          },
+          "offset_m": {
+            "type": "number",
+            "title": "Offset M"
+          },
+          "B_T": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "B T"
+          },
+          "H_A_per_m": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "H A Per M"
+          }
+        },
+        "type": "object",
+        "required": [
+          "side",
+          "offset_m",
+          "B_T",
+          "H_A_per_m"
+        ],
+        "title": "OneSidedValue",
+        "description": "A one-sided limit at a sheet or core boundary, evaluated at \u00b1offset along the normal."
+      },
+      "PathDisplay": {
+        "properties": {
+          "visible": {
+            "type": "boolean",
+            "title": "Visible",
+            "default": true
+          },
+          "show_normal": {
+            "type": "boolean",
+            "title": "Show Normal",
+            "default": true
+          },
+          "show_crossings": {
+            "type": "boolean",
+            "title": "Show Crossings",
+            "default": true
+          },
+          "show_surface": {
+            "type": "boolean",
+            "title": "Show Surface",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "PathDisplay",
+        "description": "Visualization only: never part of a cache key."
+      },
+      "PathResult": {
+        "properties": {
+          "path_id": {
+            "type": "string",
+            "title": "Path Id"
+          },
+          "valid": {
+            "type": "boolean",
+            "title": "Valid"
+          },
+          "invalid_reasons": {
+            "items": {
+              "$ref": "#/components/schemas/LocalizedText"
+            },
+            "type": "array",
+            "title": "Invalid Reasons",
+            "default": []
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "verified",
+              "not_converged",
+              "ambiguous",
+              "intersects_source",
+              "unsupported",
+              "failed",
+              "invalid"
+            ],
+            "title": "Status"
+          },
+          "normal": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Normal"
+          },
+          "center_m": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Center M"
+          },
+          "perimeter_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Perimeter M"
+          },
+          "area_m2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Area M2"
+          },
+          "polyline_m": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Polyline M",
+            "default": []
+          },
+          "circulation_H_A": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Circulation H A"
+          },
+          "circulation_error_A": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Circulation Error A"
+          },
+          "circulation_B_T_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Circulation B T M"
+          },
+          "converged": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Converged"
+          },
+          "subintervals": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subintervals"
+          },
+          "evaluations": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluations"
+          },
+          "min_distance_to_filament_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Distance To Filament M"
+          },
+          "near_singular": {
+            "type": "boolean",
+            "title": "Near Singular",
+            "default": false
+          },
+          "crosses_material": {
+            "type": "boolean",
+            "title": "Crosses Material",
+            "default": false
+          },
+          "enclosure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Enclosure"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "difference_A": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Difference A"
+          },
+          "relative_error": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relative Error"
+          },
+          "tolerance_A": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tolerance A"
+          },
+          "bound_current_from_B_A": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bound Current From B A"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path_id",
+          "valid",
+          "status"
+        ],
+        "title": "PathResult"
+      },
+      "PermanentMagnetSource": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "permanent_magnet",
+            "title": "Type",
+            "default": "permanent_magnet"
+          },
+          "magnetization_A_per_m": {
+            "type": "number",
+            "title": "Magnetization A Per M",
+            "default": 500000.0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "PermanentMagnetSource",
+        "description": "Uniformly magnetized cylinder (Phase 3B) on a ``cylinder`` primitive, role\n``magnetic_material``: M = M e_z(local) inside, 0 outside. Negative M reverses the polarity.\nA prescribed magnetization (no hysteresis, no demagnetization curve)."
       },
       "PlaneGridSampling": {
         "properties": {
@@ -3292,6 +4222,49 @@
         ],
         "title": "PointsSampling"
       },
+      "PolygonPath": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "polygon",
+            "title": "Type",
+            "default": "polygon"
+          },
+          "vertices_m": {
+            "items": {
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array",
+              "maxItems": 3,
+              "minItems": 3
+            },
+            "type": "array",
+            "maxItems": 64,
+            "minItems": 1,
+            "title": "Vertices M"
+          },
+          "closed": {
+            "type": "boolean",
+            "title": "Closed",
+            "default": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "vertices_m"
+        ],
+        "title": "PolygonPath"
+      },
       "Preset": {
         "properties": {
           "id": {
@@ -3375,6 +4348,14 @@
                 "type": "null"
               }
             ]
+          },
+          "ampere_paths": {
+            "items": {
+              "$ref": "#/components/schemas/AmperePath"
+            },
+            "type": "array",
+            "title": "Ampere Paths",
+            "default": []
           }
         },
         "type": "object",
@@ -3445,6 +4426,70 @@
           "point_m"
         ],
         "title": "ProbeBody"
+      },
+      "ProbeComparison": {
+        "properties": {
+          "object_id": {
+            "type": "string",
+            "title": "Object Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "ideal_long_solenoid",
+              "ideal_toroid",
+              "finite_toroid",
+              "dipole_far_field"
+            ],
+            "title": "Kind"
+          },
+          "B_T": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "B T"
+          },
+          "H_A_per_m": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "H A Per M"
+          },
+          "applicable": {
+            "type": "boolean",
+            "title": "Applicable"
+          },
+          "note": {
+            "$ref": "#/components/schemas/LocalizedText"
+          }
+        },
+        "type": "object",
+        "required": [
+          "object_id",
+          "kind",
+          "B_T",
+          "H_A_per_m",
+          "applicable",
+          "note"
+        ],
+        "title": "ProbeComparison",
+        "description": "An idealized or approximate model evaluated at the probe point for comparison. Never\nthe solver's field; ``applicable`` says whether its assumptions hold at this point."
       },
       "ProbeContribution": {
         "properties": {
@@ -3667,9 +4712,32 @@
             "type": "boolean",
             "title": "Defined"
           },
+          "status": {
+            "type": "string",
+            "enum": [
+              "defined",
+              "singular",
+              "sheet",
+              "end_face",
+              "core_boundary"
+            ],
+            "title": "Status",
+            "default": "defined"
+          },
           "singular_tolerance_m": {
             "type": "number",
             "title": "Singular Tolerance M"
+          },
+          "boundary_tolerance_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Boundary Tolerance M"
           },
           "singular_object_id": {
             "anyOf": [
@@ -3688,7 +4756,11 @@
                 "type": "string",
                 "enum": [
                   "infinite_wire",
-                  "circular_loop"
+                  "circular_loop",
+                  "solenoid",
+                  "toroid_finite",
+                  "toroid_ideal",
+                  "permanent_magnet"
                 ]
               },
               {
@@ -3736,6 +4808,94 @@
           "mu0_H_per_m": {
             "type": "number",
             "title": "Mu0 H Per M"
+          },
+          "material": {
+            "type": "string",
+            "enum": [
+              "vacuum",
+              "magnet",
+              "core"
+            ],
+            "title": "Material",
+            "default": "vacuum"
+          },
+          "constitutive": {
+            "type": "string",
+            "enum": [
+              "vacuum",
+              "magnetization",
+              "linear_core"
+            ],
+            "title": "Constitutive",
+            "default": "vacuum"
+          },
+          "M_A_per_m": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "M A Per M"
+          },
+          "relative_permeability": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relative Permeability"
+          },
+          "nearest_magnet_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nearest Magnet Id"
+          },
+          "nearest_magnet_boundary_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nearest Magnet Boundary M"
+          },
+          "one_sided": {
+            "items": {
+              "$ref": "#/components/schemas/OneSidedValue"
+            },
+            "type": "array",
+            "title": "One Sided",
+            "default": []
+          },
+          "comparisons": {
+            "items": {
+              "$ref": "#/components/schemas/ProbeComparison"
+            },
+            "type": "array",
+            "title": "Comparisons",
+            "default": []
+          },
+          "quadrature_converged": {
+            "type": "boolean",
+            "title": "Quadrature Converged",
+            "default": true
           }
         },
         "type": "object",
@@ -3752,7 +4912,7 @@
           "mu0_H_per_m"
         ],
         "title": "ProbeMagnetic",
-        "description": "Magnetic part of the probe (Phase 3A); present when the scene has current sources."
+        "description": "Magnetic part of the probe; present when the scene has magnetic sources."
       },
       "ProbeResponse": {
         "properties": {
@@ -3973,6 +5133,15 @@
             "maxItems": 16,
             "title": "Surfaces",
             "default": []
+          },
+          "paths": {
+            "items": {
+              "$ref": "#/components/schemas/AmperePath"
+            },
+            "type": "array",
+            "maxItems": 16,
+            "title": "Paths",
+            "default": []
           }
         },
         "type": "object",
@@ -4017,6 +5186,14 @@
             "type": "array",
             "title": "Surfaces",
             "default": []
+          },
+          "paths": {
+            "items": {
+              "$ref": "#/components/schemas/AmperePath"
+            },
+            "type": "array",
+            "title": "Paths",
+            "default": []
           }
         },
         "type": "object",
@@ -4059,6 +5236,31 @@
           "updated_at"
         ],
         "title": "ProjectSummary"
+      },
+      "RectanglePath": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "rectangle",
+            "title": "Type",
+            "default": "rectangle"
+          },
+          "width_m": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Width M",
+            "default": 0.2
+          },
+          "height_m": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Height M",
+            "default": 0.1
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "RectanglePath"
       },
       "ResultHeader": {
         "properties": {
@@ -4418,6 +5620,12 @@
               },
               {
                 "$ref": "#/components/schemas/LinePrimitive"
+              },
+              {
+                "$ref": "#/components/schemas/CoilPrimitive"
+              },
+              {
+                "$ref": "#/components/schemas/TorusPrimitive"
               }
             ],
             "title": "Primitive",
@@ -4425,13 +5633,15 @@
               "propertyName": "type",
               "mapping": {
                 "box": "#/components/schemas/BoxPrimitive",
+                "coil": "#/components/schemas/CoilPrimitive",
                 "cylinder": "#/components/schemas/CylinderPrimitive",
                 "group": "#/components/schemas/GroupPrimitive",
                 "line": "#/components/schemas/LinePrimitive",
                 "plane": "#/components/schemas/PlanePrimitive",
                 "point": "#/components/schemas/PointPrimitive",
                 "ring": "#/components/schemas/RingPrimitive",
-                "sphere": "#/components/schemas/SpherePrimitive"
+                "sphere": "#/components/schemas/SpherePrimitive",
+                "torus": "#/components/schemas/TorusPrimitive"
               }
             }
           },
@@ -4482,6 +5692,18 @@
                   },
                   {
                     "$ref": "#/components/schemas/CircularLoopSource"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SolenoidSource"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ToroidFiniteSource"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ToroidIdealSource"
+                  },
+                  {
+                    "$ref": "#/components/schemas/PermanentMagnetSource"
                   }
                 ],
                 "discriminator": {
@@ -4489,7 +5711,11 @@
                   "mapping": {
                     "circular_loop": "#/components/schemas/CircularLoopSource",
                     "infinite_wire": "#/components/schemas/InfiniteWireSource",
-                    "point_charge": "#/components/schemas/PointChargeSource"
+                    "permanent_magnet": "#/components/schemas/PermanentMagnetSource",
+                    "point_charge": "#/components/schemas/PointChargeSource",
+                    "solenoid": "#/components/schemas/SolenoidSource",
+                    "toroid_finite": "#/components/schemas/ToroidFiniteSource",
+                    "toroid_ideal": "#/components/schemas/ToroidIdealSource"
                   }
                 }
               },
@@ -4539,6 +5765,25 @@
           "request"
         ],
         "title": "SimulationBody"
+      },
+      "SolenoidSource": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "solenoid",
+            "title": "Type",
+            "default": "solenoid"
+          },
+          "current_A": {
+            "type": "number",
+            "title": "Current A",
+            "default": 1.0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "SolenoidSource",
+        "description": "Finite solenoid (Phase 3B) on a ``coil`` primitive, role ``current_source``: every turn\ncarries the signed current I, counter-clockwise about local +z for I > 0."
       },
       "SolveRequest": {
         "properties": {
@@ -4834,6 +6079,93 @@
         ],
         "title": "SymbolDef"
       },
+      "ToroidFiniteSource": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "toroid_finite",
+            "title": "Type",
+            "default": "toroid_finite"
+          },
+          "current_A": {
+            "type": "number",
+            "title": "Current A",
+            "default": 1.0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ToroidFiniteSource",
+        "description": "Finite-turn toroid (Phase 3B) on a ``torus`` primitive: N circular turns of radius\nb_winding, each counter-clockwise about its local +e_phi for I > 0. Vacuum: no core."
+      },
+      "ToroidIdealSource": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "toroid_ideal",
+            "title": "Type",
+            "default": "toroid_ideal"
+          },
+          "current_A": {
+            "type": "number",
+            "title": "Current A",
+            "default": 1.0
+          },
+          "relative_permeability": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Relative Permeability",
+            "default": 1.0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ToroidIdealSource",
+        "description": "Ideal continuous-winding toroid (Phase 3B) on a ``torus`` primitive, with a homogeneous\nlinear core of relative permeability mu_r and minor radius b_core:\nH = N I / (2 pi rho) e_phi and B = mu0 mu_r H inside the core, zero outside (idealization)."
+      },
+      "TorusPrimitive": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "torus",
+            "title": "Type",
+            "default": "torus"
+          },
+          "major_radius_m": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Major Radius M",
+            "default": 0.12
+          },
+          "winding_radius_m": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Winding Radius M",
+            "default": 0.03
+          },
+          "core_radius_m": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Core Radius M",
+            "default": 0.03
+          },
+          "turns": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Turns",
+            "default": 24
+          },
+          "phase_rad": {
+            "type": "number",
+            "title": "Phase Rad",
+            "default": 0.0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "TorusPrimitive",
+        "description": "Geometry of a toroidal winding (Phase 3B), symmetric about local +z.\n\n``winding_radius_m`` (b_winding) is the radius of each circular turn of the finite-turn\nmodel; ``core_radius_m`` (b_core) is the minor radius of the ideal model's core. They are\nseparate parameters: each model uses only its own. Turn k of the finite model sits at\nphi_k = phase + 2 pi k / N."
+      },
       "Transform": {
         "properties": {
           "position_m": {
@@ -4908,6 +6240,36 @@
         "title": "Transform",
         "description": "Local transform relative to the parent object (or to the world if there is no parent).\n\n``rotation_euler_xyz_rad`` uses the rotation matrix R = Rx(a) @ Ry(b) @ Rz(c), which is the\nThree.js default Euler order ``'XYZ'``. Composition: M = T @ R @ S."
       },
+      "TurnGeometry": {
+        "properties": {
+          "center_m": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Center M"
+          },
+          "normal": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Normal"
+          },
+          "radius_m": {
+            "type": "number",
+            "title": "Radius M"
+          }
+        },
+        "type": "object",
+        "required": [
+          "center_m",
+          "normal",
+          "radius_m"
+        ],
+        "title": "TurnGeometry",
+        "description": "One circular filament (a loop, or one turn of a solenoid or finite toroid), world."
+      },
       "ValidationError": {
         "properties": {
           "loc": {
@@ -4980,6 +6342,30 @@
               }
             ],
             "title": "Plane"
+          },
+          "probe_m": {
+            "anyOf": [
+              {
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array",
+                "maxItems": 3,
+                "minItems": 3
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Probe M"
           }
         },
         "type": "object",

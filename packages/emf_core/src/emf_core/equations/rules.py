@@ -279,6 +279,12 @@ def _vacuum_b(c: ModelContext) -> Out:
         return ("not_applicable", L("The medium is not vacuum; use B = μH or B = μ₀(H + M).",
                                     "A közeg nem vákuum; a B = μH vagy B = μ₀(H + M) alak "
                                     "használandó."))
+    if c.has_magnetization or c.has_linear_core:
+        return ("applicable_under_assumptions",
+                L("Only outside the magnets and the ideal core. Inside a magnet H = B/μ₀ − M; "
+                  "inside the core B = μ₀μᵣH.",
+                  "Csak a mágneseken és az ideális magon kívül. Mágnesben H = B/μ₀ − M; a "
+                  "magban B = μ₀μᵣH."))
     return OK
 
 
@@ -331,6 +337,112 @@ def _magnetostatic_source(c: ModelContext) -> Out:
     return status, reason
 
 
+def _kind_rule(kind: str, missing: LocalizedText, idealized_note: LocalizedText | None = None
+               ) -> Rule:
+    def rule(c: ModelContext) -> Out:
+        if not c.computes_magnetic_field:
+            return ("not_evaluated", _NO_B)
+        if kind not in c.current_source_kinds:
+            return ("not_applicable", missing)
+        if idealized_note is not None:
+            return ("applicable_under_assumptions", idealized_note)
+        return OK
+    return rule
+
+
+_NO_SOLENOID = L("The scene contains no solenoid.", "A jelenetben nincs szolenoid.")
+_NO_FINITE_TOROID = L("The scene contains no finite-turn toroid.",
+                      "A jelenetben nincs véges menetszámú toroid.")
+_NO_MAGNET = L("The scene contains no magnetized material (M = 0 everywhere).",
+               "A jelenetben nincs mágnesezett anyag (mindenütt M = 0).")
+_IDEAL_SOL = L("Idealized comparison: a long coil, central region far from the ends. The solver "
+               "computes the finite solenoid from its turns.",
+               "Idealizált összehasonlítás: hosszú tekercs, a végektől távoli középső tartomány. "
+               "A megoldó a véges szolenoidot a meneteiből számítja.")
+
+
+def _ideal_toroid(c: ModelContext) -> Out:
+    if not c.computes_magnetic_field:
+        return ("not_evaluated", _NO_B)
+    if "toroid_ideal" in c.current_source_kinds:
+        return ("applicable_under_assumptions",
+                L("Idealized model in use: continuous winding, linear core, no leakage. Exact "
+                  "within the idealization only.",
+                  "Idealizált modell van használatban: folytonos tekercselés, lineáris mag, szórt "
+                  "tér nélkül. Csak az idealizáción belül egzakt."))
+    if "toroid_finite" in c.current_source_kinds:
+        return ("applicable_under_assumptions",
+                L("Shown for comparison only: the scene uses the finite-turn toroid, whose field "
+                  "is the sum of its turns and is not zero outside the winding.",
+                  "Csak összehasonlításként: a jelenet a véges menetszámú toroidot használja, "
+                  "amelynek tere a menetek összege, és a tekercselésen kívül nem nulla."))
+    return ("not_applicable", L("The scene contains no toroid.", "A jelenetben nincs toroid."))
+
+
+def _magnetization(c: ModelContext) -> Out:
+    if not c.computes_magnetic_field:
+        return ("not_evaluated", _NO_B)
+    return OK if c.has_magnetization else ("not_applicable", _NO_MAGNET)
+
+
+def _dipole(c: ModelContext) -> Out:
+    if not c.computes_magnetic_field:
+        return ("not_evaluated", _NO_B)
+    if not c.has_magnetization:
+        return ("not_applicable", _NO_MAGNET)
+    return ("applicable_under_assumptions",
+            L("Far from the magnet only (r much larger than its size); a comparison, not the "
+              "solver's field.",
+              "Csak a mágnestől távol (r jóval nagyobb a méreténél); összehasonlítás, nem a "
+              "megoldó tere."))
+
+
+def _ampere_integral(c: ModelContext) -> Out:
+    if c.regime not in ("magnetostatic", "electrostatic") or c.time_varying:
+        return ("not_applicable", L("Time-varying fields need the Ampère–Maxwell law.",
+                                    "Időben változó mezőkhöz az Ampère–Maxwell-törvény kell."))
+    if not c.computes_magnetic_field:
+        return ("not_evaluated", _NO_B)
+    if c.ampere_paths == 0:
+        return ("applicable_under_assumptions",
+                L("Holds for every closed path; add an Ampère path to check it numerically.",
+                  "Minden zárt útra teljesül; numerikus ellenőrzéséhez adjon hozzá egy "
+                  "Ampère-utat."))
+    return OK
+
+
+def _ampere_vacuum_b(c: ModelContext) -> Out:
+    if not c.computes_magnetic_field:
+        return ("not_evaluated", _NO_B)
+    if c.has_magnetization or c.has_linear_core:
+        return ("not_applicable",
+                L("Magnetized material is present: ∮B·dl also counts bound currents. Use "
+                  "∮H·dl = I_free,enc.",
+                  "Mágnesezett anyag van jelen: ∮B·dl a kötött áramokat is beszámítja. A "
+                  "∮H·dl = I_szabad,bezárt alak használandó."))
+    return OK
+
+
+def _free_bound(c: ModelContext) -> Out:
+    if not c.computes_magnetic_field:
+        return ("not_evaluated", _NO_B)
+    if c.has_magnetization:
+        return OK
+    return ("applicable_under_assumptions",
+            L("No magnetized material: J_b = 0, so both forms coincide (B = μ₀H).",
+              "Nincs mágnesezett anyag: J_b = 0, így a két alak egybeesik (B = μ₀H)."))
+
+
+def _linear_b(c: ModelContext) -> Out:
+    if not c.computes_magnetic_field:
+        return ("not_evaluated", _NO_B)
+    if c.has_linear_core:
+        return OK
+    return ("applicable_under_assumptions",
+            L("No linear magnetic material in this model: only vacuum, where μ = μ₀.",
+              "Ebben a modellben nincs lineáris mágneses anyag: csak vákuum, ahol μ = μ₀."))
+
+
 RULES: dict[str, Rule] = {
     "gauss_electric": lambda c: OK,
     "gauss_electric_vacuum": _gauss_vacuum,
@@ -366,10 +478,26 @@ RULES: dict[str, Rule] = {
     "div_B_filaments": lambda c: OK if c.computes_magnetic_field else ("not_evaluated", _NO_B),
     "b_mu0_h": _vacuum_b,
     "h_from_b": _vacuum_b,
+    "finite_solenoid_superposition": _kind_rule("solenoid", _NO_SOLENOID),
+    "solenoid_turn_spacing": _kind_rule("solenoid", _NO_SOLENOID),
+    "solenoid_turn_density": _kind_rule("solenoid", _NO_SOLENOID, _IDEAL_SOL),
+    "ideal_solenoid_H": _kind_rule("solenoid", _NO_SOLENOID, _IDEAL_SOL),
+    "ideal_solenoid_B": _kind_rule("solenoid", _NO_SOLENOID, _IDEAL_SOL),
+    "finite_toroid_superposition": _kind_rule("toroid_finite", _NO_FINITE_TOROID),
+    "ideal_toroid_H": _ideal_toroid,
+    "ideal_toroid_B": _ideal_toroid,
+    "magnet_sheet_field": _magnetization,
+    "h_from_b_m": _magnetization,
+    "bound_currents": _magnetization,
+    "magnetic_moment": _magnetization,
+    "dipole_far_field": _dipole,
+    "ampere_integral": _ampere_integral,
+    "ampere_vacuum_B": _ampere_vacuum_b,
+    "free_bound_currents": _free_bound,
     "constitutive_d_general": lambda c: OK,
     "constitutive_d_linear": _d_linear,
     "constitutive_b_general": _needs_b,
-    "constitutive_b_linear": _needs_b,
+    "constitutive_b_linear": _linear_b,
     "ohm_local": _ohm,
     "continuity": _continuity,
     "lorentz_force": _lorentz,

@@ -31,7 +31,9 @@ COINCIDENCE_FACTOR × domain diagonal of a filament; any other point gets its an
 
 from __future__ import annotations
 
+import math
 import time
+from dataclasses import dataclass
 from fractions import Fraction
 
 import numpy as np
@@ -39,9 +41,17 @@ from numpy.typing import NDArray
 from scipy.special import ellipe, ellipkm1
 
 from ...i18n import L, LocalizedText
+from ...numerics.quadrature import adaptive_gk
 from ...postprocess import magnetic_lines as ml
 from ...sampling import PlaneGridSampling
-from ...scene.currents import CurrentSources, LoopSource, WireSource, current_sources
+from ...scene.currents import (
+    CurrentSources,
+    IdealToroidSource,
+    LoopSource,
+    MagnetSource,
+    WireSource,
+    current_sources,
+)
 from ...scene.models import GroupPrimitive, MaterialModel, Role, Scene
 from ...units import MU0, QUANTITIES
 from ..base import (
@@ -51,6 +61,7 @@ from ..base import (
     CurrentSourceInfo,
     FieldLineInfo,
     FieldLineSet,
+    IdealSolenoidInfo,
     MethodInfo,
     ModelContext,
     ProgressCallback,
@@ -60,10 +71,12 @@ from ..base import (
     SolveRequest,
     SolverKind,
     Support,
+    TurnGeometry,
     quantities_for,
 )
 
 Arr = NDArray[np.float64]
+Mask = NDArray[np.bool_]
 COINCIDENCE_FACTOR = 1e-12
 IN_PLANE_FACTOR = 1e-9
 NEAR_AXIS_M = 0.5
@@ -113,22 +126,71 @@ def wire_field(points: Arr, w: WireSource, r_min: float) -> Arr:
     return b
 
 
-def loop_local(rho: Arr, z: Arr, a: float, current: float) -> tuple[Arr, Arr, Arr]:
-    """(B_rho, B_z, distance to the wire) in local cylindrical coordinates."""
+def loop_local(rho: Arr, z: Arr, a: float | Arr, current: float | Arr
+               ) -> tuple[Arr, Arr, Arr]:
+    """(B_rho, B_z, distance to the wire) in local cylindrical coordinates. ``a`` and
+    ``current`` may be arrays broadcast with ``rho`` (many loops at once, Phase 3B)."""
+    a_arr = np.broadcast_to(np.asarray(a, np.float64), np.shape(rho))
     c = MU0 * current / (2.0 * np.pi)
     dp = (a + rho) ** 2 + z**2
     dm = (a - rho) ** 2 + z**2
-    m = 4.0 * a * rho / dp
+    # m <= 1 always; within ~1e-8 of the wire 4a rho/D+ can round to just above 1, where
+    # ellipe is undefined, so it is clamped (1 - m is formed separately, without cancellation).
+    m = np.minimum(4.0 * a * rho / dp, 1.0)
     p1 = dm / dp  # 1 - m, formed without cancellation
     with np.errstate(divide="ignore", invalid="ignore"):
         k = ellipkm1(p1)
         e = ellipe(m)
         sq = np.sqrt(dp)
         bz = c / sq * (k + (a * a - rho * rho - z * z) / dm * e)
-        general = c * z / (rho * sq) * (-k + (a * a + rho * rho + z * z) / dm * e)
-        near = c * z / sq * (4.0 * a / dp) * (np.pi / 2.0) * _f_over_m(m) / (2.0 * p1)
-    b_rho = np.where(m <= NEAR_AXIS_M, near, general)
+        b_rho = c * z / (rho * sq) * (-k + (a * a + rho * rho + z * z) / dm * e)
+        # Near-axis series, evaluated only where it is used (m <= NEAR_AXIS_M).
+        near = m <= NEAR_AXIS_M
+        if np.any(near):
+            mn = m[near]
+            c_near = np.broadcast_to(c, np.shape(rho))[near]
+            b_rho[near] = (c_near * z[near] / sq[near] * (4.0 * a_arr[near] / dp[near])
+                           * (np.pi / 2.0) * _f_over_m(mn) / (2.0 * p1[near]))
     return b_rho, bz, np.sqrt(dm)
+
+
+LOOP_BATCH_ELEMENTS = 400_000  # points × loops evaluated per numpy call (bounds memory)
+
+
+def _loop_arrays(loops: list[LoopSource]) -> tuple[Arr, Arr, Arr]:
+    return (np.array([lp.center_m for lp in loops]), np.array([lp.normal for lp in loops]),
+            np.array([lp.radius_m for lp in loops]))
+
+
+def _chunks(n_points: int, n_loops: int) -> list[slice]:
+    step = max(1, LOOP_BATCH_ELEMENTS // max(n_loops, 1))
+    return [slice(i, i + step) for i in range(0, n_points, step)]
+
+
+def loops_field(loops: list[LoopSource], points: Arr, r_min: float) -> tuple[Arr, Mask]:
+    """Sum of many circular loops' fields (the turns of solenoids and toroids) by one broadcast
+    evaluation of ``loop_local`` per chunk: identical formulas to ``loop_field``, without a Python
+    loop over turns. Returns (B, singular mask)."""
+    c, nrm, rad = _loop_arrays(loops)
+    cur = np.array([lp.current_A for lp in loops])
+    b = np.zeros_like(points)
+    sing = np.zeros(points.shape[0], bool)
+    for sl in _chunks(points.shape[0], len(loops)):
+        d = points[sl, None, :] - c[None, :, :]  # (P, L, 3)
+        z = np.einsum("plk,lk->pl", d, nrm)
+        rvec = d - z[..., None] * nrm[None, :, :]
+        rho = np.linalg.norm(rvec, axis=2)
+        br, bz, dist = loop_local(rho, z, rad[None, :] * np.ones_like(rho),
+                                  cur[None, :] * np.ones_like(rho))
+        with np.errstate(divide="ignore", invalid="ignore"):
+            rhat = np.where(rho[..., None] > 0, rvec / rho[..., None], 0.0)
+        bl = br[..., None] * rhat + bz[..., None] * nrm[None, :, :]
+        on = dist <= r_min
+        bl[on] = 0.0
+        b[sl] = bl.sum(axis=1)
+        sing[sl] = on.any(axis=1)
+    b[sing] = np.nan
+    return b, sing
 
 
 def loop_field(points: Arr, lp: LoopSource, r_min: float) -> Arr:
@@ -144,18 +206,244 @@ def loop_field(points: Arr, lp: LoopSource, r_min: float) -> Arr:
     return b
 
 
-def source_fields(points: Arr, cs: CurrentSources, r_min: float) -> list[Arr]:
-    """Each source's own B (N, 3), in the order of ``cs.ids``."""
-    return ([wire_field(points, w, r_min) for w in cs.wires]
-            + [loop_field(points, lp, r_min) for lp in cs.loops])
+# Per-point evaluation status (Phase 3B). Every status other than OK makes B and/or H undefined
+# at that point, and is counted and explained, never hidden.
+ST_OK, ST_SINGULAR, ST_SHEET, ST_END_FACE, ST_CORE_BOUNDARY = 0, 1, 2, 3, 4
+# Relative accuracy of the magnet's surface-current quadrature by use.
+MAGNET_CHUNK = 4000  # points per adaptive-quadrature call
+MAGNET_RTOL = {"field": 1e-9, "probe": 1e-11, "lines": 1e-7, "ampere": 1e-11}
 
 
-def evaluate(points: Arr, cs: CurrentSources, r_min: float) -> Arr:
-    """Total B [T] (N, 3) by superposition; NaN where any filament makes it singular."""
-    b = np.zeros_like(points)
-    for bi in source_fields(points, cs, r_min):
+def magnet_local(points: Arr, mg: MagnetSource) -> tuple[Arr, Arr, Arr]:
+    """Local cylindrical (rho, z) and unit radial vectors of points about a magnet's axis."""
+    d = points - mg.center_m
+    z = d @ mg.axis
+    rvec = d - z[:, None] * mg.axis
+    rho = np.linalg.norm(rvec, axis=1)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        rhat = np.where(rho[:, None] > 0, rvec / rho[:, None], 0.0)
+    return rho, z, rhat
+
+
+def magnet_regions(points: Arr, mg: MagnetSource, tol: float) -> tuple[Mask, Mask, Mask]:
+    """Masks (inside, on the side-wall current sheet or its rim, on an end face)."""
+    rho, z, _ = magnet_local(points, mg)
+    half = mg.length_m / 2
+    dz = np.maximum(np.abs(z) - half, 0.0)
+    sheet = np.hypot(rho - mg.radius_m, dz) <= tol
+    end_face = (~sheet) & (rho < mg.radius_m) & (np.abs(np.abs(z) - half) <= tol)
+    inside = (~sheet) & (~end_face) & (rho < mg.radius_m) & (np.abs(z) < half)
+    return inside, sheet, end_face
+
+
+def magnet_field(points: Arr, mg: MagnetSource, tol: float, rtol: float
+                 ) -> tuple[Arr, Mask, Mask, int]:
+    """B of a uniformly magnetized cylinder from its side-wall bound current sheet
+    K = M e_phi, as the integral of unit-current circular loops (the single loop
+    implementation ``loop_local``): B = M ∫ B_loop(r; a, z', 1 A) dz' over [-L/2, L/2].
+
+    Adaptive G7/K15 per point, split at z' = z where the integrand peaks next to the sheet.
+    Returns (B, on_sheet mask, not-converged mask, integrand evaluations). Points on the sheet
+    (within ``tol``) get NaN: the ideal sheet has different one-sided tangential limits there."""
+    n = points.shape[0]
+    if n > MAGNET_CHUNK:  # bound the quadrature's working memory
+        parts = [magnet_field(points[i:i + MAGNET_CHUNK], mg, tol, rtol)
+                 for i in range(0, n, MAGNET_CHUNK)]
+        return (np.concatenate([q[0] for q in parts]), np.concatenate([q[1] for q in parts]),
+                np.concatenate([q[2] for q in parts]), sum(q[3] for q in parts))
+    b = np.zeros((n, 3))
+    rho, z, rhat = magnet_local(points, mg)
+    half, a = mg.length_m / 2, mg.radius_m
+    sheet = np.hypot(rho - a, np.maximum(np.abs(z) - half, 0.0)) <= tol
+    idx = np.flatnonzero(~sheet)
+    unconverged = np.zeros(n, bool)
+    if idx.size == 0 or mg.magnetization_A_per_m == 0.0:
+        b[sheet] = np.nan
+        return b, sheet, unconverged, 0
+    # Initial partition per point: split at z' = clip(z), and geometrically around it at
+    # offsets d·4^j (d = distance to the sheet) up to the cylinder length, so a point close to
+    # the sheet starts with intervals matched to its peak instead of halving towards it pass by
+    # pass. The adaptive refinement and its convergence test are unchanged.
+    zc = np.clip(z[idx], -half, half)
+    d = np.maximum(np.hypot(rho[idx] - a, np.maximum(np.abs(z[idx]) - half, 0.0)), 1e-300)
+    offs = d[:, None] * 4.0 ** np.arange(24)[None, :]
+    edges = np.concatenate([np.full((idx.size, 1), -half), zc[:, None] - offs[:, ::-1],
+                            zc[:, None], zc[:, None] + offs, np.full((idx.size, 1), half)],
+                           axis=1)
+    edges = np.clip(edges, -half, half)
+    lo_all, hi_all = edges[:, :-1], edges[:, 1:]
+    keep = hi_all > lo_all
+    item_pt = np.repeat(idx, keep.sum(axis=1))
+    lo, hi = lo_all[keep], hi_all[keep]
+    rho_i, z_i = rho[item_pt], z[item_pt]
+
+    def integrand(items: NDArray[np.int64], t: Arr) -> Arr:
+        br, bz, _ = loop_local(rho_i[items], z_i[items] - t, a, 1.0)
+        return np.stack([br, bz], axis=1)
+
+    res = adaptive_gk(integrand, lo, hi, 2, rtol, atol=1e-15 * MU0)
+    vals = res.value * mg.magnetization_A_per_m
+    sums = np.zeros((n, 2))
+    np.add.at(sums, item_pt, vals)
+    # Items of one point share the point's tolerance: the per-item absolute tolerance below is
+    # tiny, so the relative test on each item is the binding one (conservative).
+    bad = np.zeros(n, bool)
+    np.logical_or.at(bad, item_pt, ~res.converged)
+    unconverged[:] = bad
+    b = sums[:, :1] * rhat + sums[:, 1:2] * mg.axis
+    b[sheet] = np.nan
+    return b, sheet, unconverged, res.evaluations
+
+
+def ideal_toroid_fields(points: Arr, t: IdealToroidSource, tol: float
+                        ) -> tuple[Arr, Arr, Mask]:
+    """Ideal continuous-winding toroid: H = N I/(2 pi rho) e_phi and B = mu0 mu_r H inside the
+    core (rho - R)^2 + z^2 < b_core^2, zero outside (ideal confinement). Points within ``tol`` of
+    the core surface are a one-sided ideal-model boundary: NaN, reported.
+    Returns (B, H, boundary mask)."""
+    d = points - t.center_m
+    z = d @ t.axis
+    rvec = d - z[:, None] * t.axis
+    rho = np.linalg.norm(rvec, axis=1)
+    r_core = np.hypot(rho - t.major_radius_m, z)
+    boundary = np.abs(r_core - t.core_radius_m) <= tol
+    inside = (r_core < t.core_radius_m) & ~boundary & (rho > 0)
+    h = np.zeros_like(points)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        e_phi = np.cross(t.axis, rvec) / rho[:, None]
+    hmag = t.turns * t.current_A / (2.0 * np.pi * rho[inside])
+    h[inside] = hmag[:, None] * e_phi[inside]
+    b = MU0 * t.relative_permeability * h
+    b[boundary] = np.nan
+    h[boundary] = np.nan
+    return b, h, boundary
+
+
+def source_fields(points: Arr, cs: CurrentSources, r_min: float,
+                  rtol: float = MAGNET_RTOL["field"]) -> list[Arr]:
+    """Each source object's own B (N, 3), in the order of ``cs.ids`` (the turns of a solenoid or
+    toroid are summed into their object)."""
+    by_id: dict[str, Arr] = {oid: np.zeros_like(points) for oid in cs.ids}
+    for w in cs.wires:
+        by_id[w.object_id] += wire_field(points, w, r_min)
+    owners = sorted({lp.object_id for lp in cs.loops})
+    for oid in owners:
+        b_obj, _ = loops_field([lp for lp in cs.loops if lp.object_id == oid], points, r_min)
+        by_id[oid] += b_obj
+    tol = sheet_tolerance(cs, r_min)
+    for mg in cs.magnets:
+        by_id[mg.object_id] += magnet_field(points, mg, tol, rtol)[0]
+    for t in cs.ideal_toroids:
+        by_id[t.object_id] += ideal_toroid_fields(points, t, tol)[0]
+    return [by_id[oid] for oid in cs.ids]
+
+
+def sheet_tolerance(cs: CurrentSources, r_min: float) -> float:
+    """Geometric tolerance for "on a current sheet / core surface": IN_PLANE_FACTOR of the
+    domain diagonal (r_min is COINCIDENCE_FACTOR of it)."""
+    return r_min * (IN_PLANE_FACTOR / COINCIDENCE_FACTOR)
+
+
+@dataclass
+class FieldEval:
+    b: Arr  # (N, 3) T; NaN where undefined
+    h: Arr  # (N, 3) A/m; NaN where undefined
+    m: Arr  # (N, 3) A/m prescribed magnetization at the point (0 outside magnets)
+    status: NDArray[np.int64]  # ST_* per point
+    unconverged: int  # points whose magnet quadrature did not converge
+    material: NDArray[np.int64]  # 0 vacuum, 1 inside a magnet, 2 inside an ideal core
+
+
+def evaluate_bh(points: Arr, cs: CurrentSources, r_min: float,
+                rtol: float = MAGNET_RTOL["field"]) -> FieldEval:
+    """B, H and M at points, with the constitutive relation of the region each point lies in:
+    vacuum H = B/mu0; inside a magnet H = B/mu0 - M; inside the ideal toroid's core
+    H = B/(mu0 mu_r) (the ideal toroid is never combined with other sources)."""
+    n = points.shape[0]
+    b = np.zeros((n, 3))
+    status = np.zeros(n, np.int64)
+    for w in cs.wires:
+        bi = wire_field(points, w, r_min)
+        status[np.isnan(bi[:, 0])] = ST_SINGULAR
         b += bi
-    return b
+    if cs.loops:
+        bl, sing = loops_field(cs.loops, points, r_min)
+        status[sing] = ST_SINGULAR
+        b += bl
+    tol = sheet_tolerance(cs, r_min)
+    m = np.zeros((n, 3))
+    material = np.zeros(n, np.int64)
+    unconverged = np.zeros(n, bool)
+    h_extra: Arr | None = None
+    for mg in cs.magnets:
+        bi, sheet, unc, _ = magnet_field(points, mg, tol, rtol)
+        inside, _, end_face = magnet_regions(points, mg, tol)
+        b += np.nan_to_num(bi)
+        status[sheet & (status == ST_OK)] = ST_SHEET
+        status[end_face & (status == ST_OK)] = ST_END_FACE
+        m[inside] += mg.m_vector
+        material[inside] = 1
+        unconverged |= unc
+    for t in cs.ideal_toroids:
+        bi, hi, boundary = ideal_toroid_fields(points, t, tol)
+        b += np.nan_to_num(bi)
+        h_extra = hi
+        status[boundary & (status == ST_OK)] = ST_CORE_BOUNDARY
+        material[np.linalg.norm(np.nan_to_num(hi), axis=1) > 0] = 2
+    h = np.nan_to_num(h_extra) if h_extra is not None else b / MU0 - m
+    b_undef = (status == ST_SINGULAR) | (status == ST_SHEET) | (status == ST_CORE_BOUNDARY)
+    h_undef = b_undef | (status == ST_END_FACE)
+    b[b_undef] = np.nan
+    h[h_undef] = np.nan
+    return FieldEval(b=b, h=h, m=m, status=status, unconverged=int(np.count_nonzero(unconverged)),
+                     material=material)
+
+
+def evaluate(points: Arr, cs: CurrentSources, r_min: float,
+             rtol: float = MAGNET_RTOL["field"]) -> Arr:
+    """Total B [T] (N, 3) by superposition; NaN where it is singular or a sheet boundary."""
+    return evaluate_bh(points, cs, r_min, rtol).b
+
+
+def region_code(points: Arr, cs: CurrentSources) -> NDArray[np.int64]:
+    """Material region of each point (bit k: inside magnet k; bit 40: inside the ideal core).
+    Pure geometry, used where B or H jumps (field-line steps, Ampère breakpoints)."""
+    code = np.zeros(points.shape[0], np.int64)
+    for k, mg in enumerate(cs.magnets):
+        rho, z, _ = magnet_local(points, mg)
+        code |= ((rho < mg.radius_m) & (np.abs(z) < mg.length_m / 2)).astype(np.int64) << k
+    for t in cs.ideal_toroids:
+        d = points - t.center_m
+        z = d @ t.axis
+        rho = np.linalg.norm(d - z[:, None] * t.axis, axis=1)
+        inside = np.hypot(rho - t.major_radius_m, z) < t.core_radius_m
+        code |= inside.astype(np.int64) << 40
+    return code
+
+
+def distance_to_boundaries(points: Arr, cs: CurrentSources) -> Arr:
+    """Distance to the nearest magnet side wall or ideal core surface (inf if none)."""
+    out = np.full(points.shape[0], np.inf)
+    for mg in cs.magnets:
+        rho, z, _ = magnet_local(points, mg)
+        out = np.minimum(out, np.hypot(rho - mg.radius_m,
+                                       np.maximum(np.abs(z) - mg.length_m / 2, 0.0)))
+    for t in cs.ideal_toroids:
+        d = points - t.center_m
+        z = d @ t.axis
+        rho = np.linalg.norm(d - z[:, None] * t.axis, axis=1)
+        out = np.minimum(out, np.abs(np.hypot(rho - t.major_radius_m, z) - t.core_radius_m))
+    return out
+
+
+def distance_to_magnet_surface(points: Arr, mg: MagnetSource) -> Arr:
+    """Distance to the whole closed surface of a magnet (side wall and end faces)."""
+    rho, z, _ = magnet_local(points, mg)
+    half, a = mg.length_m / 2, mg.radius_m
+    side = np.hypot(rho - a, np.maximum(np.abs(z) - half, 0.0))
+    end = np.hypot(np.maximum(rho - a, 0.0), np.abs(z) - half)
+    out: Arr = np.minimum(side, end)
+    return out
 
 
 def distance_to_sources(points: Arr, cs: CurrentSources) -> Arr:
@@ -165,11 +453,13 @@ def distance_to_sources(points: Arr, cs: CurrentSources) -> Arr:
         r = points - w.point_m
         rp = r - (r @ w.direction)[:, None] * w.direction
         out = np.minimum(out, np.linalg.norm(rp, axis=1))
-    for lp in cs.loops:
-        d = points - lp.center_m
-        z = d @ lp.normal
-        rho = np.linalg.norm(d - z[:, None] * lp.normal, axis=1)
-        out = np.minimum(out, np.sqrt((lp.radius_m - rho) ** 2 + z**2))
+    if cs.loops:
+        c, nrm, rad = _loop_arrays(cs.loops)
+        for sl in _chunks(points.shape[0], len(cs.loops)):
+            d = points[sl, None, :] - c[None, :, :]
+            z = np.einsum("plk,lk->pl", d, nrm)
+            rho = np.linalg.norm(d - z[..., None] * nrm[None, :, :], axis=2)
+            out[sl] = np.minimum(out[sl], np.sqrt((rad[None, :] - rho) ** 2 + z**2).min(axis=1))
     return out
 
 
@@ -182,33 +472,77 @@ def _stats(a: Arr, vector: bool) -> ArrayStats:
     return ArrayStats(min=float(v[finite].min()), max=float(v[finite].max()), non_finite_count=bad)
 
 
+def _plane_normal(g: PlaneGridSampling) -> Arr:
+    out: Arr = np.cross(np.asarray(g.u_dir, float), np.asarray(g.v_dir, float))
+    return out
+
+
 def current_source_table(cs: CurrentSources, planes: list[PlaneGridSampling]
                          ) -> list[CurrentSourceInfo]:
-    out: list[CurrentSourceInfo] = []
-    for w in cs.wires:
-        cross: dict[str, list[float] | None] = {}
-        sign: dict[str, int] = {}
-        for g in planes:
-            n = np.cross(np.asarray(g.u_dir, float), np.asarray(g.v_dir, float))
-            dn = float(w.direction @ n)
-            if abs(dn) <= 1e-9:
-                cross[g.id], sign[g.id] = None, 0
-            else:
-                t = float((np.asarray(g.center_m, float) - w.point_m) @ n) / dn
-                cross[g.id] = [float(x) for x in w.point_m + t * w.direction]
-                sign[g.id] = 1 if dn * w.current_A > 0 else (-1 if dn * w.current_A < 0 else 0)
-        out.append(CurrentSourceInfo(
-            object_id=w.object_id, kind="infinite_wire", current_A=w.current_A,
-            point_m=[float(x) for x in w.point_m], direction=[float(x) for x in w.direction],
-            plane_crossing_m=cross, plane_crossing_sign=sign))
+    """One entry per source object, with its world geometry (for drawing and the UI)."""
+    wires = {w.object_id: w for w in cs.wires}
+    turns: dict[str, list[LoopSource]] = {}
     for lp in cs.loops:
-        dist = {g.id: float((lp.center_m - np.asarray(g.center_m, float))
-                            @ np.cross(np.asarray(g.u_dir, float), np.asarray(g.v_dir, float)))
+        turns.setdefault(lp.object_id, []).append(lp)
+    out: list[CurrentSourceInfo] = []
+    for obj in cs.objects:
+        c = obj.center_m if obj.center_m is not None else np.zeros(3)
+        ax = obj.axis if obj.axis is not None else np.array([0.0, 0.0, 1.0])
+        base = {"object_id": obj.object_id, "kind": obj.kind,
+                "current_A": float(obj.current_A or 0.0), "point_m": [float(x) for x in c],
+                "direction": [float(x) for x in ax], "turns": obj.turns}
+        dist = {g.id: float((c - np.asarray(g.center_m, float)) @ _plane_normal(g))
                 for g in planes}
-        out.append(CurrentSourceInfo(
-            object_id=lp.object_id, kind="circular_loop", current_A=lp.current_A,
-            point_m=[float(x) for x in lp.center_m], direction=[float(x) for x in lp.normal],
-            radius_m=lp.radius_m, plane_distance_m=dist))
+        geom = [TurnGeometry(center_m=[float(x) for x in t.center_m],
+                             normal=[float(x) for x in t.normal], radius_m=t.radius_m)
+                for t in turns.get(obj.object_id, [])]
+        if obj.kind == "infinite_wire":
+            w = wires[obj.object_id]
+            cross: dict[str, list[float] | None] = {}
+            sign: dict[str, int] = {}
+            for g in planes:
+                n = _plane_normal(g)
+                dn = float(w.direction @ n)
+                if abs(dn) <= 1e-9:
+                    cross[g.id], sign[g.id] = None, 0
+                else:
+                    t_ = float((np.asarray(g.center_m, float) - w.point_m) @ n) / dn
+                    cross[g.id] = [float(x) for x in w.point_m + t_ * w.direction]
+                    sign[g.id] = (1 if dn * w.current_A > 0 else
+                                  (-1 if dn * w.current_A < 0 else 0))
+            out.append(CurrentSourceInfo(**base, plane_crossing_m=cross,
+                                         plane_crossing_sign=sign))
+        elif obj.kind == "circular_loop":
+            out.append(CurrentSourceInfo(**base, radius_m=obj.params["radius_m"],
+                                         turns_geometry=geom, plane_distance_m=dist))
+        elif obj.kind == "solenoid":
+            a, length = obj.params["radius_m"], obj.params["length_m"]
+            spacing = length / (obj.turns - 1) if obj.turns > 1 else None
+            ideal = None
+            if obj.turns > 1 and length > 0:
+                n_per = obj.turns / length
+                ideal = IdealSolenoidInfo(turns_per_m=n_per,
+                                          B_T=MU0 * n_per * float(obj.current_A or 0.0),
+                                          H_A_per_m=n_per * float(obj.current_A or 0.0))
+            out.append(CurrentSourceInfo(**base, radius_m=a, length_m=length,
+                                         turn_spacing_m=spacing, ideal_long_solenoid=ideal,
+                                         turns_geometry=geom, plane_distance_m=dist))
+        elif obj.kind == "toroid_finite":
+            out.append(CurrentSourceInfo(**base, major_radius_m=obj.params["major_radius_m"],
+                                         winding_radius_m=obj.params["winding_radius_m"],
+                                         turns_geometry=geom, plane_distance_m=dist))
+        elif obj.kind == "toroid_ideal":
+            out.append(CurrentSourceInfo(
+                **base, major_radius_m=obj.params["major_radius_m"],
+                core_radius_m=obj.params["core_radius_m"],
+                relative_permeability=obj.params["relative_permeability"],
+                plane_distance_m=dist))
+        else:  # permanent magnet
+            mg = next(m for m in cs.magnets if m.object_id == obj.object_id)
+            out.append(CurrentSourceInfo(
+                **base, radius_m=mg.radius_m, length_m=mg.length_m,
+                magnetization_A_per_m=mg.magnetization_A_per_m,
+                moment_A_m2=[float(x) for x in mg.moment_A_m2], plane_distance_m=dist))
     return out
 
 
@@ -220,6 +554,152 @@ _FL_SETTINGS = {
 _MAX_LINES = 900
 
 
+def source_h(points: Arr, cs: CurrentSources, oid: str, b_i: Arr, tol: float) -> Arr:
+    """H of one source alone: B_i/mu0 in vacuum, B_i/mu0 - M_i inside a magnet (its own
+    magnetization), B_i/(mu0 mu_r) inside an ideal core."""
+    for t in cs.ideal_toroids:
+        if t.object_id == oid:
+            return ideal_toroid_fields(points, t, tol)[1]
+    h: Arr = b_i / MU0
+    for mg in cs.magnets:
+        if mg.object_id == oid:
+            inside, _, end_face = magnet_regions(points, mg, tol)
+            h = h - np.where(inside[:, None], mg.m_vector[None, :], 0.0)
+            h[end_face] = np.nan
+    return h
+
+
+def _status_warnings(counts: NDArray[np.int64], unconverged: int) -> list[LocalizedText]:
+    out: list[LocalizedText] = []
+    if counts[ST_SINGULAR]:
+        out.append(L(
+            f"{counts[ST_SINGULAR]} sample point(s) lie on an ideal current filament, where B "
+            "and H are singular; they are reported as undefined.",
+            f"{counts[ST_SINGULAR]} mintavételi pont ideális áramszálra esik, ahol B és H "
+            "szinguláris; ezek értéke nem értelmezett."))
+    if counts[ST_SHEET]:
+        out.append(L(
+            f"{counts[ST_SHEET]} sample point(s) lie on a magnet's bound current sheet, where the "
+            "tangential B has different one-sided limits; no single value is reported there.",
+            f"{counts[ST_SHEET]} mintavételi pont egy mágnes kötött áramrétegére esik, ahol a "
+            "tangenciális B egyoldali határértékei eltérnek; ott nincs egyetlen érték."))
+    if counts[ST_END_FACE]:
+        out.append(L(
+            f"{counts[ST_END_FACE]} sample point(s) lie on a magnet's end face: B is continuous "
+            "there, but H jumps (its normal component by M), so H is not reported there.",
+            f"{counts[ST_END_FACE]} mintavételi pont egy mágnes véglapjára esik: B ott folytonos, "
+            "de H ugrik (normális komponense M-mel), ezért H ott nincs megadva."))
+    if counts[ST_CORE_BOUNDARY]:
+        out.append(L(
+            f"{counts[ST_CORE_BOUNDARY]} sample point(s) lie on the ideal toroid's core surface, "
+            "where the ideal model has only one-sided values.",
+            f"{counts[ST_CORE_BOUNDARY]} mintavételi pont az ideális toroid magjának felületére "
+            "esik, ahol az ideális modellnek csak egyoldali értékei vannak."))
+    if unconverged:
+        out.append(L(
+            f"The surface-current quadrature of a magnet did not reach its tolerance at "
+            f"{unconverged} point(s); their values are less accurate than stated.",
+            f"Egy mágnes felületi áram szerinti kvadratúrája {unconverged} pontban nem érte el a "
+            "tűrést; ezek értéke a megadottnál pontatlanabb."))
+    return out
+
+
+def _model_assumptions(cs: CurrentSources) -> list[LocalizedText]:
+    kinds = {o.kind for o in cs.objects}
+    out: list[LocalizedText] = []
+    if "solenoid" in kinds:
+        out.append(L(
+            "Solenoid: discrete coaxial circular turns; the helical connections between turns "
+            "and the lead wires are not modelled. The field is the sum of the turns' fields.",
+            "Szolenoid: diszkrét, koaxiális kör alakú menetek; a menetek közötti csavarvonalas "
+            "kapcsolatot és a hozzávezetéseket nem modellezzük. A tér a menetek terének összege."))
+    if "toroid_finite" in kinds:
+        out.append(L(
+            "Finite-turn toroid: N separate circular turns in meridional planes, in vacuum (no "
+            "core); leakage and the field outside the winding are included.",
+            "Véges menetszámú toroid: N különálló kör alakú menet meridiánsíkokban, vákuumban "
+            "(mag nélkül); a szórt tér és a tekercsen kívüli tér is szerepel."))
+    if "toroid_ideal" in kinds:
+        out.append(L(
+            "Ideal toroid: continuous winding, homogeneous linear isotropic core (B = μ₀μᵣH), "
+            "perfect confinement: B = H = 0 outside the core. Leakage, fringing and the discrete "
+            "turns are neglected (idealization).",
+            "Ideális toroid: folytonos tekercselés, homogén, lineáris, izotrop mag (B = μ₀μᵣH), "
+            "tökéletes térbezárás: a magon kívül B = H = 0. A szórt teret, a peremhatásokat és a "
+            "diszkrét meneteket elhanyagolja (idealizáció)."))
+    if cs.magnets:
+        out.append(L(
+            "Permanent magnet: uniform prescribed axial magnetization M (no hysteresis, "
+            "demagnetization curve or temperature dependence). B comes from the bound surface "
+            "current K = M × n on the side wall, computed by adaptive quadrature; "
+            "H = B/μ₀ − M inside, B/μ₀ outside.",
+            "Állandó mágnes: egyenletes, előírt tengelyirányú M mágnesezettség (nincs hiszterézis, "
+            "lemágnesezési görbe vagy hőmérsékletfüggés). B a palást K = M × n kötött felületi "
+            "áramából, adaptív kvadratúrával számítva; belül H = B/μ₀ − M, kívül B/μ₀."))
+    return out
+
+
+def _classification_note(kind: str) -> LocalizedText:
+    if kind == "idealized_model":
+        return L("Idealized analytical model (ideal continuous-winding toroid): exact within its "
+                 "idealization, not the field of a real winding.",
+                 "Idealizált analitikus modell (ideális, folytonos tekercselésű toroid): "
+                 "idealizációján belül egzakt, de nem egy valódi tekercs tere.")
+    if kind == "numerical_approximation":
+        return L("Filament fields are exact closed forms; the magnet's field is the numerical "
+                 "integral of exact loop fields over its bound current sheet (adaptive "
+                 "Gauss–Kronrod, relative tolerance 1e-9), evaluated in 64-bit floating point.",
+                 "Az áramszálak tere egzakt zárt alak; a mágnes tere egzakt körvezető-terek "
+                 "numerikus integrálja a kötött áramrétegen (adaptív Gauss–Kronrod, relatív tűrés "
+                 "1e-9), 64 bites lebegőpontos számítással.")
+    return L("Exact analytical solution (closed-form Biot–Savart solutions: straight wire, and "
+             "circular loop with complete elliptic integrals) of an idealized filament model, "
+             "evaluated in 64-bit floating point and transported as 32-bit.",
+             "Idealizált áramszál-modell egzakt analitikus megoldása (a Biot–Savart-törvény zárt "
+             "alakú megoldásai: egyenes vezető, valamint körvezető teljes elliptikus "
+             "integrálokkal), 64 bites lebegőpontos számítással, 32 bites átvitellel.")
+
+
+def _seed_sources(cs: CurrentSources) -> list[tuple[WireSource | LoopSource, float, str]]:
+    """What seeds field lines, with its strength (|I|, N|I| or |M|L, ampere-turns) and owner.
+    Wires seed on rays; everything else on a "seed disk" that every field line of the source
+    threads once (Phase 3A loop seeding, reused): a loop's own disk; the midplane disk of a
+    solenoid or magnet; a toroid's cross-section half-way between two turns (finite) or at its
+    reference angle (ideal core)."""
+    out: list[tuple[WireSource | LoopSource, float, str]] = []
+    for w in cs.wires:
+        out.append((w, abs(w.current_A), w.object_id))
+    first_turn: dict[str, LoopSource] = {}
+    for lp in cs.loops:
+        if lp.kind == "circular_loop":
+            out.append((lp, abs(lp.current_A), lp.object_id))
+        else:
+            first_turn.setdefault(lp.object_id, lp)
+    for obj in cs.objects:
+        t0 = first_turn.get(obj.object_id)
+        strength = abs(obj.current_A or 0.0) * obj.turns
+        if obj.kind == "solenoid" and t0 is not None and obj.center_m is not None:
+            out.append((LoopSource(obj.object_id, obj.current_A or 0.0, obj.center_m, t0.normal,
+                                   t0.radius_m, t0.u), strength, obj.object_id))
+        elif obj.kind == "toroid_finite" and t0 is not None and obj.center_m is not None:
+            half = math.pi / obj.turns
+            e_rho = math.cos(half) * t0.u + math.sin(half) * t0.normal
+            e_phi = -math.sin(half) * t0.u + math.cos(half) * t0.normal
+            r_maj = obj.params["major_radius_m"]
+            out.append((LoopSource(obj.object_id, obj.current_A or 0.0,
+                                   obj.center_m + r_maj * e_rho, e_phi, t0.radius_m, e_rho),
+                        strength, obj.object_id))
+    for t in cs.ideal_toroids:
+        e_phi = np.cross(t.axis, t.u)
+        out.append((LoopSource(t.object_id, t.current_A, t.center_m + t.major_radius_m * t.u,
+                               e_phi, t.core_radius_m, t.u), abs(t.current_A) * t.turns,
+                    t.object_id))
+    for mg in cs.magnets:
+        out.append((LoopSource(mg.object_id, 1.0, mg.center_m, mg.axis, mg.radius_m, mg.u),
+                    abs(mg.magnetization_A_per_m) * mg.length_m, mg.object_id))
+    return out
+
+
 def _perp(d: Arr) -> Arr:
     """A unit vector perpendicular to d."""
     a = np.array([1.0, 0.0, 0.0]) if abs(d[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
@@ -229,11 +709,11 @@ def _perp(d: Arr) -> Arr:
 
 class FilamentMagnetostaticSolver:
     id = "analytical.magnetostatics.filaments"
-    version = "1.0.0"
+    version = "1.1.0"
     kind: SolverKind = "analytical"
     field_kinds: tuple[str, ...] = ("magnetic",)
-    name = L("Analytical magnetostatics: ideal current filaments in vacuum",
-             "Analitikus magnetosztatika: ideális áramszálak vákuumban")
+    name = L("Analytical magnetostatics: current filaments, coils, toroids and permanent magnets",
+             "Analitikus magnetosztatika: áramszálak, tekercsek, toroidok és állandó mágnesek")
 
     def supports(self, scene: Scene, request: SolveRequest) -> Support:
         reasons: list[LocalizedText] = []
@@ -258,7 +738,7 @@ class FilamentMagnetostaticSolver:
         reasons.extend(current_sources(scene).problems)
         for o in scene.objects:
             if not o.enabled or o.role in (Role.GEOMETRY_ONLY, Role.CURRENT_SOURCE,
-                                           Role.CHARGE_SOURCE):
+                                           Role.CHARGE_SOURCE, Role.MAGNETIC_MATERIAL):
                 continue
             label = o.name or o.id
             reasons.append(L(
@@ -282,8 +762,8 @@ class FilamentMagnetostaticSolver:
         assert ref.kind != "points"
         dmin, dmax = np.asarray(scene.domain.min_m, float), np.asarray(scene.domain.max_m, float)
         diag = scene.domain.diagonal_m
-        currents = [abs(w.current_A) for w in cs.wires] + [abs(lp.current_A) for lp in cs.loops]
-        i_max = max(currents) if currents else 0.0
+        seed_list = _seed_sources(cs)
+        i_max = max((x[1] for x in seed_list), default=0.0)
         r_far = 0.5 * diag
         r_near = max(2.5 * guard, 1e-3 * diag)
 
@@ -310,8 +790,7 @@ class FilamentMagnetostaticSolver:
             nrm = np.cross(u, v)
             c0 = np.asarray(ref.center_m, float)
             tol = IN_PLANE_FACTOR * diag
-        sources: list[WireSource | LoopSource] = [*cs.wires, *cs.loops]
-        for k, (src, cur) in enumerate(zip(sources, currents, strict=True)):
+        for src, cur, owner in seed_list:
             if cur == 0.0:
                 continue
             for level in range(level_count):
@@ -322,7 +801,7 @@ class FilamentMagnetostaticSolver:
                         dn = float(src.direction @ nrm)
                         if abs(dn) <= 1e-9:
                             if level == 0:
-                                unseeded.append(src.object_id)
+                                unseeded.append(owner)
                                 in_plane_all = False
                             continue
                         if level == 0 and abs(abs(dn) - 1.0) > 1e-9:
@@ -356,7 +835,7 @@ class FilamentMagnetostaticSolver:
                             dirc /= np.linalg.norm(dirc)
                             if abs(dist_c) >= a:
                                 if level == 0:
-                                    unseeded.append(src.object_id)
+                                    unseeded.append(owner)
                                 continue
                             half = np.sqrt(a * a - dist_c * dist_c)
                             foot = src.center_m - dist_c * nrm
@@ -367,7 +846,7 @@ class FilamentMagnetostaticSolver:
                                 in_plane_all = False
                             if abs(abs(nz) - 1.0) <= 1e-9:  # loop parallel to the plane
                                 if level == 0:
-                                    unseeded.append(src.object_id)
+                                    unseeded.append(owner)
                                 continue
                             # line where the slice cuts the loop plane, intersected with the disk
                             dirc = np.cross(src.normal, nrm)
@@ -378,7 +857,7 @@ class FilamentMagnetostaticSolver:
                             foot = src.center_m + s0 * w_in
                             if abs(s0) >= a:
                                 if level == 0:
-                                    unseeded.append(src.object_id)
+                                    unseeded.append(owner)
                                 continue
                             half = np.sqrt(a * a - s0 * s0)
                             pts = [foot + s * r * dirc for r in loop_radii(n, half)
@@ -392,7 +871,7 @@ class FilamentMagnetostaticSolver:
                             pts += [src.center_m + r * dirr for r in loop_radii(nn, a)]
                 for p in pts:
                     if inside(p):
-                        per_level[level].append((p, cs.ids[k]))
+                        per_level[level].append((p, owner))
         seeds = [np.array([p for p, _ in lv]).reshape(-1, 3) for lv in per_level]
         owners = [[o for _, o in lv] for lv in per_level]
         return seeds, owners, unseeded, in_plane_all
@@ -406,7 +885,8 @@ class FilamentMagnetostaticSolver:
         diag = scene.domain.diagonal_m
         guard = req.guard_cells * ref.cell_m
         cfg = _FL_SETTINGS[request.quality]
-        i_sum = sum(abs(w.current_A) for w in cs.wires) + sum(abs(lp.current_A) for lp in cs.loops)
+        i_sum = cs.free_current_scale_A + sum(abs(mg.magnetization_A_per_m) * mg.length_m
+                                              for mg in cs.magnets)
         settings = ml.Settings(
             atol=cfg["atol"] * diag, h_max=cfg["h_max"] * diag, h_min=1e-12 * diag,
             max_length=6.0 * diag, max_steps=int(cfg["max_steps"]), guard_radius=guard,
@@ -424,10 +904,19 @@ class FilamentMagnetostaticSolver:
                 owners[lv] = [owners[lv][i] for i in idx]
 
         def field_fn(p: Arr) -> Arr:
-            return evaluate(p, cs, r_min)
+            return evaluate(p, cs, r_min, MAGNET_RTOL["lines"])
 
         def dist_fn(p: Arr) -> Arr:
             return distance_to_sources(p, cs)
+
+        def region_fn(p: Arr) -> NDArray[np.int64]:
+            return region_code(p, cs)
+
+        def scale_fn(p: Arr) -> Arr:
+            # Closure length scale and step limit also see magnet sheets and the ideal core
+            # surface (which lines may cross); singular capture stays filaments only.
+            out: Arr = np.minimum(distance_to_sources(p, cs), distance_to_boundaries(p, cs))
+            return out
 
         infos: list[FieldLineInfo] = []
         chunks: list[Arr] = []
@@ -437,7 +926,9 @@ class FilamentMagnetostaticSolver:
         for level, (sd, own) in enumerate(zip(seeds, owners, strict=True)):
             if len(sd) == 0:
                 continue
-            lines = ml.trace_lines(field_fn, dist_fn, sd, dmin, dmax, settings)
+            lines = ml.trace_lines(field_fn, dist_fn, sd, dmin, dmax, settings, scale_fn=scale_fn,
+                                   region_fn=region_fn if (cs.magnets or cs.ideal_toroids)
+                                   else None)
             kept: list[Arr] = []
             for ln in lines:
                 seed = sd[ln.seed_index][None, :]
@@ -541,23 +1032,32 @@ class FilamentMagnetostaticSolver:
 
         arrays: dict[str, Arr] = {}
         entries: list[ArrayEntry] = []
-        masked = 0
+        counts = np.zeros(5, np.int64)
+        unconverged = 0
         done = 0
         contrib_ok = cs.count <= MAX_CONTRIBUTION_SOURCES
+        tol = sheet_tolerance(cs, r_min)
         for s in request.samplings:
             pts = s.points()
             b = np.empty_like(pts)
+            h = np.empty_like(pts)
+            status = np.empty(pts.shape[0], np.int64)
             for start in range(0, pts.shape[0], _CHUNK):
                 check_cancel()
                 sl = slice(start, start + _CHUNK)
-                b[sl] = evaluate(pts[sl], cs, r_min)
+                ev = evaluate_bh(pts[sl], cs, r_min)
+                b[sl], h[sl], status[sl] = ev.b, ev.h, ev.status
+                unconverged += ev.unconverged
                 done += pts[sl].shape[0]
                 if progress is not None:
                     progress(share * done / max(total, 1), s.id)
-            defined = np.all(np.isfinite(b), axis=1)
-            masked += int(np.count_nonzero(~defined))
-            div = np.where(defined, 0.0, np.nan)
-            data_by_q = {"B": b, "H": b / MU0, "div_B": div, "div_H": div / MU0}
+            counts += np.bincount(status, minlength=5)
+            # Exact zeros where the field is defined: every source is divergence-free there
+            # (Biot–Savart fields of filaments and sheets; the ideal core field is azimuthal and
+            # depends on rho only). div H = -div M = 0 inside a uniform magnet.
+            div_b = np.where(np.all(np.isfinite(b), axis=1), 0.0, np.nan)
+            div_h = np.where(np.all(np.isfinite(h), axis=1), 0.0, np.nan)
+            data_by_q = {"B": b, "H": h, "div_B": div_b, "div_H": div_h}
             for qty in quantities_for(request, s):
                 info = QUANTITIES[qty]
                 name = f"{s.id}.{qty}"
@@ -568,8 +1068,10 @@ class FilamentMagnetostaticSolver:
                     unit=info.unit, components=3 if info.rank == 1 else 1,
                     stats=_stats(data_by_q[qty], info.rank == 1)))
             if s.id in request.source_contributions and contrib_ok:
-                for oid, bi in zip(cs.ids, source_fields(pts, cs, r_min), strict=True):
-                    for qty, data in (("B", bi), ("H", bi / MU0)):
+                fields = source_fields(pts, cs, r_min)
+                for oid, bi in zip(cs.ids, fields, strict=True):
+                    hi = source_h(pts, cs, oid, bi, tol)
+                    for qty, data in (("B", bi), ("H", hi)):
                         info = QUANTITIES[qty]
                         name = f"{s.id}.{qty}@{oid}"
                         arrays[name] = data.reshape(*s.shape, 3)
@@ -591,13 +1093,18 @@ class FilamentMagnetostaticSolver:
                     and not isinstance(o.primitive, GroupPrimitive)]
         assumptions = [
             L("Steady (DC) currents in ideal filaments of zero radius: infinitely long straight "
-              "wires and thin circular loops.",
+              "wires and thin circular loops (also the turns of solenoids and finite toroids).",
               "Stacionárius (egyen-) áramok nulla vastagságú ideális áramszálakban: végtelen "
-              "hosszú egyenes vezetők és vékony körvezetők."),
+              "hosszú egyenes vezetők és vékony körvezetők (a szolenoidok és véges toroidok "
+              "menetei is)."),
             L("Unbounded vacuum: B = μ₀H everywhere; no magnetic materials, conductors or "
+              "boundaries." if not (cs.magnets or cs.ideal_toroids) else
+              "Vacuum background: B = μ₀H outside the materials listed below; no conductors or "
               "boundaries.",
               "Végtelen kiterjedésű vákuum: mindenütt B = μ₀H; nincsenek mágneses anyagok, "
-              "vezetők vagy peremek."),
+              "vezetők vagy peremek." if not (cs.magnets or cs.ideal_toroids) else
+              "Vákuum háttér: az alább felsorolt anyagokon kívül B = μ₀H; nincsenek vezetők vagy "
+              "peremek."),
             L("Magnetostatics: no time dependence, no induction. Point charges at rest produce "
               "no magnetic field; their electric field is solved separately.",
               "Magnetosztatika: nincs időfüggés, nincs indukció. A nyugvó ponttöltések nem "
@@ -611,19 +1118,15 @@ class FilamentMagnetostaticSolver:
               "A vizsgált tartomány csak a mintavételt és a rajzolást határolja; nem fizikai "
               "perem."),
         ]
-        warnings: list[LocalizedText] = []
+        assumptions += _model_assumptions(cs)
+        warnings: list[LocalizedText] = list(cs.warnings)
         if excluded:
             warnings.append(L(
                 f"{len(excluded)} inert geometry object(s) are drawn but are not part of the "
                 "physical model.",
                 f"{len(excluded)} inert geometriai objektum látható, de nem része a fizikai "
                 "modellnek."))
-        if masked:
-            warnings.append(L(
-                f"{masked} sample point(s) lie on an ideal current filament, where B and H are "
-                "singular; they are reported as undefined.",
-                f"{masked} mintavételi pont ideális áramszálra esik, ahol B és H szinguláris; "
-                "ezek értéke nem értelmezett."))
+        warnings += _status_warnings(counts, unconverged)
         if request.source_contributions and not contrib_ok:
             warnings.append(L(
                 f"Individual source contributions are returned for at most "
@@ -646,30 +1149,40 @@ class FilamentMagnetostaticSolver:
                     "lines in this cross-section (parallel to it, or not crossing it).",
                     f"{len(field_lines.unseeded_object_ids)} áramforrás nem indít erővonalat "
                     "ebben a metszetben (párhuzamos vele, vagy nem metszi)."))
-        kinds = (["circular_loop"] if cs.loops else []) + (["infinite_wire"] if cs.wires else [])
-        currents = [w.current_A for w in cs.wires] + [lp.current_A for lp in cs.loops]
-        evaluated = ["superposition_magnetic", "b_mu0_h", "h_from_b", "div_B_filaments"]
-        if cs.wires:
+        kinds = sorted({o.kind for o in cs.objects})
+        nonzero = [o for o in cs.objects
+                   if (o.current_A or 0.0) != 0.0 or (o.magnetization_A_per_m or 0.0) != 0.0]
+        evaluated = ["superposition_magnetic", "div_B_filaments"]
+        if not cs.magnets and not cs.ideal_toroids:
+            evaluated += ["b_mu0_h", "h_from_b"]
+        if "infinite_wire" in kinds:
             evaluated.append("infinite_wire_field")
-        if cs.loops:
+        if any(lp.kind == "circular_loop" for lp in cs.loops):
             evaluated += ["loop_field_elliptic", "loop_axis_field"]
+        if "solenoid" in kinds:
+            evaluated += ["loop_field_elliptic", "finite_solenoid_superposition",
+                          "solenoid_turn_spacing"]
+        if "toroid_finite" in kinds:
+            evaluated += ["loop_field_elliptic", "finite_toroid_superposition"]
+        if "toroid_ideal" in kinds:
+            evaluated += ["ideal_toroid_H", "ideal_toroid_B", "constitutive_b_linear"]
+        if cs.magnets:
+            evaluated += ["loop_field_elliptic", "magnet_sheet_field", "constitutive_b_general",
+                          "h_from_b_m", "bound_currents", "magnetic_moment"]
+        classification = ("idealized_model" if cs.ideal_toroids else
+                          "numerical_approximation" if cs.magnets else "exact_analytical")
         header = ResultHeader(
             solver_id=self.id, solver_version=self.version, solver_kind=self.kind,
-            classification="exact_analytical",
-            classification_note=L(
-                "Exact analytical solution (closed-form Biot–Savart solutions: straight wire, "
-                "and circular loop with complete elliptic integrals) of an idealized filament "
-                "model, evaluated in 64-bit floating point and transported as 32-bit.",
-                "Idealizált áramszál-modell egzakt analitikus megoldása (a Biot–Savart-törvény "
-                "zárt alakú megoldásai: egyenes vezető, valamint körvezető teljes elliptikus "
-                "integrálokkal), 64 bites lebegőpontos számítással, 32 bites átvitellel."),
+            classification=classification,
+            classification_note=_classification_note(classification),
             assumptions=assumptions, warnings=warnings, excluded_object_ids=excluded,
             model_context=ModelContext(
                 regime="magnetostatic", dimensionality="3d", medium="vacuum",
-                has_free_current=any(c != 0.0 for c in currents),
+                has_free_current=any((o.current_A or 0.0) != 0.0 for o in cs.objects),
                 computes_magnetic_field=True, solver_id=self.id,
-                source_count=sum(c != 0.0 for c in currents), current_source_kinds=kinds,
-                evaluated_equation_ids=evaluated),
+                source_count=len(nonzero), current_source_kinds=kinds,
+                has_magnetization=bool(cs.magnets), has_linear_core=bool(cs.ideal_toroids),
+                evaluated_equation_ids=sorted(set(evaluated))),
             samplings=[s.model_dump(mode="json", exclude={"points_m"}) for s in request.samplings],
             quality=request.quality, compute_time_ms=(time.perf_counter() - t0) * 1e3,
             current_sources=current_source_table(

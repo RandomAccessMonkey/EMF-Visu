@@ -89,6 +89,48 @@ class LinePrimitive(StrictModel):
     length_m: PositiveFloat = 1.0
 
 
+class CoilPrimitive(StrictModel):
+    """Geometry of a finite solenoid (Phase 3B): N coaxial circular turns of radius ``radius_m``
+    about local +z, turn centres at z_k = -L/2 + k L/(N - 1) (k = 0..N-1); N = 1 is one turn at
+    z = 0 and ``length_m`` is then not used. L is the distance between the first and last turn
+    centres; the turn spacing L/(N - 1) is derived, never an input."""
+
+    type: Literal["coil"] = "coil"
+    radius_m: PositiveFloat = 0.04
+    length_m: Annotated[float, Field(ge=0, allow_inf_nan=False)] = 0.2
+    turns: Annotated[int, Field(ge=1)] = 20
+
+    @model_validator(mode="after")
+    def _length(self) -> CoilPrimitive:
+        if self.turns > 1 and self.length_m <= 0:
+            raise ValueError("a coil with more than one turn needs a winding length L > 0")
+        return self
+
+
+class TorusPrimitive(StrictModel):
+    """Geometry of a toroidal winding (Phase 3B), symmetric about local +z.
+
+    ``winding_radius_m`` (b_winding) is the radius of each circular turn of the finite-turn
+    model; ``core_radius_m`` (b_core) is the minor radius of the ideal model's core. They are
+    separate parameters: each model uses only its own. Turn k of the finite model sits at
+    phi_k = phase + 2 pi k / N."""
+
+    type: Literal["torus"] = "torus"
+    major_radius_m: PositiveFloat = 0.12
+    winding_radius_m: PositiveFloat = 0.03
+    core_radius_m: PositiveFloat = 0.03
+    turns: Annotated[int, Field(ge=1)] = 24
+    phase_rad: FiniteFloat = 0.0
+
+    @model_validator(mode="after")
+    def _radii(self) -> TorusPrimitive:
+        if not self.major_radius_m > self.winding_radius_m:
+            raise ValueError("the major radius R must exceed the winding radius b_winding")
+        if not self.major_radius_m > self.core_radius_m:
+            raise ValueError("the major radius R must exceed the core radius b_core")
+        return self
+
+
 class GroupPrimitive(StrictModel):
     """A container with no geometry of its own: its transform applies to its children.
 
@@ -103,7 +145,7 @@ class GroupPrimitive(StrictModel):
 
 Primitive = Annotated[
     GroupPrimitive | PointPrimitive | SpherePrimitive | BoxPrimitive | CylinderPrimitive
-    | RingPrimitive | PlanePrimitive | LinePrimitive,
+    | RingPrimitive | PlanePrimitive | LinePrimitive | CoilPrimitive | TorusPrimitive,
     Field(discriminator="type"),
 ]
 
@@ -154,7 +196,43 @@ class CircularLoopSource(StrictModel):
     current_A: FiniteFloat = 10.0
 
 
-Source = Annotated[PointChargeSource | InfiniteWireSource | CircularLoopSource,
+class SolenoidSource(StrictModel):
+    """Finite solenoid (Phase 3B) on a ``coil`` primitive, role ``current_source``: every turn
+    carries the signed current I, counter-clockwise about local +z for I > 0."""
+
+    type: Literal["solenoid"] = "solenoid"
+    current_A: FiniteFloat = 1.0
+
+
+class ToroidFiniteSource(StrictModel):
+    """Finite-turn toroid (Phase 3B) on a ``torus`` primitive: N circular turns of radius
+    b_winding, each counter-clockwise about its local +e_phi for I > 0. Vacuum: no core."""
+
+    type: Literal["toroid_finite"] = "toroid_finite"
+    current_A: FiniteFloat = 1.0
+
+
+class ToroidIdealSource(StrictModel):
+    """Ideal continuous-winding toroid (Phase 3B) on a ``torus`` primitive, with a homogeneous
+    linear core of relative permeability mu_r and minor radius b_core:
+    H = N I / (2 pi rho) e_phi and B = mu0 mu_r H inside the core, zero outside (idealization)."""
+
+    type: Literal["toroid_ideal"] = "toroid_ideal"
+    current_A: FiniteFloat = 1.0
+    relative_permeability: PositiveFloat = 1.0
+
+
+class PermanentMagnetSource(StrictModel):
+    """Uniformly magnetized cylinder (Phase 3B) on a ``cylinder`` primitive, role
+    ``magnetic_material``: M = M e_z(local) inside, 0 outside. Negative M reverses the polarity.
+    A prescribed magnetization (no hysteresis, no demagnetization curve)."""
+
+    type: Literal["permanent_magnet"] = "permanent_magnet"
+    magnetization_A_per_m: FiniteFloat = 5e5
+
+
+Source = Annotated[PointChargeSource | InfiniteWireSource | CircularLoopSource | SolenoidSource
+                   | ToroidFiniteSource | ToroidIdealSource | PermanentMagnetSource,
                    Field(discriminator="type")]
 
 

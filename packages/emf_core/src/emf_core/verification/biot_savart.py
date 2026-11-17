@@ -98,3 +98,37 @@ def wire_segment(point: Arr, origin: Arr, direction: Arr, current: float, half_l
         tail += 1.0 - dz / math.hypot(dz, rho)
     result: Arr = core + MU0 * current / (4.0 * math.pi * rho) * tail * phi_hat
     return result
+
+
+def magnet_sheet(point: Arr, center: Arr, axis: Arr, u: Arr, a: float, length: float,
+                 magnetization: float, n_phi: int = 4096, n_z: int = 400) -> Arr:
+    """Independent reference for a uniformly magnetized cylinder: direct 2D Biot–Savart integral
+    of its side-wall surface current K = M e_phi (amperes per metre) over the surface,
+    B = mu0/(4 pi) ∫∫ K × (r - r') / |r - r'|^3 a dphi dz', with the periodic trapezoidal rule
+    in phi and 16-point Gauss–Legendre panels in z. No circular-loop formula is used. Accurate
+    away from the sheet itself."""
+    v = np.cross(axis, u)
+    x, w = np.polynomial.legendre.leggauss(16)
+    panels = max(1, n_z // 16)
+    edges = np.linspace(-length / 2, length / 2, panels + 1)
+    mid, half = 0.5 * (edges[1:] + edges[:-1]), 0.5 * (edges[1:] - edges[:-1])
+    zs = (mid[:, None] + half[:, None] * x[None, :]).ravel()
+    wz = (half[:, None] * w[None, :]).ravel()
+    phi = 2.0 * np.pi * np.arange(n_phi) / n_phi
+    c, s_ = np.cos(phi), np.sin(phi)
+    out = np.zeros(3)
+    for zi, wi in zip(zs, wz, strict=True):
+        src = center + zi * axis + a * (c[:, None] * u + s_[:, None] * v)
+        k_dir = -s_[:, None] * u + c[:, None] * v  # e_phi
+        r = point - src
+        d3 = np.einsum("ij,ij->i", r, r) ** 1.5
+        out += wi * np.sum(np.cross(k_dir, r) / d3[:, None], axis=0) * (2.0 * np.pi * a / n_phi)
+    result: Arr = MU0 * magnetization / (4.0 * np.pi) * out
+    return result
+
+
+def finite_sheet_axis_bz(current_per_m: float, a: float, length: float, z: float) -> float:
+    """On-axis B_z of a continuous cylindrical current sheet (n I or M per metre):
+    (mu0 K / 2) [ (z + L/2)/sqrt(a^2 + (z + L/2)^2) - (z - L/2)/sqrt(a^2 + (z - L/2)^2) ]."""
+    p, q = z + length / 2, z - length / 2
+    return float(MU0 * current_per_m / 2 * (p / math.hypot(a, p) - q / math.hypot(a, q)))

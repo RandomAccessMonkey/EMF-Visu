@@ -48,6 +48,7 @@ from .field_lines import _A, _B5, _E, _unit
 Arr = NDArray[np.float64]
 FieldFn = Callable[[Arr], Arr]
 DistFn = Callable[[Arr], Arr]  # (N, 3) -> (N,) distance to the nearest current filament
+RegionFn = Callable[[Arr], NDArray[np.int64]]  # material region code per point (Phase 3B)
 
 CLOSURE_TANGENT_COS = 0.98
 CLOSURE_ERR_FACTOR = 5.0
@@ -93,7 +94,13 @@ class Trace:
 
 
 def trace(field_fn: FieldFn, dist_fn: DistFn, seeds: Arr, direction: float,
-          domain_min: Arr, domain_max: Arr, s: Settings, detect_closure: bool) -> list[Trace]:
+          domain_min: Arr, domain_max: Arr, s: Settings, detect_closure: bool,
+          scale_fn: DistFn | None = None, region_fn: RegionFn | None = None) -> list[Trace]:
+    """``dist_fn``: distance to singular filaments (capture as ``source_singularity``).
+    ``scale_fn`` (default ``dist_fn``): distance to anything the line must not step over
+    carelessly (filaments, current sheets, core surfaces); it limits the step and sets the
+    closure length scale d0 (Phase 3B)."""
+    scale = scale_fn if scale_fn is not None else dist_fn
     m = seeds.shape[0]
     if m == 0:
         return []
@@ -104,7 +111,7 @@ def trace(field_fn: FieldFn, dist_fn: DistFn, seeds: Arr, direction: float,
 
     y = seeds.astype(np.float64).copy()
     k1, mag0 = f(y)
-    d0 = dist_fn(y)
+    d0 = scale(y)
     t0 = k1.copy()
     h = np.full(m, min(s.h_max, max(0.25 * float(np.min(d0)), s.h_min)))
     length = np.zeros(m)
@@ -118,7 +125,7 @@ def trace(field_fn: FieldFn, dist_fn: DistFn, seeds: Arr, direction: float,
     gap = np.full(m, np.nan)
     code[~np.isfinite(mag0)] = _FAIL
     code[np.isfinite(mag0) & (mag0 <= s.stagnation_B)] = _STAGNATION
-    code[(code == _OK) & (d0 <= s.guard_radius)] = _SINGULAR
+    code[(code == _OK) & (dist_fn(y) <= s.guard_radius)] = _SINGULAR
     h_clip = float(np.sqrt(8.0 * s.atol * s.h_max))
     delta_floor = CLOSURE_ATOL_FACTOR * s.atol
 
@@ -127,7 +134,10 @@ def trace(field_fn: FieldFn, dist_fn: DistFn, seeds: Arr, direction: float,
         if act.size == 0:
             break
         ya, ka = y[act], k1[act]
-        dist = dist_fn(ya)
+        # Filaments bound the step strictly; sheets and core surfaces only down to 2 atol, so a
+        # line can reach and cross them (the crossing rule below) instead of approaching them
+        # in ever smaller steps.
+        dist = np.minimum(dist_fn(ya), np.maximum(scale(ya), 2.0 * s.atol))
         ha = np.minimum(h[act], np.minimum(s.h_max, np.maximum(0.5 * dist, s.h_min)))
         ks = [ka]
         finite = np.ones(act.size, bool)
@@ -141,6 +151,13 @@ def trace(field_fn: FieldFn, dist_fn: DistFn, seeds: Arr, direction: float,
         err = ha * np.linalg.norm(np.tensordot(_E, kst, axes=1), axis=1)
         err = np.where(finite, err, np.inf)
         accept = err <= s.atol
+        if region_fn is not None:
+            # B is discontinuous across a current sheet or core surface (tangential jump), so no
+            # step across it meets the error test. A step that crosses such a surface and is
+            # already no longer than atol is accepted: the position error it adds is <= atol.
+            crossing = (~accept) & finite & (ha <= s.atol) & (
+                region_fn(ya) != region_fn(y_new))
+            accept |= crossing
         exits = accept & np.any((y_new < domain_min) | (y_new > domain_max), axis=1)
         redo = np.empty(0, np.int64)
         if exits.any():
@@ -249,12 +266,15 @@ class Line:
 
 
 def trace_lines(field_fn: FieldFn, dist_fn: DistFn, seeds: Arr, domain_min: Arr,
-                domain_max: Arr, s: Settings) -> list[Line]:
+                domain_max: Arr, s: Settings, scale_fn: DistFn | None = None,
+                region_fn: RegionFn | None = None) -> list[Line]:
     """Trace a complete line through every seed: forward along +B with closure detection; if it
     does not close, also backward along −B from the seed, joined at the seed."""
-    fwd = trace(field_fn, dist_fn, seeds, 1.0, domain_min, domain_max, s, True)
+    fwd = trace(field_fn, dist_fn, seeds, 1.0, domain_min, domain_max, s, True, scale_fn,
+                region_fn)
     open_idx = [i for i, t in enumerate(fwd) if t.reason != "closed_loop"]
-    back = trace(field_fn, dist_fn, seeds[open_idx], -1.0, domain_min, domain_max, s, False)
+    back = trace(field_fn, dist_fn, seeds[open_idx], -1.0, domain_min, domain_max, s, False,
+                 scale_fn, region_fn)
     back_by = dict(zip(open_idx, back, strict=True))
     out: list[Line] = []
     for i, tf in enumerate(fwd):

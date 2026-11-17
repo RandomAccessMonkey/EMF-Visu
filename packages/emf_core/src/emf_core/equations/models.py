@@ -41,6 +41,9 @@ class Equation(BaseModel):
     used_by: list[str] = []  # solver ids whose implementation evaluates this equation
     # Usage note shown instead of the generic one when the equation is "satisfied" (Phase 3A).
     satisfied_note: LocalizedText | None = None
+    # An idealized approximation (Phase 3B): shown for comparison, never the solver's result
+    # unless the solver evaluates it in the active model.
+    idealized: bool = False
 
 
 class EquationView(BaseModel):
@@ -68,5 +71,5 @@ class EquationView(BaseModel):
     #                    solve it (no boundary-value problem or independent check is performed);
     #   checked        - both sides are computed by independent methods and compared;
     #   not_used       - it does not apply to, or is not evaluated in, the active model.
-    usage: Literal["evaluated", "checked", "satisfied", "not_used"]
+    usage: Literal["evaluated", "checked", "satisfied", "approximation", "not_used"]
     usage_note: LocalizedText

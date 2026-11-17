@@ -81,7 +81,8 @@ async function main() {
   step('preset loads and the engine field is displayed')
 
   // Unavailable presets are disabled, not fake.
-  assert.ok(await page.getByRole('button', { name: /Solenoid/ }).isDisabled())
+  // (Phase 3B made the solenoid preset available; a still-planned preset is checked instead.)
+  assert.ok(await page.getByRole('button', { name: /Faraday induction demonstration/ }).isDisabled())
   step('unimplemented presets are disabled')
 
   // Derived products are present and labelled separately from the exact field.
@@ -687,6 +688,126 @@ async function main() {
   await page.getByText('Mágneses mező (külön skála)').waitFor()
   await page.getByRole('radio', { name: 'EN' }).click()
   step('magnetic legend in Hungarian')
+
+  // ------------------------------------------- Phase 3B: solenoids, toroids, magnets, Ampère
+  let amperes = 0
+  page.on('request', (r) => r.url().endsWith('/api/v1/ampere') && amperes++)
+  const ampereVerified = async (enclosed) => {
+    await page.getByRole('tab', { name: 'Ampère' }).click()
+    const result = page.getByTestId('ampere-result')
+    await result.getByText('verified', { exact: true }).waitFor({ timeout: 20000 })
+    assert.ok(await result.getByText(enclosed).first().isVisible(), `enclosed current ${enclosed}`)
+  }
+
+  // Preset 12: a finite solenoid, its Ampère rectangle (12 turns) and the ideal comparison.
+  await page.getByRole('button', { name: /^12\s*Finite solenoid/ }).click()
+  await settled()
+  assert.ok(await page.getByText(/Plane y = 0\.00 m/).isVisible())
+  await ampereVerified(/^12(\.0+)? A$/)
+  await shot('20-solenoid-ampere')
+  await page.getByRole('tab', { name: 'Results' }).click()
+  const sprobe = page.getByTestId('magnetic-probe')
+  await sprobe.waitFor({ timeout: 10000 })
+  assert.ok(await page.getByTestId('probe-comparisons').getByText('Ideal long solenoid').isVisible())
+  await rows().first().click()
+  await page.getByText('Field along the axis').waitFor({ timeout: 10000 })
+  await shot('21-solenoid-profile')
+  step('preset 12: finite solenoid solved; Ampère path verified (12 A); ideal comparison and axis profile')
+
+  // Display-only Ampère settings: no field solve and no new Ampère evaluation.
+  await page.getByRole('tab', { name: 'Ampère' }).click()
+  const amperesBefore = amperes
+  await quiet('Ampère normal hidden', () => page.getByRole('switch', { name: 'Show normal' }).click())
+  await quiet('Ampère surface shown', () => page.getByRole('switch', { name: 'Show spanning surface' }).click())
+  await page.waitForTimeout(500)
+  assert.equal(amperes, amperesBefore, 'a display-only path setting re-evaluated Ampère')
+  // Reversing the path is physical: a new evaluation with the opposite sign.
+  await page.getByRole('button', { name: 'Counter-clockwise about local +z' }).click()
+  await ampereVerified(/^−12(\.0+)? A$|^-12(\.0+)? A$/)
+  step('Ampère display settings are visual-only; reversing the path flips the enclosed current')
+
+  // Persistence of Ampère paths.
+  const pname = `e2e 3B ${Date.now()}`
+  await page.getByRole('button', { name: 'Projects' }).click()
+  await page.getByLabel('Project name').fill(pname)
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await page.getByText(pname).first().waitFor()
+  await page.reload()
+  await page.getByRole('button', { name: 'Projects' }).click()
+  await page.locator('li', { hasText: pname }).getByRole('button', { name: 'Load' }).click()
+  await rowCount(1)
+  await page.getByRole('tab', { name: 'Ampère' }).click()
+  assert.equal(await page.getByRole('list', { name: 'Ampère paths' }).locator('li').count(), 1)
+  await page.getByTestId('ampere-result').getByText('verified', { exact: true }).waitFor({ timeout: 20000 })
+  await page.getByRole('button', { name: 'Projects' }).click()
+  await page.locator('li', { hasText: pname }).getByRole('button', { name: 'Delete' }).click()
+  await page.keyboard.press('Escape')
+  step('a solenoid project with its Ampère path is saved and restored')
+
+  // Preset 13: finite and ideal toroid; the model switch keeps both radii.
+  await page.getByRole('button', { name: /^13\s*Toroidal solenoid/ }).click()
+  await settled()
+  await ampereVerified(/^24(\.0+)? A$/)
+  await shot('22-toroid-finite')
+  await page.getByRole('button', { name: 'Ideal continuous winding' }).click()
+  await settled()
+  await ampereVerified(/^24(\.0+)? A$/)
+  await page.getByRole('tab', { name: 'Results' }).click()
+  await page.getByTestId('magnetic-probe').getByText('inside the ideal toroid core').waitFor({ timeout: 10000 })
+  assert.ok(await page.getByTestId('magnetic-probe').getByText(/B = μ₀μᵣH/).isVisible())
+  await shot('23-toroid-ideal')
+  await rows().first().click()
+  await page.getByRole('tab', { name: 'Parameters' }).click()
+  await solved('core radius', async () => {
+    await page.getByRole('spinbutton', { name: 'Core radius' }).fill('0.025')
+    await page.getByRole('spinbutton', { name: 'Core radius' }).press('Enter')
+  })
+  await solved('finite model', () => page.getByRole('combobox', { name: 'Toroid model' }).selectOption('toroid_finite'))
+  await valueIs(page.getByRole('spinbutton', { name: 'Winding radius' }), '0.03')
+  await valueIs(page.getByRole('spinbutton', { name: 'Core radius' }), '0.025')
+  step('preset 13: finite and ideal toroid verified (24 A); probe in the core; model switch keeps both radii')
+
+  // Preset 14: permanent magnet; H = B/μ0 − M inside, no free current, bound current shown.
+  await page.getByRole('button', { name: /^14\s*Uniformly magnetized/ }).click()
+  await settled()
+  await ampereVerified(/^0 A$/)
+  assert.ok(await page.getByTestId('ampere-result').getByText(/Bound current/).isVisible())
+  await page.getByRole('tab', { name: 'Results' }).click()
+  const magProbe = page.getByTestId('magnetic-probe')
+  await magProbe.getByText('inside a permanent magnet').waitFor({ timeout: 10000 })
+  assert.ok(await magProbe.getByText(/H = B\/μ₀ − M/).isVisible())
+  await shot('24-magnet')
+  // Probe on the side wall: the sheet is reported with one-sided limits.
+  await rows().first().click()
+  await page.getByRole('button', { name: 'Place probe on the selected wire or loop' }).click()
+  await page.getByTestId('probe-boundary').getByText("On the magnet's current sheet").waitFor({ timeout: 10000 })
+  assert.equal(await page.getByRole('table', { name: 'One-sided limits' }).locator('tbody tr').count(), 2)
+  step("preset 14: magnet solved; Ampère H-circulation 0 with bound current; H = B/μ₀ − M; sheet one-sided limits")
+
+  // A new solenoid with N = 1 disables the winding length (the magnet is removed first: a coil
+  // added at the origin would lie exactly on its side wall).
+  await page.getByRole('radio', { name: /Select/ }).click()
+  await rows().first().click()
+  await rows().first().blur()
+  await page.keyboard.press('Delete')
+  await rowCount(0)
+  await page.getByRole('button', { name: 'Solenoid', exact: true }).click()
+  await rowCount(1)
+  await settled()
+  await page.getByRole('tab', { name: 'Parameters' }).click()
+  await solved('one turn', async () => {
+    await page.getByRole('spinbutton', { name: 'Turns' }).fill('1')
+    await page.getByRole('spinbutton', { name: 'Turns' }).press('Enter')
+  })
+  assert.ok(await page.getByRole('spinbutton', { name: 'Winding length' }).isDisabled())
+  step('a solenoid can be added; with N = 1 the winding length is disabled')
+
+  // Hungarian Ampère labels.
+  await page.getByRole('radio', { name: 'HU' }).click()
+  await page.getByRole('tab', { name: 'Ampère' }).click()
+  await page.getByText('Ampère-féle gerjesztési törvény').waitFor()
+  await page.getByRole('radio', { name: 'EN' }).click()
+  step('Ampère panel in Hungarian')
 
   assert.deepEqual(errors, [], 'browser console errors')
   step('no browser console errors')

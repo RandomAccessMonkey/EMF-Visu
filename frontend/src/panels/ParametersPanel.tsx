@@ -1,13 +1,25 @@
-import type { Role, SceneObject, Vec3 } from '@/api/types'
+import type { CurrentSourceInfo, Role, SceneObject, Vec3 } from '@/api/types'
+import type { SimulationResult } from '@/api/container'
 import { Button, NumberField, Row, Section, Select, Slider } from '@/components/ui/controls'
 import { useT, type MessageKey } from '@/i18n'
 import { formatSI } from '@/lib/format'
-import { dipoleInfo, directionOfRotation, rotationForDirection, useSceneStore, type CurrentSource } from '@/state/sceneStore'
+import { dipoleInfo, directionOfRotation, isMagneticSource, rotationForDirection, useSceneStore, type CurrentSource } from '@/state/sceneStore'
+import { CoilDimensions, MagnetDimensions, MagnetParameters, ToroidModel, TorusDimensions } from './MagneticSourceParams'
 import { useViewStore } from '@/state/viewStore'
 
 const AXES = ['x', 'y', 'z'] as const
 const DEG = Math.PI / 180
 const UNSUPPORTED_ROLES: Role[] = ['conductor', 'dielectric', 'magnetic_material']
+
+const SOURCE_ROLE: Record<NonNullable<SceneObject['source']>['type'], MessageKey> = {
+  point_charge: 'role.charge_source',
+  infinite_wire: 'role.wire',
+  circular_loop: 'role.loop',
+  solenoid: 'role.solenoid',
+  toroid_finite: 'role.toroid',
+  toroid_ideal: 'role.toroid',
+  permanent_magnet: 'role.magnet',
+}
 
 function VecRows(props: { value: Vec3; onChange: (v: Vec3) => void; unit: string; factor?: number; prefix: string; step?: number; nonZero?: boolean }) {
   return (
@@ -33,7 +45,7 @@ function VecRows(props: { value: Vec3; onChange: (v: Vec3) => void; unit: string
   )
 }
 
-function Dimensions({ o }: { o: SceneObject }) {
+function Dimensions({ o, info }: { o: SceneObject; info?: CurrentSourceInfo }) {
   const { t } = useT()
   const update = useSceneStore((s) => s.update)
   const p = o.primitive
@@ -49,7 +61,12 @@ function Dimensions({ o }: { o: SceneObject }) {
     case 'sphere':
     case 'ring':
       return num('dim.radius', p.radius_m, (v) => ({ ...p, radius_m: v }))
+    case 'coil':
+      return <CoilDimensions o={o} p={p} info={info} />
+    case 'torus':
+      return <TorusDimensions o={o} p={p} />
     case 'cylinder':
+      if (o.source?.type === 'permanent_magnet') return <MagnetDimensions o={o} p={p} />
       return (
         <>
           {num('dim.radius', p.radius_m, (v) => ({ ...p, radius_m: v }))}
@@ -133,27 +150,42 @@ function DirectionRows({ o, prefix }: { o: SceneObject; prefix: string }) {
   )
 }
 
+const CURRENT_TEXT: Record<CurrentSource['type'], { hint: MessageKey; note: MessageKey; dir: MessageKey }> = {
+  infinite_wire: { hint: 'params.currentHintWire', note: 'params.wireDirectionNote', dir: 'params.wireDirection' },
+  circular_loop: { hint: 'params.currentHintLoop', note: 'params.loopDirectionNote', dir: 'params.loopNormal' },
+  solenoid: { hint: 'params.currentHintTurns', note: 'params.solenoidDirectionNote', dir: 'params.axis' },
+  toroid_finite: { hint: 'params.currentHintTurns', note: 'params.toroidDirectionNote', dir: 'params.axis' },
+  toroid_ideal: { hint: 'params.currentHintTurns', note: 'params.toroidDirectionNote', dir: 'params.axis' },
+}
+
 function CurrentParameters({ o, source }: { o: SceneObject; source: CurrentSource }) {
   const { t } = useT()
   const update = useSceneStore((s) => s.update)
   const canReset = useSceneStore((s) => !!s.presetScene?.objects.some((x) => x.id === o.id))
   const resetToPreset = useSceneStore((s) => s.resetToPreset)
-  const wire = source.type === 'infinite_wire'
+  const text = CURRENT_TEXT[source.type]
   const setI = (current_A: number) => update(o.id, { source: { ...source, current_A } })
+  const turns = o.primitive.type === 'coil' || o.primitive.type === 'torus' ? o.primitive.turns : 1
   return (
     <Section title={t('params.current')}>
-      <Row label={`${t('params.current')} I`} hint={t(wire ? 'params.currentHintWire' : 'params.currentHintLoop')}>
+      {(source.type === 'toroid_finite' || source.type === 'toroid_ideal') && <ToroidModel o={o} source={source} />}
+      <Row label={`${t('params.current')} I`} hint={t(text.hint)}>
         <Slider label={t('params.current')} value={Math.max(-100, Math.min(100, source.current_A))} min={-100} max={100} step={0.5} onChange={setI} />
         <NumberField label={t('params.current')} value={source.current_A} unit="A" step={0.5} onChange={setI} />
       </Row>
+      {turns > 1 && (
+        <Row label={t('params.ampereTurns')}>
+          <span className="font-mono text-xs">NI = {formatSI(turns * source.current_A, 'A')}</span>
+        </Row>
+      )}
       <Row label={t('params.direction')}>
         <span className="font-mono text-xs">{source.current_A > 0 ? '+' : source.current_A < 0 ? '−' : '0'}</span>
         <Button aria-label={t('params.reverse')} onClick={() => setI(-source.current_A)} title={t('params.reverseHint')}>
           {t('params.reverse')}
         </Button>
       </Row>
-      <p className="text-[11px] leading-snug text-muted">{t(wire ? 'params.wireDirectionNote' : 'params.loopDirectionNote')}</p>
-      <DirectionRows o={o} prefix={t(wire ? 'params.wireDirection' : 'params.loopNormal')} />
+      <p className="text-[11px] leading-snug text-muted">{t(text.note)}</p>
+      <DirectionRows o={o} prefix={t(text.dir)} />
       {canReset && (
         <Button onClick={() => resetToPreset(o.id)} title={t('params.resetHint')}>
           {t('params.reset')}
@@ -163,7 +195,7 @@ function CurrentParameters({ o, source }: { o: SceneObject; source: CurrentSourc
   )
 }
 
-function ObjectParameters({ o }: { o: SceneObject }) {
+function ObjectParameters({ o, info }: { o: SceneObject; info?: CurrentSourceInfo }) {
   const { t } = useT()
   const { update, setTransform } = useSceneStore.getState()
   const advanced = useViewStore((s) => s.level === 'advanced')
@@ -182,7 +214,7 @@ function ObjectParameters({ o }: { o: SceneObject }) {
         </Row>
         <Row label={t('params.role')} hint={t('params.roleHint')}>
           {source ? (
-            <span className="text-xs">{t(source.type === 'point_charge' ? 'role.charge_source' : source.type === 'infinite_wire' ? 'role.wire' : 'role.loop')}</span>
+            <span className="text-xs">{t(SOURCE_ROLE[source.type])}</span>
           ) : isGroup ? (
             <span className="text-xs">{t(o.primitive.type === 'group' && o.primitive.kind === 'dipole' ? 'role.dipole_group' : 'role.group')}</span>
           ) : (
@@ -208,7 +240,15 @@ function ObjectParameters({ o }: { o: SceneObject }) {
           <DipoleParameters o={o} />
         </Section>
       )}
-      {source && source.type !== 'point_charge' && <CurrentParameters o={o} source={source} />}
+      {source && 'current_A' in source && <CurrentParameters o={o} source={source} />}
+      {source?.type === 'permanent_magnet' && (
+        <>
+          <MagnetParameters o={o} source={source} info={info} />
+          <Section title={t('magnet.axisTitle')}>
+            <DirectionRows o={o} prefix={t('params.axis')} />
+          </Section>
+        </>
+      )}
       {source?.type === 'point_charge' && (
         <Section title={t('params.electrical')}>
           <Row label={`${t('params.charge')} q`} hint={t('params.chargeHint')}>
@@ -226,7 +266,8 @@ function ObjectParameters({ o }: { o: SceneObject }) {
       )}
       <Section title={t('params.transform')}>
         <VecRows prefix={t('params.position')} unit="m" step={0.1} value={o.transform.position_m} onChange={(v) => setTransform(o.id, { position_m: v })} />
-        {(advanced || !source) && source?.type !== 'infinite_wire' && source?.type !== 'circular_loop' && (
+        {/* Magnetic sources are oriented by their direction vector and must not be scaled. */}
+        {(advanced || !source) && !isMagneticSource(o) && (
           <>
             <VecRows prefix={t('params.rotation')} unit="°" factor={DEG} step={5} value={o.transform.rotation_euler_xyz_rad} onChange={(v) => setTransform(o.id, { rotation_euler_xyz_rad: v })} />
             <VecRows prefix={t('params.scale')} unit="×" step={0.1} nonZero value={o.transform.scale} onChange={(v) => setTransform(o.id, { scale: v })} />
@@ -236,7 +277,7 @@ function ObjectParameters({ o }: { o: SceneObject }) {
       </Section>
       {o.primitive.type !== 'point' && (
         <Section title={t('params.dimensions')}>
-          <Dimensions o={o} />
+          <Dimensions o={o} info={info} />
         </Section>
       )}
     </>
@@ -287,12 +328,13 @@ function DomainParameters() {
   )
 }
 
-export function ParametersPanel() {
+export function ParametersPanel({ magnetic }: { magnetic?: SimulationResult }) {
   const { t } = useT()
   const selected = useSceneStore((s) => s.scene.objects.find((o) => o.id === s.selectedId))
+  const info = selected ? magnetic?.header.current_sources.find((c) => c.object_id === selected.id) : undefined
   return (
     <div>
-      {selected ? <ObjectParameters key={selected.id} o={selected} /> : <p className="border-b border-border px-3 py-3 text-xs text-muted">{t('params.nothingSelected')}</p>}
+      {selected ? <ObjectParameters key={selected.id} o={selected} info={info} /> : <p className="border-b border-border px-3 py-3 text-xs text-muted">{t('params.nothingSelected')}</p>}
       <DomainParameters />
     </div>
   )

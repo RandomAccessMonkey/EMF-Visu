@@ -24,6 +24,17 @@ export function cn(...parts: (string | false | null | undefined)[]): string {
 
 /** A single number in scientific notation, with exact zero shown as "0". Never rounds a small
  *  nonzero value to zero. */
+/** A value in a derived unit that must not take an SI prefix (m², m³, m⁻¹: "k" or "m" in front
+ *  of them would be read as part of the base unit, e.g. km⁻¹ = (km)⁻¹). Plain decimal for
+ *  moderate magnitudes, scientific notation otherwise. */
+export function formatPlain(value: number | null | undefined, unit: string, digits = 4): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '—'
+  if (value === 0) return `0 ${unit}`
+  const abs = Math.abs(value)
+  const text = abs >= 1e-3 && abs < 1e5 ? String(Number(value.toPrecision(digits))) : value.toExponential(digits - 1)
+  return `${text} ${unit}`
+}
+
 export function formatNumber(value: number | null | undefined, digits = 4): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return '—'
   if (value === 0) return '0'

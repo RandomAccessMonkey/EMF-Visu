@@ -153,7 +153,7 @@ def test_presets_9_to_11(client):
     presets = {p["number"]: p for p in client.get(f"{V1}/presets").json()}
     assert [presets[n]["available"] for n in (9, 10, 11)] == [True, True, True]
     assert [v["id"] for v in presets[10]["variants"]] == ["same", "opposite", "unequal"]
-    assert presets[11]["view_hint"] == {"mode": "2d", "plane": "xz"}
+    assert presets[11]["view_hint"] == {"mode": "2d", "plane": "xz", "probe_m": None}  # 3B: probe_m
     for n in (9, 10, 11):
         scenes = [presets[n]["scene"]] + [v["scene"] for v in presets[n]["variants"]]
         for scene in scenes:

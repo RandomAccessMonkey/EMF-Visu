@@ -676,6 +676,106 @@ normal and radius (loop), reset to the preset configuration.
 | Existing test changed | `tests/api/test_api.py`: number of available presets 4 → 7 | presets 9–11 are now available by design; no tolerance changed |
 | Existing e2e test extended | `tests/e2e/smoke.cjs`: magnetic checks appended; existing checks unchanged | |
 
+## 9e. Phase 3B: solenoids, toroids, permanent magnets and Ampère's law
+
+Design note written before implementation (deviations are listed at the end of the section).
+
+**1. Existing capabilities found (inspected in the repository).**
+`scene/currents.py` turns `current_source` objects into world-space `WireSource`/`LoopSource`
+filaments and reports malformed ones. `solvers/analytical/magnetostatics.py` holds the only
+circular-loop field (`loop_local`: elliptic integrals, `ellipkm1` near the wire, positive power
+series for m ≤ 0.5, exact axis), `loop_field` (arbitrary orientation), `source_fields`
+(per-object Bᵢ), the planar/spherical seeding and the solver class.
+`postprocess/magnetic_lines.py` traces B lines with Hermite-based closure detection; its
+`dist_fn` serves both singular capture and the closure length scale. Electric and magnetic
+requests are separated by `engine.field_subscene` (cache keys on the subscene); the
+equation registry merges electric and magnetic contexts. `/flux` + `GaussLayer` +
+`gauss_surfaces` in the project `view` JSON are the pattern for an independent geometric
+tool with its own cache and persistence. `ampere_static` exists (applicable, "satisfied",
+deferred to 3B); `constitutive_b_general` (B = μ₀(H + M)) and `constitutive_b_linear`
+(B = μH) exist but are never evaluated. `Role.MAGNETIC_MATERIAL` exists in the scene model and is
+refused everywhere.
+
+**2. Required extensions (all additive).**
+
+| Area | Extension |
+|---|---|
+| Scene | primitives `coil {radius_m, length_m, turns}` and `torus {major_radius_m, winding_radius_m, core_radius_m, turns, phase_rad}`; sources `solenoid {current_A}`, `toroid_finite {current_A}`, `toroid_ideal {current_A, relative_permeability}` (role `current_source`), `permanent_magnet {magnetization_A_per_m}` on the existing `cylinder` (role `magnetic_material`) |
+| Sources | `current_sources()` expands solenoids and finite toroids into their turns (`LoopSource` with the owning object id), adds `MagnetSource` and `IdealToroidSource`, and validates geometry |
+| Physics | one model object that evaluates B, H, ∇·B and evaluation status for all magnetic sources; magnet B by adaptive quadrature over the existing loop field; ideal toroid closed form |
+| Numerics | `numerics/quadrature.py`: vectorised adaptive Gauss–Kronrod (G7/K15) used by the magnet and by the Ampère circulation |
+| Ampère | `ampere.py`: path model and validation, adaptive circulation of H (and B), independent signed-crossing enclosure; `POST /ampere` with its own cache key; paths persisted under `ampere_paths` in the project `view` JSON |
+| Probe | M, inside/outside, constitutive relation, nearest magnet boundary, one-sided limits on sheets and core boundaries, comparisons (ideal long solenoid, other toroid model, dipole far field) |
+| Registry | solenoid, toroid, magnet and Ampère equations; usage value `approximation` for idealized comparisons |
+| Presets | 12 (finite solenoid), 13 (toroid, variants finite / ideal), 14 (magnet), with domain, view hint, default probe point and default Ampère path |
+
+**3. Physical assumptions.** Steady currents, vacuum background. Solenoid: N coaxial thin
+circular turns (no helix, no leads), zₖ = −L/2 + kL/(N − 1), Δz = L/(N − 1) derived; N = 1 is a
+single turn at the centre and L is ignored. Finite toroid: N thin loops in meridional planes,
+φₖ = φ₀ + 2πk/N, centres R e_ρ,k, normal e_φ,k, current counter-clockwise about +e_φ,k for I > 0;
+vacuum (no core). Ideal toroid: continuous winding, circular core (ρ − R)² + z² < b_core²,
+H = NI/(2πρ) e_φ, B = μ₀μᵣH inside, B = H = 0 outside (ideal confinement); it is a different
+model, not combined with any other magnetic source (a linear core would also respond to the
+other sources, which this model cannot represent) — such scenes are refused. Magnet: solid
+finite cylinder, prescribed uniform axial M (sign of M = polarity), J_b = 0, K_b = M × n on the
+side wall only; B from the side-wall current sheet in vacuum; H = B/μ₀ − M inside, B/μ₀ outside;
+m = M πa²L ê. Overlapping magnets are refused. Superposition of B over all filament and
+magnet sources; H(r) = B(r)/μ₀ − M(r).
+
+**4. Numerical methods.**
+
+- *Magnet*: B(r) = M ∫_{−L/2}^{L/2} B_loop(r; a, z′, 1 A) dz′ in local cylindrical coordinates,
+  using `loop_local`. Adaptive G7/K15 per point, the interval split at z′ = z (where the integrand
+  peaks next to the sheet). An interval is accepted when |K15 − G7| ≤ max(rtol·|I|, atol)·(its
+  share of the length); otherwise halved; at most 40 levels; points that do not converge are
+  reported. rtol by use: 1e-9 for field samples (1e-11 for the probe and Ampère, 1e-7 for
+  field-line tracing), atol = 1e-15·μ₀|M|.
+- *Sheet tolerance*: a point within 1e-9 × domain diagonal of the side wall or the rim is "on
+  the current sheet": B and H are not returned as a unique value (NaN with a boundary count);
+  the probe gives one-sided limits at ±δ along the normal. On an end face B is continuous and
+  returned; H is one-sided (normal H jumps by M) and marked boundary.
+- *Ideal toroid*: closed form; within the same tolerance of the core surface: boundary (probe:
+  inside value and 0).
+- *Ampère circulation*: Γ_H = ∮ H·dl (and Γ_B = ∮ B·dl) by the same adaptive G7/K15 over the
+  exact parametrisation (circle split into 8 arcs; polygon and rectangle per edge), with H from
+  the solver (magnets at rtol 1e-11). Stop: total error ≤ max(rtol·|Γ|, 1e-8 A, 1e-8·I_scale),
+  rtol per path (default 1e-4), I_scale = Σ |I|·turns over free sources (1 A when there is none,
+  documented). Reported: integral, error estimate, subdivisions, evaluations, convergence.
+- *Enclosed free current*: independent geometry. Spanning surface = the planar region bounded
+  by the path (disk, rectangle, triangulable simple polygon), normal by the right-hand rule.
+  Wires: plane crossing, in-region test, sign of d·n. Loops and turns: circle–plane intersection
+  (0, 1 tangent, 2 points), in-region test, sign of the current tangent·n. Coplanar disjoint
+  curves are unlinked (0); a crossing within tolerance of the path means the path meets a
+  filament (circulation undefined); tangencies inside the region are ambiguous. Ideal toroid:
+  only coaxial circles (inside the core NI·sign, otherwise 0); other paths: unsupported.
+  Magnets contribute no free current. The verdict compares Γ_H with I_enc within
+  max(rtol·max(|Γ|, |I|), 1e-8 A, 1e-8·I_scale).
+- *Field lines*: seeds on "seed disks" (loop: its disk; solenoid and magnet: midplane disk;
+  finite toroid: cross-section half-way between two turns; ideal toroid: core cross-section),
+  reusing the Phase 3A loop seeding; the closure length scale also counts magnet sheets and the
+  ideal core surface, while singular capture remains filaments only.
+
+**5. Unsupported interactions (refused with a reason).** Ideal toroid together with any other
+magnetic source; overlapping magnets; non-axial or non-uniform magnetization; non-uniform or
+non-unit world scale of a coil, torus or magnet (dimensions are edited directly); invalid
+dimensions; turns that coincide within the solver tolerance; a magnetic core in the finite-turn
+model; non-planar, open or self-intersecting Ampère paths; Ampère enclosure for non-coaxial paths
+in the ideal toroid model (circulation still computed, right-hand side "unsupported").
+
+**6. Architectural decisions.** Everything stays in the magnetostatic solver and the magnetic
+subscene (magnets have role `magnetic_material`, which the electric subscene now drops when
+well-formed); the electric solver and its results are untouched. One circular-loop
+implementation. Ampère is an independent tool like Gauss: own endpoint, own cache key
+(magnetic subscene + path physics), persisted additively. Objects keep their transform for
+position and orientation (axis = local +z); dimensions live in the primitive, physics in the
+source, so switching the toroid model keeps both radii.
+
+**7. Expected performance.** Cost per sample point is proportional to the number of filament
+loops (each turn is one loop evaluation) plus about 30–200 loop evaluations per magnet
+(adaptive). The API estimates loop evaluations per synchronous solve (points × (wires + loops +
+turns + 60 × magnets)) and answers 413 above 4e7, asking for a queued job, rather than silently
+reducing anything. Field lines with magnets use a looser inner quadrature (1e-7).
+
 ## 10. Implementation status and roadmap
 
 | Area | Phase 1 state |
@@ -687,16 +787,18 @@ normal and radius (loop), reset to the preset configuration.
 | Analytical solver | point charges in vacuum |
 | Probe | E, φ, D, ∇·E, ∇×E, ∇·D, ∇×D at a point, per-charge contributions, singular state with the distributional statement, finite-difference check (advanced). Energy density: later milestone |
 | Equation registry | all required equations plus superposition, with computed statuses and usage; derivations are empty |
-| Presets | 1–4 and 9–11 available (10 with three variants, 11 with a view hint); the others listed as unavailable |
-| Persistence | projects (scene + view settings) in PostgreSQL |
+| Presets | 1–4 and 9–14 available (10 with three variants, 13 with two, view hints incl. a default probe point, 12–14 with default Ampère paths); the others listed as unavailable |
+| Persistence | projects (scene + view settings + Gaussian surfaces + Ampère paths) in PostgreSQL |
 | Job queue | analytical worker, progress, cancellation |
 | Waveforms, time dependence, timeline | not started (Phase 4) |
 | Field lines, equipotentials | implemented for point charges (Phase 2A) |
 | Divergence and curl display, distributional sources | implemented (Phase 2B-1) |
 | Gaussian surfaces, closed-surface flux, Gauss and Gauss–Ostrogradsky demonstrations, subdivision | implemented (Phase 2B-2) |
-| Open-surface flux, circulation tools, analytical conductor cases, presets 5–8 | not started |
+| Ampère circulation on closed planar paths (circle, rectangle, polygon) | implemented (Phase 3B): adaptive quadrature of H, independent signed-crossing enclosed current, verification states |
+| Open-surface flux, general circulation tools, analytical conductor cases, presets 5–8 | not started |
 | Magnetostatics (Phase 3A) | infinite straight wires and circular loops in vacuum: B, H, superposition and per-source contributions, B field lines with closed-loop detection, ∇·B, probe, equations |
-| Magnetostatics (Phase 3B and later) | not started: solenoids, toroids, permanent magnets, magnetic materials, magnetic flux, Ampère circulation demonstration |
+| Magnetostatics (Phase 3B) | finite discrete-turn solenoids, finite-turn toroids (vacuum) and the ideal continuous-winding toroid (linear core), uniformly magnetized cylindrical permanent magnets (bound sheet current), B and H with material regions, sheet and core boundaries with one-sided limits, idealized comparisons (ideal long solenoid, ideal toroid, dipole far field), axis profile |
+| Magnetostatics (later) | not started: nonlinear or field-dependent materials, demagnetization, magnetic flux through open surfaces, general magnetic materials |
 | Induction | not started (Phase 4) |
 | FEM (DOLFINx, Gmsh), FDTD (Meep) | not started (Phase 5); reported as unavailable |
 | Circuit subsystem (MNA) | not started; reported as unavailable |
@@ -723,7 +825,25 @@ Acceptance criteria per phase are unchanged from the approved plan:
 - Magnetostatics: wires are infinite and of zero radius, loops are thin; B and H are singular on
   the filaments (reported as undefined, never clipped). A real wire's finite radius and internal
   field are outside the model. Wires and loops are electrically neutral (no E). Ampère's law is
-  applicable but not evaluated (no local J field); its circulation demonstration is Phase 3B.
+  checked in integral form on user paths (Phase 3B); the local form ∇×H = J is satisfied but not
+  evaluated (no volume current density J field).
+- Phase 3B models: solenoid turns are separate coaxial circles (no helix pitch, no lead wires,
+  no wire thickness); finite toroid turns likewise, in vacuum. The ideal toroid is a
+  self-contained idealization (field confined to a linear core, exactly zero outside) and is
+  refused in combination with any other magnetic source. Permanent magnets are rigid, uniformly
+  magnetized cylinders: M does not respond to other fields (no demagnetization, hysteresis or
+  B–H curve; B_r = μ₀M is only an input parameterization); overlapping magnets are refused;
+  only cylinders are supported. Coils, tori and magnets must not be scaled (refused).
+- Magnet fields come from adaptive quadrature over the sheet current (rtol 1e-9 for maps, 1e-11
+  for the probe and Ampère, 1e-7 for field lines); on the sheet itself (within 1e-9 of the
+  domain diagonal) B and H are not defined and the one-sided limits are reported; on an end face
+  B is defined and H is not. A grid point can therefore show a gap exactly on a magnet surface.
+- Ampère paths must be closed, planar and simple; self-intersection is detected for polygons.
+  For the ideal toroid the enclosed current is only available for paths coaxial with it
+  (otherwise the status is "unsupported"). A path through a filament is reported, not
+  integrated. Paths cannot be dragged in the viewport (numeric editing only).
+- Synchronous solves are limited by a cost model (about 4·10⁷ loop-field evaluations; a magnet
+  counts 60 per point); larger requests return 413 and must use the job queue.
 - Magnetic field lines: closure is decided numerically (tolerance δ, see 9d); where B lines are
   not closed curves (general 3D arrangements of several sources), a line that passes within δ of
   its start cannot be told apart from a closed one. Line density is a display choice (geometric

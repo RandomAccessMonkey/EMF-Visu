@@ -66,14 +66,14 @@ describe('source geometry helpers', () => {
   it('marks where currents cross the 2D slice, out of (⊙) or into (⊗) the screen', () => {
     const wire: CurrentSourceInfo = {
       object_id: 'w', kind: 'infinite_wire', current_A: 10, point_m: [0.5, 0, 0], direction: [0, 0, 1],
-      radius_m: null, plane_crossing_m: { heat: [0.5, 0, 0] }, plane_crossing_sign: { heat: 1 }, plane_distance_m: {},
+      radius_m: null, turns: 1, turns_geometry: [], plane_crossing_m: { heat: [0.5, 0, 0] }, plane_crossing_sign: { heat: 1 }, plane_distance_m: {},
     }
     expect(currentCrossings([wire], [0, 0, 0], [0, 0, 1], 'heat')).toEqual([{ key: 'w', p: [0.5, 0, 0], sign: 1, label: '10.0 A' }])
     // Loop of radius 0.5 in the xy plane, counter-clockwise about +z, seen in the xz slice
     // (normal -y): at x = -a the current flows along -y, towards the viewer.
     const loop: CurrentSourceInfo = {
       object_id: 'l', kind: 'circular_loop', current_A: 10, point_m: [0, 0, 0], direction: [0, 0, 1],
-      radius_m: 0.5, plane_crossing_m: {}, plane_crossing_sign: {}, plane_distance_m: { heat: 0 },
+      radius_m: 0.5, turns: 1, turns_geometry: [], plane_crossing_m: {}, plane_crossing_sign: {}, plane_distance_m: { heat: 0 },
     }
     const xs = currentCrossings([loop], [0, 0, 0], [0, -1, 0], 'heat')
     expect(xs).toHaveLength(2)

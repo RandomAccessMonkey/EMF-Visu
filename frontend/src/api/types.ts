@@ -53,3 +53,13 @@ export type MagneticContribution = S['MagneticContribution']
 export type PresetVariant = S['PresetVariant']
 export type Source = NonNullable<SceneObject['source']>
 export type FieldKind = 'electric' | 'magnetic'
+// Phase 3B
+export type AmperePath = S['AmperePath']
+export type PathShape = AmperePath['shape']
+export type PathDisplay = S['PathDisplay']
+export type AmpereHeader = S['AmpereHeader']
+export type PathResult = S['PathResult']
+export type AmpereCrossing = S['Crossing']
+export type OneSidedValue = S['OneSidedValue']
+export type ProbeComparison = S['ProbeComparison']
+export type ViewHint = S['ViewHint']

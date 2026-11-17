@@ -42,7 +42,9 @@ def field_subscene(scene: Scene, kind: FieldKind) -> Scene:
     subscene, so the electric and magnetic caches are independent."""
     if kind == "electric":
         well_formed = set(current_sources(scene).ids)
-        drop = {o.id for o in scene.objects if o.role is Role.CURRENT_SOURCE
+        # Free currents and magnetized material are the magnetic model's sources (Phase 3A/3B).
+        drop = {o.id for o in scene.objects
+                if o.role in (Role.CURRENT_SOURCE, Role.MAGNETIC_MATERIAL)
                 and (o.id in well_formed or not enabled(scene, o))}
     else:
         drop = {o.id for o in scene.objects if o.role is Role.CHARGE_SOURCE
@@ -64,7 +66,7 @@ def field_kinds(scene: Scene) -> list[FieldKind]:
     """Which field solves a scene needs: magnetic if it has current sources, electric if it has
     charges or has no current sources (so scenes without currents behave as before)."""
     live = [o for o in scene.objects if enabled(scene, o)]
-    has_currents = any(o.role is Role.CURRENT_SOURCE for o in live)
+    has_currents = any(o.role in (Role.CURRENT_SOURCE, Role.MAGNETIC_MATERIAL) for o in live)
     has_charges = any(o.role is Role.CHARGE_SOURCE for o in live)
     kinds: list[FieldKind] = []
     if has_charges or not has_currents:

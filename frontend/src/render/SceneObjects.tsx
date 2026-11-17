@@ -5,6 +5,7 @@ import * as THREE from 'three'
 import type { SceneObject, Vec3 } from '@/api/types'
 import { PLANE_BASIS } from '@/sim/request'
 import { chargeOf, useSceneStore } from '@/state/sceneStore'
+import { CoilBody, MagnetBody, TorusBody } from './CoilBodies'
 import { MAGNETIC_SOURCE_COLOR } from './magneticColors'
 import { useViewStore } from '@/state/viewStore'
 
@@ -91,6 +92,9 @@ function Shape({ o, marker, ghost, wireLength, highlight }: { o: SceneObject; ma
   const p = o.primitive
   if (o.source?.type === 'infinite_wire' && p.type === 'line') return <WireBody o={o} marker={marker} length={wireLength} highlight={highlight} />
   if (o.source?.type === 'circular_loop' && p.type === 'ring') return <LoopBody o={o} marker={marker} highlight={highlight} />
+  if (o.source?.type === 'solenoid' && p.type === 'coil') return <CoilBody p={p} current={o.source.current_A} marker={marker} highlight={highlight} />
+  if (o.source && p.type === 'torus') return <TorusBody p={p} source={o.source} marker={marker} highlight={highlight} />
+  if (o.source?.type === 'permanent_magnet' && p.type === 'cylinder') return <MagnetBody p={p} magnetization={o.source.magnetization_A_per_m} marker={marker} highlight={highlight} />
   const inert = (
     <meshStandardMaterial color={COLORS.inert} transparent opacity={0.3} roughness={0.6} side={THREE.DoubleSide} />
   )
@@ -133,6 +137,10 @@ function Shape({ o, marker, ghost, wireLength, highlight }: { o: SceneObject; ma
       return <mesh><torusGeometry args={[p.radius_m, marker * 0.35, 12, 64]} />{inert}</mesh>
     case 'plane':
       return <mesh><planeGeometry args={[p.width_m, p.height_m]} />{inert}</mesh>
+    case 'coil': // a coil or torus without its source: drawn as inert reference geometry
+      return <mesh rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[p.radius_m, p.radius_m, Math.max(p.length_m, marker), 32, 1, true]} />{inert}</mesh>
+    case 'torus':
+      return <mesh><torusGeometry args={[p.major_radius_m, p.winding_radius_m, 16, 64]} />{inert}</mesh>
     case 'line': // along local z
       return (
         <mesh rotation={[Math.PI / 2, 0, 0]}>

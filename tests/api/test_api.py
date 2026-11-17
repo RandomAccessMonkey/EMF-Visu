@@ -97,8 +97,8 @@ def test_solvers_and_presets_do_not_overclaim(client):
     # Redis is unreachable in this fixture: the worker must not be reported as online.
     assert solvers["analytical.electrostatics.point_charges"]["queue_worker_online"] is False
     presets = client.get(f"{V1}/presets").json()
-    # Phase 3A made presets 9-11 (magnetostatics) available in addition to 1-4.
-    assert len(presets) == 20 and sum(p["available"] for p in presets) == 7
+    # Phase 3A made presets 9-11 (magnetostatics) available, Phase 3B 12-14, in addition to 1-4.
+    assert len(presets) == 20 and sum(p["available"] for p in presets) == 10
 
 
 def test_health_reports_unreachable_redis_as_degraded(client):

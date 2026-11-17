@@ -126,6 +126,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ampere": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ampere Law
+         * @description Ampère's law on closed planar paths: the numerical circulation of H (adaptive
+         *     Gauss–Kronrod over the exact path, H from the solver) and, independently, the signed free
+         *     current through the spanning surface from the source geometry.
+         */
+        post: operations["ampere_law_api_v1_ampere_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/gauss/situations": {
         parameters: {
             query?: never;
@@ -256,6 +278,77 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AmpereBody */
+        AmpereBody: {
+            scene: components["schemas"]["Scene"];
+            ampere: components["schemas"]["AmpereRequest"];
+        };
+        /** AmpereHeader */
+        AmpereHeader: {
+            /** Solver Id */
+            solver_id: string;
+            /** Solver Version */
+            solver_version: string;
+            /** Current Scale A */
+            current_scale_A: number;
+            method: components["schemas"]["LocalizedText"];
+            /** Paths */
+            paths: components["schemas"]["PathResult"][];
+        };
+        /** AmperePath */
+        AmperePath: {
+            /** Id */
+            id: string;
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            /** Shape */
+            shape: components["schemas"]["CirclePath"] | components["schemas"]["RectanglePath"] | components["schemas"]["PolygonPath"];
+            /**
+             * Center M
+             * @default [
+             *       0,
+             *       0,
+             *       0
+             *     ]
+             */
+            center_m: [
+                number,
+                number,
+                number
+            ];
+            /**
+             * Rotation Euler Xyz Rad
+             * @default [
+             *       0,
+             *       0,
+             *       0
+             *     ]
+             */
+            rotation_euler_xyz_rad: [
+                number,
+                number,
+                number
+            ];
+            /**
+             * Reversed
+             * @default false
+             */
+            reversed: boolean;
+            /**
+             * Rtol
+             * @default 0.0001
+             */
+            rtol: number;
+            display?: components["schemas"]["PathDisplay"] | null;
+        };
+        /** AmpereRequest */
+        AmpereRequest: {
+            /** Paths */
+            paths: components["schemas"]["AmperePath"][];
+        };
         /** ArrayEntry */
         ArrayEntry: {
             /** Name */
@@ -375,6 +468,19 @@ export interface components {
                 number
             ];
         };
+        /** CirclePath */
+        CirclePath: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "circle";
+            /**
+             * Radius M
+             * @default 0.1
+             */
+            radius_m: number;
+        };
         /**
          * CircularLoopSource
          * @description Ideal thin circular filament carrying a steady current (Phase 3A).
@@ -396,12 +502,61 @@ export interface components {
              */
             current_A: number;
         };
+        /**
+         * CoilPrimitive
+         * @description Geometry of a finite solenoid (Phase 3B): N coaxial circular turns of radius ``radius_m``
+         *     about local +z, turn centres at z_k = -L/2 + k L/(N - 1) (k = 0..N-1); N = 1 is one turn at
+         *     z = 0 and ``length_m`` is then not used. L is the distance between the first and last turn
+         *     centres; the turn spacing L/(N - 1) is derived, never an input.
+         */
+        CoilPrimitive: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "coil";
+            /**
+             * Radius M
+             * @default 0.04
+             */
+            radius_m: number;
+            /**
+             * Length M
+             * @default 0.2
+             */
+            length_m: number;
+            /**
+             * Turns
+             * @default 20
+             */
+            turns: number;
+        };
         /** ComponentHealth */
         ComponentHealth: {
             /** Ok */
             ok: boolean;
             /** Detail */
             detail?: string | null;
+        };
+        /** Crossing */
+        Crossing: {
+            /** Object Id */
+            object_id: string;
+            /** Kind */
+            kind: string;
+            /** Point M */
+            point_m: number[];
+            /** Sign */
+            sign: number;
+            /** Current A */
+            current_A: number;
+            /** Contribution A */
+            contribution_A: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "inside" | "on_path" | "ambiguous";
         };
         /** CubeShape */
         CubeShape: {
@@ -428,7 +583,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "infinite_wire" | "circular_loop";
+            kind: "infinite_wire" | "circular_loop" | "solenoid" | "toroid_finite" | "toroid_ideal" | "permanent_magnet";
             /** Current A */
             current_A: number;
             /** Point M */
@@ -437,6 +592,33 @@ export interface components {
             direction: number[];
             /** Radius M */
             radius_m?: number | null;
+            /**
+             * Turns
+             * @default 1
+             */
+            turns: number;
+            /**
+             * Turns Geometry
+             * @default []
+             */
+            turns_geometry: components["schemas"]["TurnGeometry"][];
+            /** Length M */
+            length_m?: number | null;
+            /** Turn Spacing M */
+            turn_spacing_m?: number | null;
+            ideal_long_solenoid?: components["schemas"]["IdealSolenoidInfo"] | null;
+            /** Major Radius M */
+            major_radius_m?: number | null;
+            /** Winding Radius M */
+            winding_radius_m?: number | null;
+            /** Core Radius M */
+            core_radius_m?: number | null;
+            /** Relative Permeability */
+            relative_permeability?: number | null;
+            /** Magnetization A Per M */
+            magnetization_A_per_m?: number | null;
+            /** Moment A M2 */
+            moment_A_m2?: number[] | null;
             /**
              * Plane Crossing M
              * @default {}
@@ -545,6 +727,25 @@ export interface components {
              */
             potential_reference: "infinity";
         };
+        /** Enclosure */
+        Enclosure: {
+            /** Available */
+            available: boolean;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "ambiguous" | "on_path" | "unsupported";
+            /** Value A */
+            value_A: number | null;
+            /** Crossings */
+            crossings: components["schemas"]["Crossing"][];
+            /**
+             * Notes
+             * @default []
+             */
+            notes: components["schemas"]["LocalizedText"][];
+        };
         /** EquationStatusEntry */
         EquationStatusEntry: {
             /** Equation Id */
@@ -599,7 +800,7 @@ export interface components {
              * Usage
              * @enum {string}
              */
-            usage: "evaluated" | "checked" | "satisfied" | "not_used";
+            usage: "evaluated" | "checked" | "satisfied" | "approximation" | "not_used";
             usage_note: components["schemas"]["LocalizedText"];
         };
         /** EquationsBody */
@@ -610,6 +811,11 @@ export interface components {
              * @default []
              */
             surfaces: components["schemas"]["GaussSurface"][];
+            /**
+             * Paths
+             * @default []
+             */
+            paths: components["schemas"]["AmperePath"][];
         };
         /** EquationsResponse */
         EquationsResponse: {
@@ -890,6 +1096,18 @@ export interface components {
             redis: components["schemas"]["ComponentHealth"];
         };
         /**
+         * IdealSolenoidInfo
+         * @description Ideal long-solenoid comparison values (an idealization, never the solver's field).
+         */
+        IdealSolenoidInfo: {
+            /** Turns Per M */
+            turns_per_m: number;
+            /** B T */
+            B_T: number;
+            /** H A Per M */
+            H_A_per_m: number;
+        };
+        /**
          * InfiniteWireSource
          * @description Ideal infinitely long straight filament carrying a steady current (Phase 3A).
          *
@@ -1035,7 +1253,7 @@ export interface components {
         };
         /**
          * MagneticContribution
-         * @description Field of one current source at the probe point (Phase 3A).
+         * @description Field of one magnetic source at the probe point (Phase 3A; kinds extended in 3B).
          */
         MagneticContribution: {
             /** Object Id */
@@ -1046,9 +1264,16 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "infinite_wire" | "circular_loop";
+            kind: "infinite_wire" | "circular_loop" | "solenoid" | "toroid_finite" | "toroid_ideal" | "permanent_magnet";
             /** Current A */
             current_A: number;
+            /**
+             * Turns
+             * @default 1
+             */
+            turns: number;
+            /** Magnetization A Per M */
+            magnetization_A_per_m?: number | null;
             /** Distance M */
             distance_m: number;
             /** B T */
@@ -1193,6 +1418,26 @@ export interface components {
              */
             current_source_kinds: string[];
             /**
+             * Has Magnetization
+             * @default false
+             */
+            has_magnetization: boolean;
+            /**
+             * Has Linear Core
+             * @default false
+             */
+            has_linear_core: boolean;
+            /**
+             * Ampere Paths
+             * @default 0
+             */
+            ampere_paths: number;
+            /**
+             * Ampere Unverified
+             * @default false
+             */
+            ampere_unverified: boolean;
+            /**
              * Gauss Surfaces
              * @default 0
              */
@@ -1219,6 +1464,130 @@ export interface components {
              * @default []
              */
             evaluated_equation_ids: string[];
+        };
+        /**
+         * OneSidedValue
+         * @description A one-sided limit at a sheet or core boundary, evaluated at ±offset along the normal.
+         */
+        OneSidedValue: {
+            /**
+             * Side
+             * @enum {string}
+             */
+            side: "inside" | "outside";
+            /** Offset M */
+            offset_m: number;
+            /** B T */
+            B_T: number[] | null;
+            /** H A Per M */
+            H_A_per_m: number[] | null;
+        };
+        /**
+         * PathDisplay
+         * @description Visualization only: never part of a cache key.
+         */
+        PathDisplay: {
+            /**
+             * Visible
+             * @default true
+             */
+            visible: boolean;
+            /**
+             * Show Normal
+             * @default true
+             */
+            show_normal: boolean;
+            /**
+             * Show Crossings
+             * @default true
+             */
+            show_crossings: boolean;
+            /**
+             * Show Surface
+             * @default false
+             */
+            show_surface: boolean;
+        };
+        /** PathResult */
+        PathResult: {
+            /** Path Id */
+            path_id: string;
+            /** Valid */
+            valid: boolean;
+            /**
+             * Invalid Reasons
+             * @default []
+             */
+            invalid_reasons: components["schemas"]["LocalizedText"][];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "verified" | "not_converged" | "ambiguous" | "intersects_source" | "unsupported" | "failed" | "invalid";
+            /** Normal */
+            normal?: number[] | null;
+            /** Center M */
+            center_m?: number[] | null;
+            /** Perimeter M */
+            perimeter_m?: number | null;
+            /** Area M2 */
+            area_m2?: number | null;
+            /**
+             * Polyline M
+             * @default []
+             */
+            polyline_m: number[][];
+            /** Circulation H A */
+            circulation_H_A?: number | null;
+            /** Circulation Error A */
+            circulation_error_A?: number | null;
+            /** Circulation B T M */
+            circulation_B_T_m?: number | null;
+            /** Converged */
+            converged?: boolean | null;
+            /** Subintervals */
+            subintervals?: number | null;
+            /** Evaluations */
+            evaluations?: number | null;
+            /** Min Distance To Filament M */
+            min_distance_to_filament_m?: number | null;
+            /**
+             * Near Singular
+             * @default false
+             */
+            near_singular: boolean;
+            /**
+             * Crosses Material
+             * @default false
+             */
+            crosses_material: boolean;
+            enclosure?: components["schemas"]["Enclosure"] | null;
+            /** Difference A */
+            difference_A?: number | null;
+            /** Relative Error */
+            relative_error?: number | null;
+            /** Tolerance A */
+            tolerance_A?: number | null;
+            /** Bound Current From B A */
+            bound_current_from_B_A?: number | null;
+        };
+        /**
+         * PermanentMagnetSource
+         * @description Uniformly magnetized cylinder (Phase 3B) on a ``cylinder`` primitive, role
+         *     ``magnetic_material``: M = M e_z(local) inside, 0 outside. Negative M reverses the polarity.
+         *     A prescribed magnetization (no hysteresis, no demagnetization curve).
+         */
+        PermanentMagnetSource: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "permanent_magnet";
+            /**
+             * Magnetization A Per M
+             * @default 500000
+             */
+            magnetization_A_per_m: number;
         };
         /**
          * PlaneGridSampling
@@ -1382,6 +1751,25 @@ export interface components {
                 number
             ][];
         };
+        /** PolygonPath */
+        PolygonPath: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "polygon";
+            /** Vertices M */
+            vertices_m: [
+                number,
+                number,
+                number
+            ][];
+            /**
+             * Closed
+             * @default true
+             */
+            closed: boolean;
+        };
         /** Preset */
         Preset: {
             /** Id */
@@ -1407,6 +1795,11 @@ export interface components {
              */
             variants: components["schemas"]["PresetVariant"][];
             view_hint?: components["schemas"]["ViewHint"] | null;
+            /**
+             * Ampere Paths
+             * @default []
+             */
+            ampere_paths: components["schemas"]["AmperePath"][];
         };
         /**
          * PresetVariant
@@ -1429,6 +1822,27 @@ export interface components {
                 number,
                 number
             ];
+        };
+        /**
+         * ProbeComparison
+         * @description An idealized or approximate model evaluated at the probe point for comparison. Never
+         *     the solver's field; ``applicable`` says whether its assumptions hold at this point.
+         */
+        ProbeComparison: {
+            /** Object Id */
+            object_id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "ideal_long_solenoid" | "ideal_toroid" | "finite_toroid" | "dipole_far_field";
+            /** B T */
+            B_T: number[] | null;
+            /** H A Per M */
+            H_A_per_m: number[] | null;
+            /** Applicable */
+            applicable: boolean;
+            note: components["schemas"]["LocalizedText"];
         };
         /**
          * ProbeContribution
@@ -1495,7 +1909,7 @@ export interface components {
         };
         /**
          * ProbeMagnetic
-         * @description Magnetic part of the probe (Phase 3A); present when the scene has current sources.
+         * @description Magnetic part of the probe; present when the scene has magnetic sources.
          */
         ProbeMagnetic: {
             /** Solver Id */
@@ -1509,12 +1923,20 @@ export interface components {
             classification: "exact_analytical" | "numerical_approximation" | "idealized_model" | "visualization_aid";
             /** Defined */
             defined: boolean;
+            /**
+             * Status
+             * @default defined
+             * @enum {string}
+             */
+            status: "defined" | "singular" | "sheet" | "end_face" | "core_boundary";
             /** Singular Tolerance M */
             singular_tolerance_m: number;
+            /** Boundary Tolerance M */
+            boundary_tolerance_m?: number | null;
             /** Singular Object Id */
             singular_object_id?: string | null;
             /** Singular Kind */
-            singular_kind?: ("infinite_wire" | "circular_loop") | null;
+            singular_kind?: ("infinite_wire" | "circular_loop" | "solenoid" | "toroid_finite" | "toroid_ideal" | "permanent_magnet") | null;
             /** Values */
             values: components["schemas"]["ProbeValue"][];
             /** Nearest Source Id */
@@ -1525,6 +1947,41 @@ export interface components {
             contributions: components["schemas"]["MagneticContribution"][];
             /** Mu0 H Per M */
             mu0_H_per_m: number;
+            /**
+             * Material
+             * @default vacuum
+             * @enum {string}
+             */
+            material: "vacuum" | "magnet" | "core";
+            /**
+             * Constitutive
+             * @default vacuum
+             * @enum {string}
+             */
+            constitutive: "vacuum" | "magnetization" | "linear_core";
+            /** M A Per M */
+            M_A_per_m?: number[] | null;
+            /** Relative Permeability */
+            relative_permeability?: number | null;
+            /** Nearest Magnet Id */
+            nearest_magnet_id?: string | null;
+            /** Nearest Magnet Boundary M */
+            nearest_magnet_boundary_m?: number | null;
+            /**
+             * One Sided
+             * @default []
+             */
+            one_sided: components["schemas"]["OneSidedValue"][];
+            /**
+             * Comparisons
+             * @default []
+             */
+            comparisons: components["schemas"]["ProbeComparison"][];
+            /**
+             * Quadrature Converged
+             * @default true
+             */
+            quadrature_converged: boolean;
         };
         /** ProbeResponse */
         ProbeResponse: {
@@ -1605,6 +2062,11 @@ export interface components {
              * @default []
              */
             surfaces: components["schemas"]["GaussSurface"][];
+            /**
+             * Paths
+             * @default []
+             */
+            paths: components["schemas"]["AmperePath"][];
         };
         /** ProjectOut */
         ProjectOut: {
@@ -1632,6 +2094,11 @@ export interface components {
              * @default []
              */
             surfaces: components["schemas"]["GaussSurface"][];
+            /**
+             * Paths
+             * @default []
+             */
+            paths: components["schemas"]["AmperePath"][];
         };
         /** ProjectSummary */
         ProjectSummary: {
@@ -1649,6 +2116,24 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** RectanglePath */
+        RectanglePath: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "rectangle";
+            /**
+             * Width M
+             * @default 0.2
+             */
+            width_m: number;
+            /**
+             * Height M
+             * @default 0.1
+             */
+            height_m: number;
         };
         /** ResultHeader */
         ResultHeader: {
@@ -1828,7 +2313,7 @@ export interface components {
              */
             name: string;
             /** Primitive */
-            primitive: components["schemas"]["GroupPrimitive"] | components["schemas"]["PointPrimitive"] | components["schemas"]["SpherePrimitive"] | components["schemas"]["BoxPrimitive"] | components["schemas"]["CylinderPrimitive"] | components["schemas"]["RingPrimitive"] | components["schemas"]["PlanePrimitive"] | components["schemas"]["LinePrimitive"];
+            primitive: components["schemas"]["GroupPrimitive"] | components["schemas"]["PointPrimitive"] | components["schemas"]["SpherePrimitive"] | components["schemas"]["BoxPrimitive"] | components["schemas"]["CylinderPrimitive"] | components["schemas"]["RingPrimitive"] | components["schemas"]["PlanePrimitive"] | components["schemas"]["LinePrimitive"] | components["schemas"]["CoilPrimitive"] | components["schemas"]["TorusPrimitive"];
             /**
              * @default {
              *       "position_m": [
@@ -1854,7 +2339,7 @@ export interface components {
             /** @default geometry_only */
             role: components["schemas"]["Role"];
             /** Source */
-            source?: (components["schemas"]["PointChargeSource"] | components["schemas"]["InfiniteWireSource"] | components["schemas"]["CircularLoopSource"]) | null;
+            source?: (components["schemas"]["PointChargeSource"] | components["schemas"]["InfiniteWireSource"] | components["schemas"]["CircularLoopSource"] | components["schemas"]["SolenoidSource"] | components["schemas"]["ToroidFiniteSource"] | components["schemas"]["ToroidIdealSource"] | components["schemas"]["PermanentMagnetSource"]) | null;
             /** Material Id */
             material_id?: string | null;
             /**
@@ -1867,6 +2352,23 @@ export interface components {
         SimulationBody: {
             scene: components["schemas"]["Scene"];
             request: components["schemas"]["SolveRequest"];
+        };
+        /**
+         * SolenoidSource
+         * @description Finite solenoid (Phase 3B) on a ``coil`` primitive, role ``current_source``: every turn
+         *     carries the signed current I, counter-clockwise about local +z for I > 0.
+         */
+        SolenoidSource: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "solenoid";
+            /**
+             * Current A
+             * @default 1
+             */
+            current_A: number;
         };
         /** SolveRequest */
         SolveRequest: {
@@ -1978,6 +2480,87 @@ export interface components {
             unit: string;
         };
         /**
+         * ToroidFiniteSource
+         * @description Finite-turn toroid (Phase 3B) on a ``torus`` primitive: N circular turns of radius
+         *     b_winding, each counter-clockwise about its local +e_phi for I > 0. Vacuum: no core.
+         */
+        ToroidFiniteSource: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "toroid_finite";
+            /**
+             * Current A
+             * @default 1
+             */
+            current_A: number;
+        };
+        /**
+         * ToroidIdealSource
+         * @description Ideal continuous-winding toroid (Phase 3B) on a ``torus`` primitive, with a homogeneous
+         *     linear core of relative permeability mu_r and minor radius b_core:
+         *     H = N I / (2 pi rho) e_phi and B = mu0 mu_r H inside the core, zero outside (idealization).
+         */
+        ToroidIdealSource: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "toroid_ideal";
+            /**
+             * Current A
+             * @default 1
+             */
+            current_A: number;
+            /**
+             * Relative Permeability
+             * @default 1
+             */
+            relative_permeability: number;
+        };
+        /**
+         * TorusPrimitive
+         * @description Geometry of a toroidal winding (Phase 3B), symmetric about local +z.
+         *
+         *     ``winding_radius_m`` (b_winding) is the radius of each circular turn of the finite-turn
+         *     model; ``core_radius_m`` (b_core) is the minor radius of the ideal model's core. They are
+         *     separate parameters: each model uses only its own. Turn k of the finite model sits at
+         *     phi_k = phase + 2 pi k / N.
+         */
+        TorusPrimitive: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "torus";
+            /**
+             * Major Radius M
+             * @default 0.12
+             */
+            major_radius_m: number;
+            /**
+             * Winding Radius M
+             * @default 0.03
+             */
+            winding_radius_m: number;
+            /**
+             * Core Radius M
+             * @default 0.03
+             */
+            core_radius_m: number;
+            /**
+             * Turns
+             * @default 24
+             */
+            turns: number;
+            /**
+             * Phase Rad
+             * @default 0
+             */
+            phase_rad: number;
+        };
+        /**
          * Transform
          * @description Local transform relative to the parent object (or to the world if there is no parent).
          *
@@ -2025,6 +2608,18 @@ export interface components {
                 number
             ];
         };
+        /**
+         * TurnGeometry
+         * @description One circular filament (a loop, or one turn of a solenoid or finite toroid), world.
+         */
+        TurnGeometry: {
+            /** Center M */
+            center_m: number[];
+            /** Normal */
+            normal: number[];
+            /** Radius M */
+            radius_m: number;
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -2047,6 +2642,12 @@ export interface components {
             mode?: ("2d" | "3d") | null;
             /** Plane */
             plane?: ("xy" | "xz" | "yz") | null;
+            /** Probe M */
+            probe_m?: [
+                number,
+                number,
+                number
+            ] | null;
         };
         /** CellResult */
         CellResult: {
@@ -2540,6 +3141,57 @@ export interface operations {
                 };
                 content: {
                     "application/vnd.emf.result": unknown;
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    ampere_law_api_v1_ampere_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AmpereBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AmpereHeader"];
                 };
             };
             /** @description Request Entity Too Large */

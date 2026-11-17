@@ -2,13 +2,14 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 import type React from 'react'
 import { api, ApiError } from '@/api/client'
-import type { MethodInfo, ProbeMagnetic, ProbeValue, ResultHeader, Vec3 } from '@/api/types'
+import type { CurrentSourceInfo, MethodInfo, ProbeMagnetic, ProbeValue, ResultHeader, Vec3 } from '@/api/types'
 import { Badge, Button, Section } from '@/components/ui/controls'
 import { useT, type MessageKey } from '@/i18n'
 import { formatNumber, formatSI, formatVector, prettyUnit } from '@/lib/format'
 import { scenePhysics } from '@/sim/request'
 import type { FluxData } from '@/sim/gauss'
 import type { Simulation } from '@/sim/useSimulation'
+import { AxisProfile } from './AxisProfile'
 import { FluxResults } from './FluxResults'
 import { useSceneStore } from '@/state/sceneStore'
 import { useViewStore } from '@/state/viewStore'
@@ -87,11 +88,7 @@ function Probe({ sim }: { sim: Simulation }) {
   const selectedSource = sim.result?.header.point_sources.find((s) => s.object_id === selectedId)
   // A point on the selected wire's axis, or on the selected loop (from the engine's table).
   const selectedCurrent = sim.magnetic.result?.header.current_sources.find((s) => s.object_id === selectedId)
-  const onCurrent: Vec3 | null = selectedCurrent
-    ? selectedCurrent.kind === 'infinite_wire'
-      ? (selectedCurrent.point_m as Vec3)
-      : loopPoint(selectedCurrent.point_m as Vec3, selectedCurrent.direction as Vec3, selectedCurrent.radius_m ?? 0)
-    : null
+  const onCurrent: Vec3 | null = selectedCurrent ? sourcePoint(selectedCurrent) : null
   const data = probe.data
   const fieldValues = data?.values.filter((v) => !isCalculus(v.quantity)) ?? []
   const calculusValues = data?.values.filter((v) => isCalculus(v.quantity)) ?? []
@@ -216,6 +213,17 @@ function Probe({ sim }: { sim: Simulation }) {
   )
 }
 
+/** A point on the selected source where the probe shows its singular or boundary behaviour
+ *  (geometry only): on a wire's axis, on a loop or the first turn of a coil or finite toroid,
+ *  on a magnet's side wall (its current sheet). None for the ideal toroid. */
+function sourcePoint(s: CurrentSourceInfo): Vec3 | null {
+  if (s.kind === 'infinite_wire') return s.point_m as Vec3
+  if (s.kind === 'toroid_ideal') return null
+  const turn = s.turns_geometry[0]
+  if (turn) return loopPoint(turn.center_m as Vec3, turn.normal as Vec3, turn.radius_m)
+  return loopPoint(s.point_m as Vec3, s.direction as Vec3, s.radius_m ?? 0)
+}
+
 /** A point on a loop (geometry only): centre + radius × a unit vector perpendicular to n. */
 function loopPoint(c: Vec3, n: Vec3, a: number): Vec3 {
   const ref: Vec3 = Math.abs(n[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0]
@@ -242,6 +250,8 @@ function MagneticProbe({ m }: { m: ProbeMagnetic }) {
           <p className="mt-1 text-muted">{t('probe.mSingularExplain')}</p>
         </div>
       )}
+      {m.status !== 'defined' && m.status !== 'singular' && <BoundaryNote m={m} />}
+      {!m.quadrature_converged && <p className="mb-1 text-[11px] text-warn">{t('probe.mNotConverged')}</p>}
       <table className="w-full text-xs" aria-label={t('probe.magneticFields')}>
         <tbody>
           {vectors.map((v) => (
@@ -252,7 +262,10 @@ function MagneticProbe({ m }: { m: ProbeMagnetic }) {
           ))}
         </tbody>
       </table>
-      <p className="mt-1 font-mono text-[11px] text-muted">B = μ₀H, μ₀ = {m.mu0_H_per_m.toExponential(10)} H/m</p>
+      <MaterialInfo m={m} />
+      <p className="mt-1 font-mono text-[11px] text-muted">
+        {m.constitutive === 'magnetization' ? 'H = B/μ₀ − M' : m.constitutive === 'linear_core' ? 'B = μ₀μᵣH' : 'B = μ₀H'}, μ₀ = {m.mu0_H_per_m.toExponential(10)} H/m
+      </p>
       <p className="text-[11px] leading-snug text-muted">{t(m.defined ? 'probe.mDivNote' : 'probe.mDivSingularNote')}</p>
       {nearest && m.nearest_source_distance_m !== null && (
         <p className="mt-1 text-[11px]">
@@ -274,7 +287,12 @@ function MagneticProbe({ m }: { m: ProbeMagnetic }) {
               {m.contributions.map((c) => (
                 <tr key={c.object_id} className="border-t border-border/60 align-top">
                   <td className="max-w-28 font-sans">
-                    <div className="truncate">{c.name} <span className="text-muted">({formatSI(c.current_A, 'A')})</span></div>
+                    <div className="truncate">
+                      {c.name}{' '}
+                      <span className="text-muted">
+                        ({c.kind === 'permanent_magnet' ? `M = ${formatSI(c.magnetization_A_per_m ?? 0, 'A/m')}` : `${c.turns > 1 ? `${c.turns} × ` : ''}${formatSI(c.current_A, 'A')}`})
+                      </span>
+                    </div>
                     {c.B_T && <div className="text-[10px] text-muted">Bᵢ = {formatVector(c.B_T)} T</div>}
                   </td>
                   <td className="text-right">{c.B_magnitude_T === null ? t('probe.singular') : formatSI(c.B_magnitude_T, 'T', 4)}</td>
@@ -286,6 +304,80 @@ function MagneticProbe({ m }: { m: ProbeMagnetic }) {
           <p className="mt-1 text-[11px] leading-snug text-muted">{t('probe.mSuperpositionNote')}</p>
         </>
       )}
+      <Comparisons m={m} />
+    </div>
+  )
+}
+
+/** Where the probe is (vacuum, inside a magnet, inside the ideal core) and the material data
+ *  used there, from the engine. */
+function MaterialInfo({ m }: { m: ProbeMagnetic }) {
+  const { t } = useT()
+  if (m.material === 'vacuum' && !m.nearest_magnet_id) return null
+  return (
+    <div className="mt-1 text-[11px]">
+      <p>
+        {t('probe.mMaterial')}: <span className="font-semibold">{t(`probe.material.${m.material}` as MessageKey)}</span>
+      </p>
+      {m.M_A_per_m && <p className="font-mono">M = {formatVector(m.M_A_per_m)} A/m</p>}
+      {m.relative_permeability !== null && m.relative_permeability !== undefined && <p className="font-mono">μᵣ = {formatNumber(m.relative_permeability, 6)}</p>}
+      {m.nearest_magnet_boundary_m !== null && m.nearest_magnet_boundary_m !== undefined && (
+        <p className="text-muted">{t('probe.mNearestBoundary', { d: formatSI(m.nearest_magnet_boundary_m, 'm', 4) })}</p>
+      )}
+    </div>
+  )
+}
+
+/** On a magnet's current sheet, its end face or the ideal core surface the field has no single
+ *  value: the engine reports the one-sided limits instead. */
+function BoundaryNote({ m }: { m: ProbeMagnetic }) {
+  const { t } = useT()
+  return (
+    <div role="note" className="mb-1 rounded-md border border-warn/40 bg-warn/5 p-2 text-[11px] leading-snug" data-testid="probe-boundary">
+      <p className="font-semibold text-warn">{t(`probe.mStatus.${m.status}` as MessageKey)}</p>
+      <p className="text-muted">{t(`probe.mStatusExplain.${m.status}` as MessageKey, { tol: formatSI(m.boundary_tolerance_m ?? 0, 'm', 2) })}</p>
+      {m.one_sided.length > 0 && (
+        <table className="mt-1 w-full font-mono text-[10px]" aria-label={t('probe.mOneSided')}>
+          <thead>
+            <tr className="text-left text-muted">
+              <th className="font-sans font-normal">{t('probe.mSide')}</th>
+              <th className="font-normal">B (T)</th>
+              <th className="font-normal">H (A/m)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {m.one_sided.map((o) => (
+              <tr key={o.side} className="border-t border-border/60 align-top">
+                <td className="font-sans">{t(`probe.side.${o.side}` as MessageKey)}</td>
+                <td>{o.B_T ? formatVector(o.B_T) : '—'}</td>
+                <td>{o.H_A_per_m ? formatVector(o.H_A_per_m) : '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  )
+}
+
+/** Idealized models evaluated at the probe point for comparison; never the solver's field. */
+function Comparisons({ m }: { m: ProbeMagnetic }) {
+  const { t, loc } = useT()
+  if (m.comparisons.length === 0) return null
+  return (
+    <div className="mt-1" data-testid="probe-comparisons">
+      <h4 className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted">{t('probe.mComparisons')}</h4>
+      {m.comparisons.map((c) => (
+        <div key={`${c.object_id}:${c.kind}`} className="border-t border-border/60 py-1 text-[11px]">
+          <div className="flex items-center gap-1.5">
+            <span className="font-semibold">{t(`probe.comparison.${c.kind}` as MessageKey)}</span>
+            <Badge tone={c.applicable ? 'muted' : 'warn'}>{t(c.applicable ? 'probe.cApplicable' : 'probe.cNotApplicable')}</Badge>
+          </div>
+          {c.B_T && <p className="font-mono">B = {formatVector(c.B_T)} T</p>}
+          {c.H_A_per_m && <p className="font-mono">H = {formatVector(c.H_A_per_m)} A/m</p>}
+          <p className="text-muted">{loc(c.note)}</p>
+        </div>
+      ))}
     </div>
   )
 }
@@ -477,9 +569,14 @@ export function ResultsPanel({ sim, flux }: { sim: Simulation; flux?: FluxData }
   const { t, loc } = useT()
   const advanced = useViewStore((s) => s.level === 'advanced')
   const h = sim.result?.header
+  const selectedId = useSceneStore((s) => s.selectedId)
+  const profiled = sim.magnetic.error
+    ? undefined
+    : sim.magnetic.result?.header.current_sources.find((c) => c.object_id === selectedId && (c.kind === 'solenoid' || c.kind === 'permanent_magnet'))
   return (
     <div>
       {!sim.error && <FluxResults flux={flux} />}
+      {profiled && <AxisProfile key={profiled.object_id} info={profiled} />}
       {sim.error && (
         <div className="border-b border-border p-3">
           <SimulationError error={sim.error} />

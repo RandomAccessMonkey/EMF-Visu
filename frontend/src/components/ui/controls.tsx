@@ -64,11 +64,12 @@ interface NumberFieldProps {
   max?: number
   label?: string
   className?: string
+  disabled?: boolean
 }
 
 /** Numeric input that edits an SI value, optionally displayed in a scaled unit. Invalid or
  *  out-of-range text is never committed to the model. */
-export function NumberField({ value, onChange, unit, factor = 1, step, min, max, label, className }: NumberFieldProps) {
+export function NumberField({ value, onChange, unit, factor = 1, step, min, max, label, className, disabled }: NumberFieldProps) {
   const shown = (v: number) => String(Number((v / factor).toPrecision(8)))
   const [text, setText] = useState(shown(value))
   const focused = useRef(false)
@@ -85,6 +86,7 @@ export function NumberField({ value, onChange, unit, factor = 1, step, min, max,
         type="number"
         aria-label={label}
         aria-invalid={!valid}
+        disabled={disabled}
         value={text}
         step={step ?? 'any'}
         min={min}
@@ -102,7 +104,7 @@ export function NumberField({ value, onChange, unit, factor = 1, step, min, max,
           if (ok) onChange(n * factor)
         }}
         className={cn(
-          'h-7 w-20 rounded-md border bg-bg px-1.5 text-right font-mono text-xs text-text',
+          'h-7 w-20 rounded-md border bg-bg px-1.5 text-right font-mono text-xs text-text disabled:opacity-40',
           valid ? 'border-border' : 'border-danger',
         )}
       />

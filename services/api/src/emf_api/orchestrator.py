@@ -8,7 +8,8 @@ from threading import Lock
 
 import numpy as np
 
-from emf_core import engine, wire
+from emf_core import ampere, engine, wire
+from emf_core.ampere import AmperePath, AmpereRequest
 from emf_core.equations import EquationRegistry, EquationView, default_registry
 from emf_core.geometry.surfaces import GaussSurface
 from emf_core.i18n import LocalizedText
@@ -27,6 +28,19 @@ from emf_core.solvers.base import ModelContext, Solver
 
 class RequestTooLargeError(Exception):
     pass
+
+
+# Interactive budget for magnetic solves: loop-field evaluations per synchronous request.
+SYNC_LOOP_EVALUATIONS = 4e7
+MAGNET_COST = 60  # typical loop evaluations per point for a magnet's adaptive quadrature
+
+
+def magnetic_cost_per_point(scene: Scene) -> int:
+    from emf_core.scene.currents import current_sources
+
+    cs = current_sources(scene)
+    return max(1, len(cs.wires) + len(cs.loops) + MAGNET_COST * len(cs.magnets)
+               + len(cs.ideal_toroids))
 
 
 class Orchestrator:
@@ -54,6 +68,14 @@ class Orchestrator:
                 f"{total} sample points exceed the synchronous limit of "
                 f"{self._sync_point_limit}; submit this request as a job"
             )
+        if request.field_kind == "magnetic":
+            cost = total * magnetic_cost_per_point(engine.field_subscene(scene, "magnetic"))
+            if cost > SYNC_LOOP_EVALUATIONS:
+                raise RequestTooLargeError(
+                    f"about {cost:.3g} loop-field evaluations (sample points × filaments, plus "
+                    f"~{MAGNET_COST} per magnet) exceed the interactive limit of "
+                    f"{SYNC_LOOP_EVALUATIONS:.0e}; reduce the number of turns or submit a "
+                    "high-resolution job. Nothing was reduced or approximated.")
         key = engine.physics_fingerprint(scene, request)
         with self._lock:
             hit = self._cache.get(key)
@@ -83,7 +105,29 @@ class Orchestrator:
                 self._cache.popitem(last=False)
         return blob, False
 
-    def equations(self, scene: Scene, surfaces: list[GaussSurface] | None = None
+    def solve_ampere(self, scene: Scene, request: AmpereRequest) -> tuple[bytes, bool]:
+        """Ampère circulation results (JSON bytes), cached separately (magnetic subscene +
+        path physics)."""
+        sub = engine.field_subscene(scene, "magnetic")
+        key = ampere.fingerprint(sub, request)
+        with self._lock:
+            hit = self._cache.get(key)
+            if hit is not None:
+                self._cache.move_to_end(key)
+                return hit, True
+        probe = SolveRequest.model_validate({
+            "samplings": [{"kind": "points", "id": "p", "points_m": [[0, 0, 0]]}],
+            "quantities": ["B"]})
+        solver = self.catalog.select(sub, probe)
+        blob = ampere.compute(sub, request, solver.id, solver.version).model_dump_json().encode()
+        with self._lock:
+            self._cache[key] = blob
+            while len(self._cache) > self._cache_entries:
+                self._cache.popitem(last=False)
+        return blob, False
+
+    def equations(self, scene: Scene, surfaces: list[GaussSurface] | None = None,
+                  paths: list[AmperePath] | None = None
                   ) -> tuple[list[EquationView], list[LocalizedText], list[str]]:
         """Equation views for the model(s) that would be used for this scene: the electric
         and/or magnetic sub-model, merged (see EquationRegistry.evaluate_merged). If a needed
@@ -110,6 +154,11 @@ class Orchestrator:
                                                "displacement_flux"],
                     "checked_equation_ids": ["gauss_integral_E", "gauss_integral_D",
                                              "divergence_theorem_E", "divergence_theorem_D"],
+                })
+            if kind == "magnetic" and paths:
+                ctx = ctx.model_copy(update={
+                    "ampere_paths": len(paths),
+                    "checked_equation_ids": [*ctx.checked_equation_ids, "ampere_integral"],
                 })
             contexts.append(ctx)
             solver_ids.append(solver.id)
