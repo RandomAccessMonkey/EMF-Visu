@@ -1,12 +1,16 @@
 // End-to-end smoke test against a running stack (frontend + API + Redis worker + database).
 //   node tests/e2e/smoke.cjs [baseUrl] [screenshotDir]
 // Exits non-zero on the first failed check.
+// EMF_E2E_NO_WORKER=1: the stack deliberately runs without Redis and the solver worker (native
+// run without a queue). The high-resolution job check then verifies that the job is reported as
+// unavailable instead of running it; every other check is unchanged.
 const { chromium } = require('playwright')
 const assert = require('node:assert/strict')
 const path = require('node:path')
 
 const BASE = process.argv[2] ?? 'http://localhost:5173'
 const SHOTS = process.argv[3] ?? null
+const NO_WORKER = process.env.EMF_E2E_NO_WORKER === '1'
 
 async function main() {
   const browser = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] })
@@ -292,13 +296,21 @@ async function main() {
   await page.getByRole('radio', { name: /Select/ }).click()
   step('advanced: finite-difference estimates are labelled numerical and consistent with exact 0')
   await page.getByRole('tab', { name: 'Display' }).click()
-  await page.getByRole('button', { name: 'Run high-resolution solve' }).click()
-  await page.getByText('High resolution', { exact: true }).waitFor({ timeout: 60000 })
-  await page.getByRole('tab', { name: 'Results' }).click()
-  assert.ok(await page.getByText('heat.phi').isVisible())
-  assert.ok(await page.getByText('769×769').first().isVisible())
-  await shot('08-advanced-high-resolution')
-  step('high-resolution job ran on the worker queue and its result is displayed')
+  if (NO_WORKER) {
+    await page.getByText(/No solver worker is online/).waitFor({ timeout: 15000 })
+    assert.ok(await page.getByRole('button', { name: 'Run high-resolution solve' }).isDisabled())
+    assert.ok(await page.getByText('worker offline').first().isVisible())
+    await page.getByRole('tab', { name: 'Results' }).click()
+    step('no worker (EMF_E2E_NO_WORKER=1): high-resolution solve is disabled and reported unavailable')
+  } else {
+    await page.getByRole('button', { name: 'Run high-resolution solve' }).click()
+    await page.getByText('High resolution', { exact: true }).waitFor({ timeout: 60000 })
+    await page.getByRole('tab', { name: 'Results' }).click()
+    assert.ok(await page.getByText('heat.phi').isVisible())
+    assert.ok(await page.getByText('769×769').first().isVisible())
+    await shot('08-advanced-high-resolution')
+    step('high-resolution job ran on the worker queue and its result is displayed')
+  }
 
   // Hungarian UI.
   await page.getByRole('radio', { name: 'HU' }).click()

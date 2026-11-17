@@ -11,3 +11,6 @@ dist/
 test-results/
 playwright-report/
 *.tsbuildinfo
+
+# native run (scripts/native.py): database, logs, process records
+.local/

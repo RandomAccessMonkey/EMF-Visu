@@ -68,6 +68,25 @@ Both listen on this computer only. A `.env` file is optional (see `.env.example`
 Saved projects live in the Docker volume `emf-visu_pgdata` and survive stopping, restarting
 and updating; only `docker compose down -v` deletes them.
 
+## Run natively without Docker (Windows, macOS, Linux)
+
+Full instructions, including how to install the prerequisites on Windows:
+**[docs/native-windows.md](docs/native-windows.md)**.
+
+Requirements: [uv](https://docs.astral.sh/uv/), Node.js 22.12 or newer, pnpm 10, and
+PostgreSQL 14 or newer (16 recommended). No Docker and no Redis are needed.
+
+| | Windows (PowerShell) | macOS / Linux |
+|---|---|---|
+| Start | `powershell -ExecutionPolicy Bypass -File scripts\native.ps1 start` | `./scripts/native.sh start` |
+| Stop (projects are kept) | `powershell -ExecutionPolicy Bypass -File scripts\native.ps1 stop` | `./scripts/native.sh stop` |
+| Status | `powershell -ExecutionPolicy Bypass -File scripts\native.ps1 status` | `./scripts/native.sh status` |
+
+Then open **<http://localhost:8080>**. The scripts keep a private PostgreSQL database in
+`.local/pgdata` (port 5433) and start and stop it themselves. Without a Redis server, everything
+works except *Run high-resolution solve*. If a Redis server is reachable, the solver worker is
+started as well.
+
 ## Run natively (development)
 
 Requirements: Python 3.12, [uv](https://docs.astral.sh/uv/), Node 22, pnpm 10, Redis,

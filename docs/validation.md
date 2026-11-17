@@ -271,3 +271,23 @@ surface; the same flux through three shapes; equation usage; project persistence
 | Python tests, ruff, mypy | 203 passed; clean |
 | Frontend type-check, lint, unit tests | clean; 43 passed |
 | PowerShell scripts | not executed (no PowerShell available) |
+
+## Verification record for the native run (no Docker)
+
+Run in the development environment (Linux x86_64, PostgreSQL 16.15, Node 22, Python 3.12), as
+a normal user, with `scripts/native.py`; no Docker and, unless stated, no Redis.
+
+| Item | Result |
+|---|---|
+| First start without `.local` | cluster and `emf` database created; API and web application healthy; Redis absence reported as a note |
+| End-to-end script, `EMF_E2E_NO_WORKER=1` | 35 of 35 checks, three runs (the queue check verifies "disabled and reported unavailable") |
+| Persistence | a project saved through the API was present after stop and start |
+| Stop | all processes ended, ports freed, PostgreSQL stopped cleanly; repeated stop and status correct |
+| Error paths | port 8080 in use, port 5433 in use, running as root: each reported with a hint; parts started by a failed attempt were stopped again |
+| Stale process record (start time before boot) | not treated as ours; the unrelated process was not ended |
+| Changed frontend source | rebuilt on the next start |
+| With a Redis server present | worker started automatically; end-to-end script 35 of 35 including the high-resolution job; stop ended the worker |
+| Python tests, ruff, mypy (also strict on the launcher) | 203 passed; clean |
+| Frontend type-check, lint, unit tests | clean; 43 passed |
+| Windows (`native.ps1`, `taskkill`, `tasklist`, PostgreSQL discovery, `initdb` on Windows) | not executed (no Windows machine available) |
+

@@ -65,6 +65,19 @@ Local preview (before Phase 3), see [local-preview.md](local-preview.md):
 | `scripts/start|stop|status` in `.sh` and `.ps1` | One command with prerequisite checks, port checks, health waiting and diagnostics; plain `docker compose` remains equivalent. |
 | `.gitattributes` keeps LF endings for shell, Python, YAML, Dockerfiles, nginx config | Windows checkouts with `core.autocrlf` would otherwise break scripts and containers. |
 
+Native run without Docker, see [native-windows.md](native-windows.md):
+
+| Decision | Reason |
+|---|---|
+| One launcher, `scripts/native.py` (start, stop, status), with thin `native.ps1` and `native.sh` wrappers that run `uv sync` first | The logic is in one cross-platform file that can be tested on any system; the Windows-only part is a few lines of PowerShell. |
+| No Redis and no worker unless a Redis server is reachable at start | Redis has no official Windows build. Interactive solving runs in the API process and never needed the queue; the frontend already disables queued jobs when no worker is online. |
+| Worker started with `--pool solo` when Redis is present | Celery's default prefork pool does not work on Windows. |
+| PostgreSQL kept, as a private cluster in `.local/pgdata` on port 5433, managed with `initdb` and `pg_ctl` | Same database engine and schema as the Docker version, so no data-integrity trade-off; no Windows service; the port avoids a system PostgreSQL on 5432. SQLite was not used because the production schema and behaviour would then differ. |
+| Unix socket disabled and TCP bound to 127.0.0.1 in that cluster's `postgresql.conf` | Local-only access; the default socket folder needs root on some Linux systems. |
+| Web application served as a production build by `vite preview`, rebuilt when sources change | Matches what the Docker version serves (nginx); no nginx needed on Windows. `vite preview` uses the same `/api` proxy as the dev server. |
+| Process records hold the PID, program and start time; records from before the last boot are stale | `stop` must never end an unrelated process that reused a PID. |
+| `EMF_E2E_NO_WORKER=1` in the end-to-end script | The queue check then verifies that the job is reported unavailable, instead of running it. |
+
 ## 3. System overview
 
 ```
