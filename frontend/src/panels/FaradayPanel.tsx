@@ -2,20 +2,25 @@
 // Every number shown comes from the engine; this panel only formats and explains it. Undefined
 // or unsupported values are shown as such, never as zero.
 import { useMemo } from 'react'
-import { Circle, Eye, EyeOff, Pentagon, Square, Trash2 } from 'lucide-react'
-import type { SurfaceResult } from '@/api/types'
-import { Badge, Button, Section } from '@/components/ui/controls'
+import { Circle, Eye, EyeOff, MoveHorizontal, Pentagon, Square, Trash2 } from 'lucide-react'
+import type { AmperePath, SurfaceResult } from '@/api/types'
+import { Badge, Button, Row, Section, Select } from '@/components/ui/controls'
 import { useT, type MessageKey } from '@/i18n'
 import { cn, formatPlain, formatSI } from '@/lib/format'
-import type { InductionData } from '@/sim/useInduction'
-import { pathDisplayOf, useSceneStore, type PathKind } from '@/state/sceneStore'
+import { useInductionHistory, type InductionData } from '@/sim/useInduction'
+import { pathDisplayOf, useSceneStore, type FluxKind } from '@/state/sceneStore'
+import { useViewStore } from '@/state/viewStore'
 import { PathEditor, type PathOps } from './AmperePanel'
+import { MotionEditor, RodEditor, Waveforms } from './MotionEditor'
 
-const KINDS: { kind: PathKind; icon: typeof Circle }[] = [
+const KINDS: { kind: FluxKind; icon: typeof Circle }[] = [
   { kind: 'circle', icon: Circle },
   { kind: 'rectangle', icon: Square },
   { kind: 'polygon', icon: Pentagon },
+  { kind: 'sliding_rod', icon: MoveHorizontal },
 ]
+
+const vec = (v: number[] | null | undefined, unit: string) => (v ? `(${v.map((x) => formatSI(x, '', 3)).join(', ')}) ${unit}` : '—')
 
 type Tone = 'ok' | 'warn' | 'muted' | 'danger' | 'accent'
 export const FARADAY_TONE: Record<SurfaceResult['status'], Tone> = {
@@ -26,6 +31,8 @@ export const FARADAY_TONE: Record<SurfaceResult['status'], Tone> = {
   singular: 'warn',
   unsupported: 'muted',
   failed: 'danger',
+  derivative_not_converged: 'warn',
+  motion_undefined: 'warn',
 }
 
 const FLUX_OPS: PathOps = {
@@ -45,6 +52,46 @@ function Lenz({ r }: { r: SurfaceResult }) {
       <p>{t(`faraday.trend.${flux_trend}` as MessageKey)}</p>
       <p>{t(`faraday.circulation.${circulation}` as MessageKey)}</p>
       <p className="mt-1 text-muted">{t('faraday.lenzNote')}</p>
+    </div>
+  )
+}
+
+/** Phase 4B: the moving conductor's state and the generalized Faraday comparison. */
+function MovingRows({ r }: { r: SurfaceResult }) {
+  const { t, loc } = useT()
+  const m = r.motion
+  const d = r.derivative
+  return (
+    <div className="flex flex-col gap-1" data-testid="moving-result">
+      <table className="w-full font-mono text-[11px]" aria-label={t('motion.resultTable')}>
+        <tbody>
+          <tr><td className="pr-2 text-muted">{t('motion.emfTr')}</td><td>{r.emf_V == null ? t('faraday.notEvaluated') : volts(r.emf_V)}</td></tr>
+          <tr><td className="pr-2 text-muted">{t('motion.emfMot')}</td><td>{r.emf_motional_V == null ? '—' : `${volts(r.emf_motional_V)} ± ${formatSI(r.emf_motional_error_V ?? 0, 'V', 2)}`}</td></tr>
+          <tr><td className="pr-2 text-muted">{t('motion.emfTotal')}</td><td data-testid="emf-total">{r.emf_total_V == null ? t('motion.incomplete') : volts(r.emf_total_V)}</td></tr>
+          {d && (
+            <tr>
+              <td className="pr-2 text-muted">{t('motion.derivative')}</td>
+              <td>{t(`motion.method.${d.method}` as MessageKey)}, Δt = {formatSI(d.step_s ?? 0, 's', 2)}, {t(d.converged ? 'motion.converged' : 'motion.notConverged')} ({formatSI(d.error_V ?? 0, 'V', 2)})</td>
+            </tr>
+          )}
+          {m && <tr><td className="pr-2 text-muted">c(t)</td><td>{vec(m.center_m, 'm')}</td></tr>}
+          {m && <tr><td className="pr-2 text-muted">V</td><td>{m.velocity_m_per_s ? vec(m.velocity_m_per_s, 'm/s') : t('motion.undefinedVelocity')}</td></tr>}
+          {m && m.kind === 'rigid' && <tr><td className="pr-2 text-muted">ω</td><td>{m.angular_velocity_rad_per_s ? vec(m.angular_velocity_rad_per_s, 'rad/s') : '—'}</td></tr>}
+          {m && m.kind === 'sliding_rod' && (
+            <tr><td className="pr-2 text-muted">x, v</td><td>{formatPlain(m.rod_position_m ?? 0, 'm', 5)}, {m.rod_velocity_m_per_s == null ? '—' : formatSI(m.rod_velocity_m_per_s, 'm/s', 4)}</td></tr>
+          )}
+          {m && !m.unique && (
+            <tr><td className="pr-2 text-muted">V₋ / V₊</td><td>{vec(m.velocity_left_m_per_s, '')} / {vec(m.velocity_right_m_per_s, 'm/s')}</td></tr>
+          )}
+          {(r.turns ?? 1) > 1 && <tr><td className="pr-2 text-muted">N</td><td>{t('motion.turnsNote', { n: r.turns ?? 1 })}</td></tr>}
+        </tbody>
+      </table>
+      {r.reference && (
+        <div className="rounded-md border border-border/70 p-1.5 text-[11px]" data-testid="uniform-reference">
+          <p className="font-mono">{t('motion.reference')}: EMF ≈ {volts(r.reference.emf_V)}{r.reference.flux_Wb != null && `, Φ ≈ ${formatSI(r.reference.flux_Wb, 'Wb', 4)}`}</p>
+          <p className="text-muted">{loc(r.reference.note)}</p>
+        </div>
+      )}
     </div>
   )
 }
@@ -86,6 +133,10 @@ export function SurfaceResultView({ r, stale }: { r: SurfaceResult; stale: boole
           </tbody>
         </table>
       )}
+      {r.moving && <MovingRows r={r} />}
+      {r.warnings.map((w, i) => (
+        <p key={`w${i}`} className="text-[11px] text-warn/90">{loc(w)}</p>
+      ))}
       {r.no_change && r.status === 'verified' && <p className="text-[11px] leading-snug text-muted">{t('faraday.noChange')}</p>}
       <Lenz r={r} />
       {r.sources.length > 0 && (
@@ -133,13 +184,40 @@ export function SurfaceResultView({ r, stale }: { r: SurfaceResult; stale: boole
   )
 }
 
+function ConventionRow() {
+  const { t } = useT()
+  const c = useViewStore((s) => s.velocityConvention)
+  return (
+    <Row label={t('motion.convention')} hint={t('motion.conventionHint')}>
+      <Select<'undefined' | 'left' | 'right'>
+        label={t('motion.convention')}
+        value={c}
+        onChange={(v) => useViewStore.getState().set({ velocityConvention: v })}
+        options={(['undefined', 'left', 'right'] as const).map((v) => ({ value: v, label: t(`motion.conv.${v}` as MessageKey) }))}
+      />
+    </Row>
+  )
+}
+
+function History({ id }: { id: string }) {
+  const { t } = useT()
+  const points = useInductionHistory((s) => s.bySurface[id])
+  const now = useViewStore((s) => s.timeS)
+  return (
+    <div className="mt-1">
+      <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted">{t('motion.waveforms')}</h4>
+      <Waveforms points={points ?? []} now={now} />
+    </div>
+  )
+}
+
 export function FaradayPanel({ induction, stale, error }: { induction: InductionData | undefined; stale: boolean; error: Error | null }) {
   const { t, loc } = useT()
   const surfaces = useSceneStore((s) => s.fluxSurfaces)
   const selectedId = useSceneStore((s) => s.selectedFluxId)
   const selected = surfaces.find((p) => p.id === selectedId)
   const results = new Map((induction?.surfaces ?? []).map((r) => [r.surface_id, r]))
-  const add = (kind: PathKind) => useSceneStore.getState().addFlux(kind, `${t(`ampere.kind.${kind}` as MessageKey)} ${surfaces.length + 1}`)
+  const add = (kind: FluxKind) => useSceneStore.getState().addFlux(kind, `${t(kind === 'sliding_rod' ? 'rod.name' : (`ampere.kind.${kind}` as MessageKey))} ${surfaces.length + 1}`)
   const selectedResult = selected ? results.get(selected.id) : undefined
   return (
     <div>
@@ -148,7 +226,7 @@ export function FaradayPanel({ induction, stale, error }: { induction: Induction
         <div className="flex flex-wrap gap-1">
           {KINDS.map(({ kind, icon: Icon }) => (
             <Button key={kind} variant="primary" onClick={() => add(kind)}>
-              <Icon size={12} /> {t(`ampere.kind.${kind}` as MessageKey)}
+              <Icon size={12} /> {t(kind === 'sliding_rod' ? 'rod.add' : (`ampere.kind.${kind}` as MessageKey))}
             </Button>
           ))}
         </div>
@@ -177,10 +255,18 @@ export function FaradayPanel({ induction, stale, error }: { induction: Induction
           </ul>
         )}
         {error && <p className="text-xs text-danger">{error.message}</p>}
+        {surfaces.some((f) => !!f.motion || f.shape.type === 'sliding_rod') && <ConventionRow />}
         {selectedResult && <SurfaceResultView r={selectedResult} stale={stale} />}
+        {selected && selectedResult?.moving && <History id={selected.id} />}
         {induction && surfaces.length > 0 && <p className="text-[11px] leading-snug text-muted">{loc(induction.method)}</p>}
       </Section>
-      {selected && <PathEditor key={selected.id} p={selected} ops={FLUX_OPS} title={t('faraday.edit', { name: selected.name || selected.id })} crossings={false} />}
+      {selected && selected.shape.type === 'sliding_rod' && <RodEditor key={selected.id} f={selected} />}
+      {selected && selected.shape.type !== 'sliding_rod' && (
+        <>
+          <PathEditor key={selected.id} p={selected as AmperePath} ops={FLUX_OPS} title={t('faraday.edit', { name: selected.name || selected.id })} crossings={false} />
+          <MotionEditor f={selected} />
+        </>
+      )}
       <Section title={t('faraday.aboutTitle')}>
         <p className="text-[11px] leading-snug text-muted">{t('faraday.about')}</p>
       </Section>

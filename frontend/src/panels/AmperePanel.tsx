@@ -30,7 +30,7 @@ export const STATUS_TONE: Record<PathResult['status'], Tone> = {
   invalid: 'danger',
 }
 
-function VecRows({ label, value, onChange, unit, factor, step }: { label: string; value: Vec3; onChange: (v: Vec3) => void; unit: string; factor?: number; step: number }) {
+export function VecRows({ label, value, onChange, unit, factor, step }: { label: string; value: Vec3; onChange: (v: Vec3) => void; unit: string; factor?: number; step: number }) {
   return (
     <>
       {AXES.map((a, i) => (

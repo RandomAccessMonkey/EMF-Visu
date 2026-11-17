@@ -516,3 +516,9 @@ RULES: dict[str, Rule] = {
 from .induction import RULES as _INDUCTION_RULES  # noqa: E402
 
 RULES.update(_INDUCTION_RULES)
+
+# Phase 4B: rules of the motion and Lorentz-force equations (same registry; this also gives the
+# existing lorentz_force entry a context-derived status).
+from .motion import RULES as _MOTION_RULES  # noqa: E402
+
+RULES.update(_MOTION_RULES)

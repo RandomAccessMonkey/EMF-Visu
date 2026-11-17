@@ -1236,3 +1236,10 @@ from .induction import SYMBOLS as _INDUCTION_SYMBOLS  # noqa: E402
 
 SYMBOLS.update(_INDUCTION_SYMBOLS)
 EQUATIONS += _INDUCTION_EQUATIONS
+
+# Phase 4B: moving conductors, motional EMF, Lorentz force and particle motion.
+from .motion import EQUATIONS as _MOTION_EQUATIONS  # noqa: E402
+from .motion import SYMBOLS as _MOTION_SYMBOLS  # noqa: E402
+
+SYMBOLS.update(_MOTION_SYMBOLS)
+EQUATIONS += _MOTION_EQUATIONS

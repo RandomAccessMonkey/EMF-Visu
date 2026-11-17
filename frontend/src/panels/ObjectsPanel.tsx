@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeftRight, Box, Circle, CircleDot, Copy, Cylinder, Eye, EyeOff, Donut, Magnet, Minus, Plus, Square, Trash2, Waves, Zap } from 'lucide-react'
 import { api } from '@/api/client'
-import type { Preset, PrimitiveType, SceneObject, Vec3 } from '@/api/types'
+import type { Preset, PrimitiveType, SceneObject, TestCharge, Vec3 } from '@/api/types'
 import { Badge, Button, Section } from '@/components/ui/controls'
 import { useT, type MessageKey } from '@/i18n'
 import { cn, formatSI } from '@/lib/format'
@@ -26,6 +26,8 @@ function loadPreset(p: Preset, scene: NonNullable<Preset['scene']>) {
   // Phase 4A: a preset's measurement surfaces replace the current ones, and its time range sets
   // the playback (identical initial parameters reproduce identical results).
   if (p.flux_surfaces.length > 0) useSceneStore.getState().setFluxSurfaces(p.flux_surfaces)
+  // Phase 4B: a preset's test charge replaces the current one (presets without one keep it).
+  if (p.test_charge) useSceneStore.getState().setTestCharge(p.test_charge as TestCharge)
   const hint = p.view_hint
   const time = p.time
   useViewStore.getState().set({

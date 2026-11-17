@@ -38,13 +38,23 @@ from typing import Annotated, Literal
 
 import numpy as np
 from numpy.typing import NDArray
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
-from .ampere import AmperePath, _filament_approaches, _Geo, _graded, enclosed_current
+from .ampere import (
+    AmperePath,
+    CirclePath,
+    PolygonPath,
+    RectanglePath,
+    _filament_approaches,
+    _Geo,
+    _graded,
+    enclosed_current,
+)
 from .i18n import L, LocalizedText
 from .numerics.quadrature import adaptive_gk
 from .scene.currents import CurrentSources, LoopSource, current_sources
-from .scene.models import Scene, StrictModel
+from .scene.models import PositiveFloat, Scene, StrictModel
+from .scene.motion import MotionProfile, Translation, VelocityConvention
 from .scene.timedep import TimeState, time_state, with_currents
 from .solvers.analytical import magnetostatics as ms
 from .units import MU0
@@ -60,16 +70,77 @@ _GL_X, _GL_W = np.polynomial.legendre.leggauss(GL_N)
 CIRCLE_SECTORS = 8
 
 
+class SlidingRodShape(StrictModel):
+    """Sliding-rod generator (Phase 4B), in the surface's local frame: two stationary rails
+    along +x at y = ±L/2 from x = 0 to x = rail_length, a stationary connecting segment at
+    x = 0, and a straight rod joining the rails at x(t) = rod_position + d_x(t). The circuit is
+    the rectangle [0, x(t)] × [−L/2, L/2]; only the rod moves (velocity along the rails)."""
+
+    type: Literal["sliding_rod"] = "sliding_rod"
+    rail_separation_m: PositiveFloat = 0.1
+    rail_length_m: PositiveFloat = 0.3
+    rod_position_m: PositiveFloat = 0.05  # x of the rod at the reference time
+    rod_motion: Translation = Field(default_factory=lambda: _default_rod_motion())
+
+    @model_validator(mode="after")
+    def _along_rails(self) -> SlidingRodShape:
+        m = self.rod_motion
+        vecs: list[tuple[float, float, float]] = []
+        for name in ("velocity_m_per_s", "acceleration_m_per_s2", "axis"):
+            if hasattr(m, name):
+                vecs.append(getattr(m, name))
+        if any(abs(v[1]) > 0 or abs(v[2]) > 0 for v in vecs):
+            raise ValueError("sliding rod: the rod moves along the rails (local x) only; the y and "
+                             "z components of its motion must be zero")
+        if self.rod_position_m > self.rail_length_m:
+            raise ValueError("sliding rod: the rod must start on the rails")
+        return self
+
+
+def _default_rod_motion() -> Translation:
+    from .scene.motion import ConstantVelocity
+    return ConstantVelocity(velocity_m_per_s=(0.5, 0.0, 0.0))
+
+
+FluxShape = Annotated[CirclePath | RectanglePath | PolygonPath | SlidingRodShape,
+                      Field(discriminator="type")]
+
+
 class FluxSurface(AmperePath):
-    """A stationary measurement surface: the planar region bounded by the path, oriented by the
-    right-hand rule (the same geometry and conventions as an Ampère path). ``rtol`` is the
-    relative tolerance of the Faraday comparison."""
+    """A measurement surface: the planar region bounded by the path, oriented by the right-hand
+    rule (the same geometry and conventions as an Ampère path). ``rtol`` is the relative
+    tolerance of the Faraday comparison.
+
+    Phase 4B (all optional, absent = the Phase 4A stationary surface): ``motion`` moves the
+    surface and its boundary rigidly (reference pose = ``center_m`` and the rotation);
+    ``turns`` > 1 makes it an explicitly defined N-turn measurement coil of N identical,
+    coincident, series-connected turns (flux linkage NΦ); the ``sliding_rod`` shape is the
+    rail generator, whose rod moves by its own ``rod_motion``."""
+
+    shape: FluxShape  # type: ignore[assignment]
+    motion: MotionProfile | None = Field(default=None, exclude_if=lambda v: v is None)
+    turns: int = Field(default=1, ge=1, le=100_000, exclude_if=lambda v: v == 1)
+
+    @model_validator(mode="after")
+    def _rod_motion_only(self) -> FluxSurface:
+        if isinstance(self.shape, SlidingRodShape) and self.motion is not None:
+            raise ValueError("sliding rod: the rails are stationary; move the rod with its "
+                             "rod_motion instead of a surface motion")
+        return self
+
+    @property
+    def moving(self) -> bool:
+        return self.motion is not None or isinstance(self.shape, SlidingRodShape)
 
 
 class InductionRequest(StrictModel):
     surfaces: list[FluxSurface] = Field(min_length=1, max_length=8)
     time_s: Annotated[float, Field(allow_inf_nan=False)] = 0.0
     mutual: bool = True  # also compute the reciprocal mutual inductance M_21
+    # Phase 4B: which one-sided velocity (and dI/dt) to use where it jumps. "undefined": the
+    # instantaneous motional EMF is reported as not uniquely defined at such an instant.
+    velocity_convention: VelocityConvention = Field(default="undefined",
+                                                    exclude_if=lambda v: v == "undefined")
 
 
 class SourceFlux(BaseModel):
@@ -106,7 +177,62 @@ class Lenz(BaseModel):
 
 
 SurfaceStatus = Literal["verified", "line_not_converged", "surface_not_converged", "invalid",
-                        "singular", "unsupported", "failed"]
+                        "singular", "unsupported", "failed", "derivative_not_converged",
+                        "motion_undefined"]
+
+
+class MotionState(BaseModel):
+    """Instantaneous pose and velocities of a moving measurement conductor (Phase 4B)."""
+
+    kind: Literal["rigid", "sliding_rod"]
+    center_m: list[float]
+    rotation: list[list[float]]  # R(t): columns are the local axes in world coordinates
+    side: Literal["left", "right"] | None  # one-sided velocity used; None: undefined
+    unique: bool  # the velocity is continuous at t
+    velocity_m_per_s: list[float] | None  # V(t) used (None where undefined)
+    angular_velocity_rad_per_s: list[float] | None
+    velocity_left_m_per_s: list[float]
+    velocity_right_m_per_s: list[float]
+    angular_velocity_left_rad_per_s: list[float]
+    angular_velocity_right_rad_per_s: list[float]
+    max_speed_m_per_s: float | None = None  # largest |u| on the conductor
+    rod_position_m: float | None = None
+    rod_velocity_m_per_s: float | None = None  # along the rails (local +x)
+    rod_length_m: float | None = None
+    rails_m: list[list[list[float]]] = []  # stationary rails and connecting segment
+    rod_m: list[list[float]] = []
+
+
+class MotionalSample(BaseModel):
+    """u, B and u × B at a point of the conductor (for display; values from the engine)."""
+
+    point_m: list[float]
+    u_m_per_s: list[float]
+    B_T: list[float] | None
+    u_cross_B_V_per_m: list[float] | None
+    moving: bool  # False on stationary segments (rails)
+
+
+class DerivativeInfo(BaseModel):
+    """How dΦ/dt was obtained: analytically (stationary surface: Σ dI_j/dt Φ_j) or by
+    Richardson-extrapolated finite differences of the flux values in time (moving surface)."""
+
+    method: Literal["analytical", "central", "forward", "backward"]
+    step_s: float | None = None  # smallest step used
+    levels: int = 0
+    converged: bool = True
+    error_V: float | None = None
+
+
+class UniformReference(BaseModel):
+    """Idealized uniform-field reference (an approximation, never the result)."""
+
+    kind: Literal["sliding_rod_BLv", "rotating_coil"]
+    B_T: list[float]  # the field the reference assumes everywhere (evaluated at one point)
+    point_m: list[float]
+    flux_Wb: float | None
+    emf_V: float
+    note: LocalizedText
 
 
 class SurfaceResult(BaseModel):
@@ -141,6 +267,21 @@ class SurfaceResult(BaseModel):
     static_flux_Wb: float | None = None  # permanent magnets (no dPhi/dt)
     mutual: list[Mutual] = []
     no_change: bool = False  # every dI/dt is zero at t: EMF and dPhi/dt are exactly zero
+    # Phase 4B: moving conductors. emf_V above is the transformer EMF ∮E_ind·dl; the motional
+    # EMF ∮(u × B)·dl and their sum, the generalized EMF, are separate. turns = N of an
+    # N-turn measurement coil (every flux and EMF above is then the N-turn linkage).
+    moving: bool = False
+    turns: int = 1
+    motion: MotionState | None = None
+    emf_motional_V: float | None = None
+    emf_motional_error_V: float | None = None
+    emf_total_V: float | None = None
+    emf_total_error_V: float | None = None
+    generalized_complete: bool | None = None  # every transformer contribution is evaluated
+    motional_samples: list[MotionalSample] = []
+    derivative: DerivativeInfo | None = None
+    reference: UniformReference | None = None
+    warnings: list[LocalizedText] = []
 
 
 class InductionHeader(BaseModel):
@@ -206,11 +347,12 @@ def radial_edges(geo: _Geo, cs: CurrentSources | None) -> list[float]:
     return sorted(edges)
 
 
-def _patches(geo: _Geo, cs: CurrentSources | None = None) -> list[Patch]:
+def _patches(geo: _Geo, cs: CurrentSources | None = None,
+             rings: list[float] | None = None) -> list[Patch]:
     if geo.circle_r is not None:
         dth = 2 * math.pi / CIRCLE_SECTORS
         out: list[Patch] = []
-        rings = radial_edges(geo, cs)
+        rings = radial_edges(geo, cs) if rings is None else rings
         for r0, r1 in zip(rings[:-1], rings[1:], strict=False):
             for k in range(CIRCLE_SECTORS):
                 th0 = k * dth
@@ -282,16 +424,45 @@ def _in_tri(q: Arr, a: Arr, b: Arr, c: Arr) -> bool:
             and _cross(a - c, q - c) >= 0)
 
 
+Cells = tuple[NDArray[np.int64], Arr, Arr, Arr, Arr]  # patch id, s0, s1, v0, v1
+
+
 @dataclass
 class SurfaceIntegral:
     value: Arr  # (K,)
     error: Arr  # (K,)
     converged: bool
     cells: int
+    rule: Cells | None = None  # the accepted cells (children), for a frozen re-evaluation
 
 
-def surface_integrate(f: Callable[[Arr], Arr], patches: list[Patch], k: int, rtol: float
-                      ) -> SurfaceIntegral:
+def _rule_nodes() -> tuple[Arr, Arr, Arr]:
+    s_nodes = 0.5 * (_GL_X + 1.0)
+    w2 = np.outer(_GL_W, _GL_W).ravel() / 4.0
+    grid_s, grid_v = np.meshgrid(s_nodes, s_nodes, indexing="ij")
+    return grid_s.ravel(), grid_v.ravel(), w2
+
+
+def fixed_integrate(f: Callable[[Arr], Arr], patches: list[Patch], cells: Cells, k: int) -> Arr:
+    """∫ f dS with a fixed set of cells (5×5 Gauss–Legendre each): the same rule at every
+    evaluation, so the result is a smooth function of the patch geometry (Phase 4B: finite
+    differences of the flux in time through a moving surface)."""
+    ss, vv, w2 = _rule_nodes()
+    pid, s0, s1, v0, v1 = cells
+    total = np.zeros(k)
+    for j in np.unique(pid):
+        sel = np.flatnonzero(pid == j)
+        s = (s0[sel, None] + (s1 - s0)[sel, None] * ss[None, :]).ravel()
+        v = (v0[sel, None] + (v1 - v0)[sel, None] * vv[None, :]).ravel()
+        pt = patches[int(j)].point(s, v)
+        wts = (w2[None, :] * ((s1 - s0) * (v1 - v0))[sel, None]).ravel() \
+            * patches[int(j)].jac(s, v)
+        total += (f(pt) * wts[:, None]).sum(axis=0)
+    return total
+
+
+def surface_integrate(f: Callable[[Arr], Arr], patches: list[Patch], k: int, rtol: float,
+                      keep_rule: bool = False) -> SurfaceIntegral:
     """∫ f dS over the patches for K integrand components at once (f: (N,3) points -> (N,K)).
 
     Each cell of the unit square is integrated with a 5×5 tensor Gauss–Legendre rule; its error
@@ -342,6 +513,7 @@ def surface_integrate(f: Callable[[Arr], Arr], patches: list[Patch], k: int, rto
     error = np.zeros(k)
     converged = True
     n_cells = 0
+    accepted: list[Cells] = []
     for level in range(SURFACE_LEVELS + 1):
         children = split(*cells)
         cq, cqa, carea = rule(*children)
@@ -355,6 +527,10 @@ def surface_integrate(f: Callable[[Arr], Arr], patches: list[Patch], k: int, rto
         ok = finite & np.all(err <= tol[None, :] * frac[:, None], axis=1)
         last = level == SURFACE_LEVELS or (~ok).sum() * 4 > SURFACE_MAX_CELLS
         acc = ok | last
+        if keep_rule:
+            take = np.repeat(acc, 4)
+            accepted.append((children[0][take], children[1][take], children[2][take],
+                             children[3][take], children[4][take]))
         value += qsum[acc].sum(axis=0)
         error += np.nan_to_num(err[acc], nan=np.inf).sum(axis=0)
         n_cells += int(acc.sum()) * 4
@@ -366,8 +542,15 @@ def surface_integrate(f: Callable[[Arr], Arr], patches: list[Patch], k: int, rto
         cells = (children[0][keep], children[1][keep], children[2][keep], children[3][keep],
                  children[4][keep])
         q, area = cq[keep], carea[keep]
+    frozen: Cells | None = None
+    if keep_rule and accepted:
+        frozen = (np.concatenate([a[0] for a in accepted]),
+                  np.concatenate([a[1] for a in accepted]),
+                  np.concatenate([a[2] for a in accepted]),
+                  np.concatenate([a[3] for a in accepted]),
+                  np.concatenate([a[4] for a in accepted]))
     return SurfaceIntegral(value, error, converged and bool(np.all(np.isfinite(value))),
-                           n_cells)
+                           n_cells, frozen)
 
 
 # ------------------------------------------------------------------------ unit quantities
@@ -633,17 +816,13 @@ def _geometry_key(scene: Scene, surface: FluxSurface, mutual: bool) -> str:
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
-def _unit_quantities(scene: Scene, cs: CurrentSources, surface: FluxSurface, geo: _Geo,
-                     mutual: bool) -> UnitResult:
-    key = _geometry_key(scene, surface, mutual)
-    hit = _UNIT_CACHE.get(key)
-    if hit is not None:
-        _UNIT_CACHE.move_to_end(key)
-        return hit
-    r_min = ms.COINCIDENCE_FACTOR * scene.domain.diagonal_m
-    ids, fields = _unit_fields(cs, r_min)
-    kinds: list[str] = [str(next(o.kind for o in cs.objects if o.object_id == oid))
-                        for oid in ids]
+Approaches = dict[int, list[tuple[float, float, float]]]
+
+
+def boundary_singularity(geo: _Geo, cs: CurrentSources
+                         ) -> tuple[LocalizedText | None, float | None, Approaches]:
+    """(reason if the surface or its boundary meets a filament, closest filament distance of
+    the boundary, the closest approaches per boundary piece)."""
     approaches = {k: _filament_approaches(geo, k, cs) for k, _ in enumerate(geo.pieces())}
     dmin = None
     touches = False
@@ -657,6 +836,21 @@ def _unit_quantities(scene: Scene, cs: CurrentSources, surface: FluxSurface, geo
                      "potential and the field are singular.",
                      "A határgörbe áthalad egy áramszálon, ahol a vektorpotenciál és a tér "
                      "szinguláris.")
+    return singular, dmin, approaches
+
+
+def _unit_quantities(scene: Scene, cs: CurrentSources, surface: FluxSurface, geo: _Geo,
+                     mutual: bool) -> UnitResult:
+    key = _geometry_key(scene, surface, mutual)
+    hit = _UNIT_CACHE.get(key)
+    if hit is not None:
+        _UNIT_CACHE.move_to_end(key)
+        return hit
+    r_min = ms.COINCIDENCE_FACTOR * scene.domain.diagonal_m
+    ids, fields = _unit_fields(cs, r_min)
+    kinds: list[str] = [str(next(o.kind for o in cs.objects if o.object_id == oid))
+                        for oid in ids]
+    singular, dmin, approaches = boundary_singularity(geo, cs)
     n_k = len(ids) + 1
     nan = np.full(n_k - 1, np.nan)
     if singular is not None:
@@ -701,8 +895,50 @@ def _lenz(dphi: float, emf: float | None, tol: float) -> Lenz:
                 circulation="along_path" if emf > 0 else "against_path")
 
 
+def scale_turns(r: SurfaceResult, n: int) -> SurfaceResult:
+    """An N-turn measurement coil of identical coincident turns in series: every flux becomes
+    the flux linkage NΦ and every EMF N times the single-turn EMF (Phase 4B)."""
+    if n == 1:
+        return r
+    upd: dict[str, object] = {"turns": n}
+    for name in ("flux_Wb", "flux_error_Wb", "dflux_dt_V", "dflux_dt_error_V", "emf_V",
+                 "emf_error_V", "difference_V", "tolerance_V", "static_flux_Wb", "emf_motional_V",
+                 "emf_motional_error_V", "emf_total_V", "emf_total_error_V"):
+        v = getattr(r, name)
+        if v is not None:
+            upd[name] = n * v
+    upd["sources"] = [s.model_copy(update={
+        "unit_flux_Wb_per_A": n * s.unit_flux_Wb_per_A, "unit_flux_error": n * s.unit_flux_error,
+        "unit_circulation_Wb_per_A": None if s.unit_circulation_Wb_per_A is None
+        else n * s.unit_circulation_Wb_per_A,
+        "unit_circulation_error": None if s.unit_circulation_error is None
+        else n * s.unit_circulation_error,
+        "flux_Wb": n * s.flux_Wb, "emf_V": None if s.emf_V is None else n * s.emf_V})
+        for s in r.sources]
+    upd["mutual"] = [m.model_copy(update={
+        k: (None if getattr(m, k) is None else n * getattr(m, k))
+        for k in ("M12_H", "M12_error_H", "M21_H", "M21_error_H", "reciprocity_difference_H")})
+        for m in r.mutual]
+    if r.derivative is not None and r.derivative.error_V is not None:
+        upd["derivative"] = r.derivative.model_copy(update={"error_V": n * r.derivative.error_V})
+    if r.reference is not None:
+        upd["reference"] = r.reference.model_copy(update={
+            "emf_V": n * r.reference.emf_V,
+            "flux_Wb": None if r.reference.flux_Wb is None else n * r.reference.flux_Wb})
+    return r.model_copy(update=upd)
+
+
 def surface_result(scene: Scene, cs: CurrentSources, ts: TimeState, surface: FluxSurface,
-                   mutual: bool) -> SurfaceResult:
+                   mutual: bool, convention: VelocityConvention = "undefined") -> SurfaceResult:
+    if surface.moving:
+        from .motional import moving_surface_result  # noqa: PLC0415 (module cycle)
+        return scale_turns(moving_surface_result(scene, cs, surface, ts.t_s, convention),
+                           surface.turns)
+    return scale_turns(_stationary_result(scene, cs, ts, surface, mutual), surface.turns)
+
+
+def _stationary_result(scene: Scene, cs: CurrentSources, ts: TimeState, surface: FluxSurface,
+                       mutual: bool) -> SurfaceResult:
     diag = scene.domain.diagonal_m
     geo = _Geo(surface, ms.IN_PLANE_FACTOR * diag)
     base = {"surface_id": surface.id, "time_s": ts.t_s, "derivative_unique": ts.derivative_unique}
@@ -787,7 +1023,8 @@ def compute(scene: Scene, request: InductionRequest, solver_id: str, solver_vers
                  "analitikus dI/dt-vel; EMF = ∮E_ind·dl = −Σ dI_j/dt ∮A_j·dl a Coulomb-mértékű "
                  "vektorpotenciál adaptív Gauss–Kronrod vonalkvadratúrájával. A Faraday-törvény "
                  "két oldala különböző terekből és kvadratúrákból adódik."),
-        surfaces=[surface_result(scene, cs, ts, s, request.mutual) for s in request.surfaces])
+        surfaces=[surface_result(scene, cs, ts, s, request.mutual, request.velocity_convention)
+                  for s in request.surfaces])
 
 
 def fingerprint(scene: Scene, request: InductionRequest) -> str:
@@ -795,6 +1032,7 @@ def fingerprint(scene: Scene, request: InductionRequest) -> str:
     for o in s["objects"]:
         o.pop("name", None)
     payload = json.dumps({"scene": s, "time": request.time_s, "mutual": request.mutual,
+                          "convention": request.velocity_convention,
                           "surfaces": [x.physics_dump() for x in request.surfaces]},
                          sort_keys=True, separators=(",", ":"))
     return "induction:" + hashlib.sha256(payload.encode()).hexdigest()

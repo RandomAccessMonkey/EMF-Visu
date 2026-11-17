@@ -98,8 +98,9 @@ def test_solvers_and_presets_do_not_overclaim(client):
     assert solvers["analytical.electrostatics.point_charges"]["queue_worker_online"] is False
     presets = client.get(f"{V1}/presets").json()
     # Phase 3A made presets 9-11 (magnetostatics) available, Phase 3B 12-14, Phase 4A 15, 16
-    # and the new 21 (induction), in addition to 1-4.
-    assert len(presets) == 21 and sum(p["available"] for p in presets) == 13
+    # and the new 21 (induction), Phase 4B the new 22-25 (moving conductors, particle), in
+    # addition to 1-4.
+    assert len(presets) == 25 and sum(p["available"] for p in presets) == 17
 
 
 def test_health_reports_unreachable_redis_as_degraded(client):

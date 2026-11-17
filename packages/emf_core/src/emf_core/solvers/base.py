@@ -189,6 +189,14 @@ class ModelContext(BaseModel):
     profile_types: list[str] = []
     e_ind_available: bool = True
     flux_surfaces: int = 0
+    # Phase 4B: moving measurement conductors in the request (rigid motion and sliding rods),
+    # rotating ones, N-turn measurement coils, and a test charge / its trajectory.
+    moving_surfaces: int = 0
+    sliding_rods: int = 0
+    rotating_surfaces: int = 0
+    multi_turn_surfaces: int = 0
+    test_charge: bool = False
+    trajectory: bool = False
     # Equations whose two sides the application computes independently and compares.
     checked_equation_ids: list[str] = []
     solver_id: str

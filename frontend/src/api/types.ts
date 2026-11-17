@@ -72,3 +72,21 @@ export type MutualInfo = S['Mutual']
 export type TimeSourceInfo = S['TimeSourceInfo']
 export type TimeHint = S['TimeHint']
 export type ProfileSamples = S['ProfileSamples']
+// Phase 4B
+export type FluxSurface = S['FluxSurface']
+export type FluxShape = FluxSurface['shape']
+export type SlidingRodShape = S['SlidingRodShape']
+export type MotionProfile = S['MotionProfile']
+export type Translation = NonNullable<MotionProfile['translation']>
+export type Rotation = NonNullable<MotionProfile['rotation']>
+export type MotionState = S['MotionState']
+export type MotionalSample = S['MotionalSample']
+export type VelocityConvention = 'undefined' | 'left' | 'right'
+/** Server responses always carry every field (defaults are serialized). */
+export type TrajectorySettings = Required<S['TrajectorySettings']>
+export type TestCharge = Required<Omit<S['TestCharge'], 'trajectory'>> & { trajectory: TrajectorySettings }
+export type LorentzRequest = S['LorentzRequest']
+export type LorentzResult = S['LorentzResult']
+export type ParticleRequest = S['ParticleRequest']
+export type TrajectoryResult = S['TrajectoryResult']
+export type TrajectorySample = S['TrajectorySample']

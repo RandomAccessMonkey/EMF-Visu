@@ -396,6 +396,110 @@
         }
       }
     },
+    "/api/v1/lorentz": {
+      "post": {
+        "tags": [
+          "simulation"
+        ],
+        "summary": "Lorentz Force",
+        "description": "Lorentz force F = q(E + v \u00d7 B) on a test charge at one point and time (Phase 4B): the\nelectric part from the electrostatic field and the induced field E_ind, the magnetic part\nfrom the magnetostatic B at the instantaneous currents, with powers qE\u00b7v and q(v \u00d7 B)\u00b7v.",
+        "operationId": "lorentz_force_api_v1_lorentz_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LorentzBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LorentzResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/particle": {
+      "post": {
+        "tags": [
+          "simulation"
+        ],
+        "summary": "Particle",
+        "description": "Nonrelativistic test-particle trajectory in the prescribed fields (Boris scheme).",
+        "operationId": "particle_api_v1_particle_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ParticleBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrajectoryResult"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request Entity Too Large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/profile/sample": {
       "post": {
         "tags": [
@@ -1583,6 +1687,157 @@
         ],
         "title": "ComponentHealth"
       },
+      "ConstantAcceleration": {
+        "properties": {
+          "t_start_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "T Start S"
+          },
+          "t_end_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "T End S"
+          },
+          "type": {
+            "type": "string",
+            "const": "constant_acceleration",
+            "title": "Type",
+            "default": "constant_acceleration"
+          },
+          "velocity_m_per_s": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Velocity M Per S",
+            "default": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          },
+          "acceleration_m_per_s2": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Acceleration M Per S2",
+            "default": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          },
+          "t0_s": {
+            "type": "number",
+            "title": "T0 S",
+            "default": 0.0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ConstantAcceleration"
+      },
+      "ConstantAngularVelocity": {
+        "properties": {
+          "t_start_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "T Start S"
+          },
+          "t_end_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "T End S"
+          },
+          "type": {
+            "type": "string",
+            "const": "constant_angular_velocity",
+            "title": "Type",
+            "default": "constant_angular_velocity"
+          },
+          "axis": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Axis",
+            "default": [
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "omega_rad_per_s": {
+            "type": "number",
+            "title": "Omega Rad Per S",
+            "default": 1.0
+          },
+          "t0_s": {
+            "type": "number",
+            "title": "T0 S",
+            "default": 0.0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ConstantAngularVelocity"
+      },
       "ConstantProfile": {
         "properties": {
           "type": {
@@ -1600,6 +1855,68 @@
         "additionalProperties": false,
         "type": "object",
         "title": "ConstantProfile"
+      },
+      "ConstantVelocity": {
+        "properties": {
+          "t_start_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "T Start S"
+          },
+          "t_end_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "T End S"
+          },
+          "type": {
+            "type": "string",
+            "const": "constant_velocity",
+            "title": "Type",
+            "default": "constant_velocity"
+          },
+          "velocity_m_per_s": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Velocity M Per S",
+            "default": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          },
+          "t0_s": {
+            "type": "number",
+            "title": "T0 S",
+            "default": 0.0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ConstantVelocity"
       },
       "Crossing": {
         "properties": {
@@ -1930,6 +2247,58 @@
         "title": "CylinderShape",
         "description": "Axis along local z; orient it with the surface rotation."
       },
+      "DerivativeInfo": {
+        "properties": {
+          "method": {
+            "type": "string",
+            "enum": [
+              "analytical",
+              "central",
+              "forward",
+              "backward"
+            ],
+            "title": "Method"
+          },
+          "step_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step S"
+          },
+          "levels": {
+            "type": "integer",
+            "title": "Levels",
+            "default": 0
+          },
+          "converged": {
+            "type": "boolean",
+            "title": "Converged",
+            "default": true
+          },
+          "error_V": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error V"
+          }
+        },
+        "type": "object",
+        "required": [
+          "method"
+        ],
+        "title": "DerivativeInfo",
+        "description": "How d\u03a6/dt was obtained: analytically (stationary surface: \u03a3 dI_j/dt \u03a6_j) or by\nRichardson-extrapolated finite differences of the flux values in time (moving surface)."
+      },
       "Domain": {
         "properties": {
           "min_m": {
@@ -2092,6 +2461,7 @@
               "electrostatics",
               "magnetostatics",
               "induction",
+              "motion",
               "constitutive",
               "additional"
             ],
@@ -2257,6 +2627,16 @@
             "maxItems": 8,
             "title": "Flux Surfaces",
             "default": []
+          },
+          "test_charge": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TestCharge"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -2718,6 +3098,9 @@
               },
               {
                 "$ref": "#/components/schemas/PolygonPath"
+              },
+              {
+                "$ref": "#/components/schemas/SlidingRodShape"
               }
             ],
             "title": "Shape",
@@ -2726,7 +3109,8 @@
               "mapping": {
                 "circle": "#/components/schemas/CirclePath",
                 "polygon": "#/components/schemas/PolygonPath",
-                "rectangle": "#/components/schemas/RectanglePath"
+                "rectangle": "#/components/schemas/RectanglePath",
+                "sliding_rod": "#/components/schemas/SlidingRodShape"
               }
             }
           },
@@ -2795,6 +3179,23 @@
                 "type": "null"
               }
             ]
+          },
+          "motion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MotionProfile"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "turns": {
+            "type": "integer",
+            "maximum": 100000.0,
+            "minimum": 1.0,
+            "title": "Turns",
+            "default": 1
           }
         },
         "additionalProperties": false,
@@ -2804,7 +3205,7 @@
           "shape"
         ],
         "title": "FluxSurface",
-        "description": "A stationary measurement surface: the planar region bounded by the path, oriented by the\nright-hand rule (the same geometry and conventions as an Amp\u00e8re path). ``rtol`` is the\nrelative tolerance of the Faraday comparison."
+        "description": "A measurement surface: the planar region bounded by the path, oriented by the right-hand\nrule (the same geometry and conventions as an Amp\u00e8re path). ``rtol`` is the relative\ntolerance of the Faraday comparison.\n\nPhase 4B (all optional, absent = the Phase 4A stationary surface): ``motion`` moves the\nsurface and its boundary rigidly (reference pose = ``center_m`` and the rotation);\n``turns`` > 1 makes it an explicitly defined N-turn measurement coil of N identical,\ncoincident, series-connected turns (flux linkage N\u03a6); the ``sliding_rod`` shape is the\nrail generator, whose rod moves by its own ``rod_motion``."
       },
       "GaussSituation": {
         "properties": {
@@ -3214,6 +3615,16 @@
             "type": "boolean",
             "title": "Mutual",
             "default": true
+          },
+          "velocity_convention": {
+            "type": "string",
+            "enum": [
+              "undefined",
+              "left",
+              "right"
+            ],
+            "title": "Velocity Convention",
+            "default": "undefined"
           }
         },
         "additionalProperties": false,
@@ -3655,6 +4066,338 @@
         ],
         "title": "LocalizedText"
       },
+      "LorentzBody": {
+        "properties": {
+          "scene": {
+            "$ref": "#/components/schemas/Scene"
+          },
+          "lorentz": {
+            "$ref": "#/components/schemas/LorentzRequest"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scene",
+          "lorentz"
+        ],
+        "title": "LorentzBody"
+      },
+      "LorentzRequest": {
+        "properties": {
+          "charge_C": {
+            "type": "number",
+            "title": "Charge C"
+          },
+          "velocity_m_per_s": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Velocity M Per S"
+          },
+          "point_m": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Point M"
+          },
+          "time_s": {
+            "type": "number",
+            "title": "Time S",
+            "default": 0.0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "charge_C",
+          "velocity_m_per_s",
+          "point_m"
+        ],
+        "title": "LorentzRequest"
+      },
+      "LorentzResult": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "partial",
+              "singular"
+            ],
+            "title": "Status"
+          },
+          "status_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LocalizedText"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "time_s": {
+            "type": "number",
+            "title": "Time S"
+          },
+          "point_m": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Point M"
+          },
+          "charge_C": {
+            "type": "number",
+            "title": "Charge C"
+          },
+          "velocity_m_per_s": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Velocity M Per S"
+          },
+          "speed_m_per_s": {
+            "type": "number",
+            "title": "Speed M Per S"
+          },
+          "E_static_V_per_m": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "E Static V Per M"
+          },
+          "E_ind_V_per_m": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "E Ind V Per M"
+          },
+          "e_ind_supported": {
+            "type": "boolean",
+            "title": "E Ind Supported"
+          },
+          "E_V_per_m": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "E V Per M"
+          },
+          "B_T": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "B T"
+          },
+          "F_E_N": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "F E N"
+          },
+          "F_B_N": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "F B N"
+          },
+          "F_total_N": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "F Total N"
+          },
+          "F_E_magnitude_N": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "F E Magnitude N"
+          },
+          "F_B_magnitude_N": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "F B Magnitude N"
+          },
+          "F_total_magnitude_N": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "F Total Magnitude N"
+          },
+          "power_E_W": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Power E W"
+          },
+          "power_B_W": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Power B W"
+          },
+          "power_total_W": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Power Total W"
+          },
+          "power_B_bound_W": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Power B Bound W"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/LocalizedText"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "time_s",
+          "point_m",
+          "charge_C",
+          "velocity_m_per_s",
+          "speed_m_per_s",
+          "E_static_V_per_m",
+          "E_ind_V_per_m",
+          "e_ind_supported",
+          "E_V_per_m",
+          "B_T",
+          "F_E_N",
+          "F_B_N",
+          "F_total_N",
+          "F_E_magnitude_N",
+          "F_B_magnitude_N",
+          "F_total_magnitude_N",
+          "power_E_W",
+          "power_B_W",
+          "power_total_W",
+          "power_B_bound_W"
+        ],
+        "title": "LorentzResult"
+      },
       "MagneticContribution": {
         "properties": {
           "object_id": {
@@ -4094,6 +4837,36 @@
             "title": "Flux Surfaces",
             "default": 0
           },
+          "moving_surfaces": {
+            "type": "integer",
+            "title": "Moving Surfaces",
+            "default": 0
+          },
+          "sliding_rods": {
+            "type": "integer",
+            "title": "Sliding Rods",
+            "default": 0
+          },
+          "rotating_surfaces": {
+            "type": "integer",
+            "title": "Rotating Surfaces",
+            "default": 0
+          },
+          "multi_turn_surfaces": {
+            "type": "integer",
+            "title": "Multi Turn Surfaces",
+            "default": 0
+          },
+          "test_charge": {
+            "type": "boolean",
+            "title": "Test Charge",
+            "default": false
+          },
+          "trajectory": {
+            "type": "boolean",
+            "title": "Trajectory",
+            "default": false
+          },
           "checked_equation_ids": {
             "items": {
               "type": "string"
@@ -4125,6 +4898,307 @@
         ],
         "title": "ModelContext",
         "description": "What physical model produced a result. The equation registry derives every equation's\napplicability status from this, so statuses are computed rather than hard-coded."
+      },
+      "MotionProfile": {
+        "properties": {
+          "translation": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/StationaryTranslation"
+              },
+              {
+                "$ref": "#/components/schemas/ConstantVelocity"
+              },
+              {
+                "$ref": "#/components/schemas/ConstantAcceleration"
+              },
+              {
+                "$ref": "#/components/schemas/SinusoidalTranslation"
+              }
+            ],
+            "title": "Translation",
+            "discriminator": {
+              "propertyName": "type",
+              "mapping": {
+                "constant_acceleration": "#/components/schemas/ConstantAcceleration",
+                "constant_velocity": "#/components/schemas/ConstantVelocity",
+                "sinusoidal": "#/components/schemas/SinusoidalTranslation",
+                "stationary": "#/components/schemas/StationaryTranslation"
+              }
+            }
+          },
+          "rotation": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/NoRotation"
+              },
+              {
+                "$ref": "#/components/schemas/ConstantAngularVelocity"
+              }
+            ],
+            "title": "Rotation",
+            "discriminator": {
+              "propertyName": "type",
+              "mapping": {
+                "constant_angular_velocity": "#/components/schemas/ConstantAngularVelocity",
+                "none": "#/components/schemas/NoRotation"
+              }
+            }
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "MotionProfile",
+        "description": "Rigid motion of a measurement conductor relative to its reference pose."
+      },
+      "MotionState": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "rigid",
+              "sliding_rod"
+            ],
+            "title": "Kind"
+          },
+          "center_m": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Center M"
+          },
+          "rotation": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Rotation"
+          },
+          "side": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "left",
+                  "right"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Side"
+          },
+          "unique": {
+            "type": "boolean",
+            "title": "Unique"
+          },
+          "velocity_m_per_s": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Velocity M Per S"
+          },
+          "angular_velocity_rad_per_s": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Angular Velocity Rad Per S"
+          },
+          "velocity_left_m_per_s": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Velocity Left M Per S"
+          },
+          "velocity_right_m_per_s": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Velocity Right M Per S"
+          },
+          "angular_velocity_left_rad_per_s": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Angular Velocity Left Rad Per S"
+          },
+          "angular_velocity_right_rad_per_s": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Angular Velocity Right Rad Per S"
+          },
+          "max_speed_m_per_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Speed M Per S"
+          },
+          "rod_position_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rod Position M"
+          },
+          "rod_velocity_m_per_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rod Velocity M Per S"
+          },
+          "rod_length_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rod Length M"
+          },
+          "rails_m": {
+            "items": {
+              "items": {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Rails M",
+            "default": []
+          },
+          "rod_m": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Rod M",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "center_m",
+          "rotation",
+          "side",
+          "unique",
+          "velocity_m_per_s",
+          "angular_velocity_rad_per_s",
+          "velocity_left_m_per_s",
+          "velocity_right_m_per_s",
+          "angular_velocity_left_rad_per_s",
+          "angular_velocity_right_rad_per_s"
+        ],
+        "title": "MotionState",
+        "description": "Instantaneous pose and velocities of a moving measurement conductor (Phase 4B)."
+      },
+      "MotionalSample": {
+        "properties": {
+          "point_m": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Point M"
+          },
+          "u_m_per_s": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "U M Per S"
+          },
+          "B_T": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "B T"
+          },
+          "u_cross_B_V_per_m": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "U Cross B V Per M"
+          },
+          "moving": {
+            "type": "boolean",
+            "title": "Moving"
+          }
+        },
+        "type": "object",
+        "required": [
+          "point_m",
+          "u_m_per_s",
+          "B_T",
+          "u_cross_B_V_per_m",
+          "moving"
+        ],
+        "title": "MotionalSample",
+        "description": "u, B and u \u00d7 B at a point of the conductor (for display; values from the engine)."
       },
       "Mutual": {
         "properties": {
@@ -4231,6 +5305,19 @@
         ],
         "title": "Mutual"
       },
+      "NoRotation": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "none",
+            "title": "Type",
+            "default": "none"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "NoRotation"
+      },
       "OneSidedValue": {
         "properties": {
           "side": {
@@ -4283,6 +5370,102 @@
         ],
         "title": "OneSidedValue",
         "description": "A one-sided limit at a sheet or core boundary, evaluated at \u00b1offset along the normal."
+      },
+      "ParticleBody": {
+        "properties": {
+          "scene": {
+            "$ref": "#/components/schemas/Scene"
+          },
+          "particle": {
+            "$ref": "#/components/schemas/ParticleRequest"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scene",
+          "particle"
+        ],
+        "title": "ParticleBody"
+      },
+      "ParticleRequest": {
+        "properties": {
+          "charge_C": {
+            "type": "number",
+            "title": "Charge C"
+          },
+          "mass_kg": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Mass Kg"
+          },
+          "position_m": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Position M"
+          },
+          "velocity_m_per_s": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Velocity M Per S"
+          },
+          "start_s": {
+            "type": "number",
+            "title": "Start S",
+            "default": 0.0
+          },
+          "end_s": {
+            "type": "number",
+            "title": "End S",
+            "default": 1e-06
+          },
+          "tolerance": {
+            "type": "number",
+            "maximum": 0.5,
+            "minimum": 1e-05,
+            "title": "Tolerance",
+            "default": 0.02
+          },
+          "max_steps": {
+            "type": "integer",
+            "maximum": 200000.0,
+            "minimum": 10.0,
+            "title": "Max Steps",
+            "default": 20000
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "charge_C",
+          "mass_kg",
+          "position_m",
+          "velocity_m_per_s"
+        ],
+        "title": "ParticleRequest"
       },
       "PathDisplay": {
         "properties": {
@@ -5089,6 +6272,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/TimeHint"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "test_charge": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TestCharge"
               },
               {
                 "type": "null"
@@ -6034,6 +7227,16 @@
             "maxItems": 8,
             "title": "Flux Surfaces",
             "default": []
+          },
+          "test_charge": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TestCharge"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -6094,6 +7297,16 @@
             "type": "array",
             "title": "Flux Surfaces",
             "default": []
+          },
+          "test_charge": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TestCharge"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -6753,6 +7966,139 @@
         "type": "object",
         "title": "SinusoidalProfile"
       },
+      "SinusoidalTranslation": {
+        "properties": {
+          "t_start_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "T Start S"
+          },
+          "t_end_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "T End S"
+          },
+          "type": {
+            "type": "string",
+            "const": "sinusoidal",
+            "title": "Type",
+            "default": "sinusoidal"
+          },
+          "amplitude_m": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Amplitude M",
+            "default": 0.01
+          },
+          "axis": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Axis",
+            "default": [
+              1.0,
+              0.0,
+              0.0
+            ]
+          },
+          "frequency_Hz": {
+            "type": "number",
+            "maximum": 1000000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Frequency Hz",
+            "default": 1.0
+          },
+          "phase_rad": {
+            "type": "number",
+            "title": "Phase Rad",
+            "default": 0.0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "SinusoidalTranslation"
+      },
+      "SlidingRodShape": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "sliding_rod",
+            "title": "Type",
+            "default": "sliding_rod"
+          },
+          "rail_separation_m": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Rail Separation M",
+            "default": 0.1
+          },
+          "rail_length_m": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Rail Length M",
+            "default": 0.3
+          },
+          "rod_position_m": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Rod Position M",
+            "default": 0.05
+          },
+          "rod_motion": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/StationaryTranslation"
+              },
+              {
+                "$ref": "#/components/schemas/ConstantVelocity"
+              },
+              {
+                "$ref": "#/components/schemas/ConstantAcceleration"
+              },
+              {
+                "$ref": "#/components/schemas/SinusoidalTranslation"
+              }
+            ],
+            "title": "Rod Motion",
+            "discriminator": {
+              "propertyName": "type",
+              "mapping": {
+                "constant_acceleration": "#/components/schemas/ConstantAcceleration",
+                "constant_velocity": "#/components/schemas/ConstantVelocity",
+                "sinusoidal": "#/components/schemas/SinusoidalTranslation",
+                "stationary": "#/components/schemas/StationaryTranslation"
+              }
+            }
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "SlidingRodShape",
+        "description": "Sliding-rod generator (Phase 4B), in the surface's local frame: two stationary rails\nalong +x at y = \u00b1L/2 from x = 0 to x = rail_length, a stationary connecting segment at\nx = 0, and a straight rod joining the rails at x(t) = rod_position + d_x(t). The circuit is\nthe rectangle [0, x(t)] \u00d7 [\u2212L/2, L/2]; only the rod moves (velocity along the rails)."
+      },
       "SolenoidSource": {
         "properties": {
           "current_A": {
@@ -7133,6 +8479,19 @@
         "type": "object",
         "title": "SphereShape"
       },
+      "StationaryTranslation": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "stationary",
+            "title": "Type",
+            "default": "stationary"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "StationaryTranslation"
+      },
       "SurfaceDisplay": {
         "properties": {
           "visible": {
@@ -7190,7 +8549,9 @@
               "invalid",
               "singular",
               "unsupported",
-              "failed"
+              "failed",
+              "derivative_not_converged",
+              "motion_undefined"
             ],
             "title": "Status"
           },
@@ -7469,6 +8830,117 @@
             "type": "boolean",
             "title": "No Change",
             "default": false
+          },
+          "moving": {
+            "type": "boolean",
+            "title": "Moving",
+            "default": false
+          },
+          "turns": {
+            "type": "integer",
+            "title": "Turns",
+            "default": 1
+          },
+          "motion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MotionState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "emf_motional_V": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emf Motional V"
+          },
+          "emf_motional_error_V": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emf Motional Error V"
+          },
+          "emf_total_V": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emf Total V"
+          },
+          "emf_total_error_V": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emf Total Error V"
+          },
+          "generalized_complete": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generalized Complete"
+          },
+          "motional_samples": {
+            "items": {
+              "$ref": "#/components/schemas/MotionalSample"
+            },
+            "type": "array",
+            "title": "Motional Samples",
+            "default": []
+          },
+          "derivative": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DerivativeInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UniformReference"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/LocalizedText"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "default": []
           }
         },
         "type": "object",
@@ -7501,6 +8973,77 @@
           "unit"
         ],
         "title": "SymbolDef"
+      },
+      "TestCharge": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": true
+          },
+          "charge_C": {
+            "type": "number",
+            "title": "Charge C",
+            "default": 1.602176634e-19
+          },
+          "mass_kg": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Mass Kg",
+            "default": 1.67262192369e-27
+          },
+          "position_m": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Position M",
+            "default": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          },
+          "velocity_m_per_s": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Velocity M Per S",
+            "default": [
+              100000.0,
+              0.0,
+              0.0
+            ]
+          },
+          "trajectory": {
+            "$ref": "#/components/schemas/TrajectorySettings"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "TestCharge",
+        "description": "A test charge (Phase 4B): the Lorentz-force probe (charge, laboratory-frame velocity,\nposition) and the initial state and controls of its optional trajectory."
       },
       "TimeHint": {
         "properties": {
@@ -7739,6 +9282,274 @@
         "title": "TorusPrimitive",
         "description": "Geometry of a toroidal winding (Phase 3B), symmetric about local +z.\n\n``winding_radius_m`` (b_winding) is the radius of each circular turn of the finite-turn\nmodel; ``core_radius_m`` (b_core) is the minor radius of the ideal model's core. They are\nseparate parameters: each model uses only its own. Turn k of the finite model sits at\nphi_k = phase + 2 pi k / N."
       },
+      "TrajectoryResult": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "completed",
+              "max_steps",
+              "singular",
+              "unsupported",
+              "invalid"
+            ],
+            "title": "Status"
+          },
+          "status_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LocalizedText"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "method": {
+            "$ref": "#/components/schemas/LocalizedText"
+          },
+          "steps": {
+            "type": "integer",
+            "title": "Steps"
+          },
+          "samples": {
+            "items": {
+              "$ref": "#/components/schemas/TrajectorySample"
+            },
+            "type": "array",
+            "title": "Samples"
+          },
+          "min_step_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Step S"
+          },
+          "max_step_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Step S"
+          },
+          "end_time_s": {
+            "type": "number",
+            "title": "End Time S"
+          },
+          "magnetic_only": {
+            "type": "boolean",
+            "title": "Magnetic Only"
+          },
+          "energy_relative_change": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Energy Relative Change"
+          },
+          "gyrofrequency_rad_per_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gyrofrequency Rad Per S"
+          },
+          "gyroradius_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gyroradius M"
+          },
+          "gyroperiod_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gyroperiod S"
+          },
+          "max_speed_fraction_c": {
+            "type": "number",
+            "title": "Max Speed Fraction C"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/LocalizedText"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "method",
+          "steps",
+          "samples",
+          "end_time_s",
+          "magnetic_only",
+          "energy_relative_change",
+          "gyrofrequency_rad_per_s",
+          "gyroradius_m",
+          "gyroperiod_s",
+          "max_speed_fraction_c"
+        ],
+        "title": "TrajectoryResult"
+      },
+      "TrajectorySample": {
+        "properties": {
+          "t_s": {
+            "type": "number",
+            "title": "T S"
+          },
+          "position_m": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Position M"
+          },
+          "velocity_m_per_s": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Velocity M Per S"
+          },
+          "speed_m_per_s": {
+            "type": "number",
+            "title": "Speed M Per S"
+          },
+          "kinetic_energy_J": {
+            "type": "number",
+            "title": "Kinetic Energy J"
+          },
+          "F_E_N": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "F E N"
+          },
+          "F_B_N": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "F B N"
+          },
+          "F_total_N": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "F Total N"
+          }
+        },
+        "type": "object",
+        "required": [
+          "t_s",
+          "position_m",
+          "velocity_m_per_s",
+          "speed_m_per_s",
+          "kinetic_energy_J"
+        ],
+        "title": "TrajectorySample"
+      },
+      "TrajectorySettings": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": false
+          },
+          "start_s": {
+            "type": "number",
+            "title": "Start S",
+            "default": 0.0
+          },
+          "end_s": {
+            "type": "number",
+            "title": "End S",
+            "default": 1e-06
+          },
+          "tolerance": {
+            "type": "number",
+            "maximum": 0.5,
+            "minimum": 1e-05,
+            "title": "Tolerance",
+            "default": 0.02
+          },
+          "max_steps": {
+            "type": "integer",
+            "maximum": 200000.0,
+            "minimum": 10.0,
+            "title": "Max Steps",
+            "default": 20000
+          },
+          "show_trail": {
+            "type": "boolean",
+            "title": "Show Trail",
+            "default": true
+          },
+          "show_forces": {
+            "type": "boolean",
+            "title": "Show Forces",
+            "default": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "TrajectorySettings",
+        "description": "Trajectory controls of a test charge (persisted with a project)."
+      },
       "Transform": {
         "properties": {
           "position_m": {
@@ -7842,6 +9653,61 @@
         ],
         "title": "TurnGeometry",
         "description": "One circular filament (a loop, or one turn of a solenoid or finite toroid), world."
+      },
+      "UniformReference": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "sliding_rod_BLv",
+              "rotating_coil"
+            ],
+            "title": "Kind"
+          },
+          "B_T": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "B T"
+          },
+          "point_m": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Point M"
+          },
+          "flux_Wb": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flux Wb"
+          },
+          "emf_V": {
+            "type": "number",
+            "title": "Emf V"
+          },
+          "note": {
+            "$ref": "#/components/schemas/LocalizedText"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "B_T",
+          "point_m",
+          "flux_Wb",
+          "emf_V",
+          "note"
+        ],
+        "title": "UniformReference",
+        "description": "Idealized uniform-field reference (an approximation, never the result)."
       },
       "ValidationError": {
         "properties": {

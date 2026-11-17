@@ -7,8 +7,8 @@ equations govern it and under what assumptions.
 **Status: Phase 1 (Foundation), Phase 2A (point-charge electrostatics), Phase 2B-1
 (divergence and curl), Phase 2B-2 (Gauss's law and the divergence theorem), Phase 3A
 (magnetostatic sources: wires and loops), Phase 3B (solenoids, toroids, permanent magnets and
-Ampère's law) and Phase 4A (magnetoquasistatic induction: Faraday's and Lenz's laws) are
-implemented.**
+Ampère's law), Phase 4A (magnetoquasistatic induction: Faraday's and Lenz's laws) and Phase 4B
+(moving conductors, motional EMF and the Lorentz force) are implemented.**
 What works today:
 
 - Any number of positive and negative ideal point charges in vacuum, and dipoles made of two
@@ -50,14 +50,19 @@ What works today:
   magnetic flux through stationary measurement surfaces, the EMF ∮E_ind·dl compared with −dΦ/dt
   (Faraday tab), Lenz's-law signs, and mutual inductance with a reciprocity check. No moving
   conductors, induced currents or waves.
-- Presets 1–4, 9–16 and 21, saved projects, English and Hungarian, beginner and advanced levels.
+- Moving conductors (Phase 4B): rigid translation and rotation profiles of measurement loops, a
+  sliding-rod generator and N-turn measurement coils; motional EMF ∮(u × B)·dl, transformer EMF
+  and their sum compared with −dΦ/dt from the moving-surface flux (generalized Faraday law); a
+  Lorentz-force probe for a test charge and nonrelativistic test-particle trajectories (Lorentz
+  tab). No induced currents, moving sources or relativistic motion.
+- Presets 1–4, 9–16 and 21–25, saved projects, English and Hungarian, beginner and advanced levels.
 - High-resolution solves as cancellable jobs on a separate worker, with live progress.
 
 Field lines, contours and surfaces are numerical constructions on top of the exact field; the
 Results panel states the method and its limits for each.
 
 Everything else in the product definition (conductors, dielectrics, extended charge
-distributions, nonlinear or field-dependent magnetic materials, motional EMF and induced
+distributions, nonlinear or field-dependent magnetic materials, induced
 currents, FEM, FDTD,
 circuits, open-surface flux tools) is **not implemented
 yet**. Such features are disabled or refused with a reason; nothing is approximated silently.

@@ -1,4 +1,4 @@
-"""Preset catalog. All 20 presets of the product definition are listed; a preset is only
+"""Preset catalog. All presets of the product definition are listed; a preset is only
 ``available`` when a solver that supports its scene exists. Unavailable presets carry no scene.
 """
 
@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from .ampere import AmperePath
 from .i18n import L, LocalizedText
 from .induction import FluxSurface
+from .lorentz import TestCharge
 from .scene.models import (
     CircularLoopSource,
     CoilPrimitive,
@@ -78,6 +79,8 @@ class Preset(BaseModel):
     # Phase 4A: default Faraday measurement surfaces and the time range the preset opens with.
     flux_surfaces: list[FluxSurface] = []
     time: TimeHint | None = None
+    # Phase 4B: a test charge (Lorentz-force probe and optional trajectory).
+    test_charge: TestCharge | None = None
 
 
 def _charge(oid: str, name: str, q: float, pos: tuple[float, float, float],
@@ -548,7 +551,174 @@ _INDUCTION = [
     ),
 ]
 
-PRESETS: list[Preset] = sorted(_AVAILABLE + _MAGNETIC + _COILS_AND_MAGNETS + _INDUCTION + [
+# ------------------------------------------------- Phase 4B: moving conductors and particles
+
+_HH_R = 0.15  # Helmholtz pair: coil radius = separation
+_HH_I = 100.0  # A per loop (e.g. a 10-turn coil at 10 A, modelled as one thin loop)
+_EQ_MOT = ["material_velocity", "motional_field", "motional_emf", "generalized_emf",
+           "moving_surface_flux", "generalized_faraday", "loop_field_elliptic"]
+
+
+def _helmholtz(current: float = _HH_I) -> list[SceneObject]:
+    return [SceneObject(id=f"coil{k}", name=f"Coil {k}", role=Role.CURRENT_SOURCE,
+                        primitive=RingPrimitive(radius_m=_HH_R),
+                        source=CircularLoopSource(current_A=current),
+                        transform=Transform(position_m=(0.0, 0.0, z)))
+            for k, z in ((1, -_HH_R / 2), (2, _HH_R / 2))]
+
+
+_HH_DOMAIN = Domain(min_m=(-0.2, -0.2, -0.2), max_m=(0.2, 0.2, 0.2))
+
+_MOTION = [
+    Preset(
+        id="sliding_rod_generator", number=22, available=True,
+        equation_ids=[*_EQ_MOT, "translational_velocity", "sliding_rod_emf", "flux_area_change",
+                      "lenz_law"],
+        name=L("Sliding-rod generator", "Csúszó rudas generátor"),
+        description=L("Two stationary rails 0.10 m apart in the midplane of a Helmholtz pair "
+                      "(two coaxial loops, radius 0.15 m, 0.15 m apart, 100 A each), joined by a "
+                      "fixed segment at x = −0.10 m. A straight rod slides along the rails at "
+                      "0.50 m/s from t = 0 and stops at t = 0.3 s. The field is the actual field "
+                      "of the two finite coils, not a declared uniform field.",
+                      "Két álló sín 0,10 m távolságra egy Helmholtz-pár (két koaxiális hurok, "
+                      "sugár 0,15 m, távolság 0,15 m, egyenként 100 A) középsíkjában, x = −0,10 "
+                      "m-nél rögzített szakasszal összekötve. Egy egyenes rúd t = 0-tól 0,50 m/s "
+                      "sebességgel csúszik a síneken, és t = 0,3 s-kor megáll. A tér a két véges "
+                      "tekercs tényleges tere, nem előírt homogén tér."),
+        expected_behavior=L("The rod sweeps field lines into the circuit: the flux grows and the "
+                            "motional EMF ∮(u × B)·dl ≈ −BLv appears only on the rod (rails and "
+                            "connecting segment are at rest). −dΦ/dt from the flux values agrees "
+                            "with it. Near the rail ends the field is weaker than at the centre, "
+                            "so the EMF departs from the uniform-field reference BLv. After the "
+                            "rod stops the EMF is zero; at t = 0.3 s the velocity jumps and the "
+                            "instantaneous EMF is undefined unless a one-sided convention is "
+                            "chosen.",
+                            "A rúd erővonalakat söpör az áramkörbe: a fluxus nő, és a ∮(u × B)·dl "
+                            "≈ −BLv mozgási EMF csak a rúdon keletkezik (a sínek és az összekötő "
+                            "szakasz áll). A fluxusértékekből számolt −dΦ/dt ezzel megegyezik. A "
+                            "sínek végeinél a tér gyengébb, mint középen, így az EMF eltér a BLv "
+                            "homogén referenciától. A rúd megállása után az EMF nulla; t = 0,3 "
+                            "s-kor a sebesség ugrik, és a pillanatnyi EMF egyoldali konvenció "
+                            "nélkül nem értelmezett."),
+        scene=Scene(objects=_helmholtz(), domain=_HH_DOMAIN),
+        view_hint=ViewHint(mode="3d", plane="xy", probe_m=(0.0, 0.0, 0.0)),
+        flux_surfaces=[FluxSurface.model_validate({
+            "id": "F1", "name": "Rail circuit", "center_m": (-0.1, 0.0, 0.0),
+            "shape": {"type": "sliding_rod", "rail_separation_m": 0.1, "rail_length_m": 0.2,
+                      "rod_position_m": 0.02,
+                      "rod_motion": {"type": "constant_velocity",
+                                     "velocity_m_per_s": (0.5, 0.0, 0.0), "t_end_s": 0.3}}})],
+        time=TimeHint(start_s=0.0, end_s=0.4, step_s=0.005, initial_s=0.1),
+    ),
+    Preset(
+        id="rotating_coil_generator", number=23, available=True,
+        equation_ids=[*_EQ_MOT, "angular_velocity_rotation", "rotating_coil_flux",
+                      "multi_turn_linkage", "lenz_law"],
+        name=L("Generator principle: rotating coil", "Generátorelv: forgó tekercs"),
+        description=L("A rectangular measurement loop (0.08 m × 0.06 m) at the centre of the "
+                      "Helmholtz pair of preset 22 rotates about the x axis at ω = 2π rad/s "
+                      "(1 revolution per second). Its starting orientation has the normal along "
+                      "+z, along B. Change the axis, ω, the initial orientation or the number of "
+                      "turns of the measurement coil.",
+                      "Egy téglalap alakú mérőhurok (0,08 m × 0,06 m) a 22. előbeállítás "
+                      "Helmholtz-párjának közepén az x tengely körül forog ω = 2π rad/s "
+                      "szögsebességgel (másodpercenként egy fordulat). Kezdetben normálisa +z, "
+                      "B irányú. Módosítható a tengely, ω, a kezdeti orientáció vagy a "
+                      "mérőtekercs menetszáma."),
+        expected_behavior=L("The flux follows the angle of the normal, Φ ≈ BA cos ωt, and the "
+                            "motional EMF ≈ BAω sin ωt is largest when the coil's plane is "
+                            "parallel to B. The generalized Faraday law holds at every time; in "
+                            "the nearly uniform central field the waveform matches the ideal "
+                            "uniform-field reference closely.",
+                            "A fluxus a normális szögét követi, Φ ≈ BA cos ωt, a mozgási EMF ≈ "
+                            "BAω sin ωt pedig akkor a legnagyobb, amikor a tekercs síkja "
+                            "párhuzamos B-vel. Az általánosított Faraday-törvény minden "
+                            "időpontban teljesül; a közel homogén középső térben a hullámforma "
+                            "jól egyezik az ideális homogén referenciával."),
+        scene=Scene(objects=_helmholtz(), domain=_HH_DOMAIN),
+        view_hint=ViewHint(mode="3d", plane="yz", probe_m=(0.0, 0.0, 0.0)),
+        flux_surfaces=[FluxSurface.model_validate({
+            "id": "F1", "name": "Rotating coil",
+            "shape": {"type": "rectangle", "width_m": 0.08, "height_m": 0.06},
+            "motion": {"rotation": {"type": "constant_angular_velocity", "axis": (1.0, 0.0, 0.0),
+                                    "omega_rad_per_s": 6.283185307179586}}})],
+        time=TimeHint(start_s=0.0, end_s=2.0, step_s=0.01, initial_s=0.125),
+    ),
+    Preset(
+        id="charged_particle_magnetic", number=24, available=True,
+        equation_ids=["lorentz_force", "magnetic_force", "electric_force",
+                      "magnetic_force_no_work", "cyclotron_frequency", "cyclotron_radius",
+                      "newton_lorentz", "kinetic_energy", "nonrelativistic_validity",
+                      "loop_field_elliptic"],
+        name=L("Charged particle in a magnetic field", "Töltött részecske mágneses térben"),
+        description=L("A proton (q = 1.602×10⁻¹⁹ C, m = 1.673×10⁻²⁷ kg) starts near the centre "
+                      "of the Helmholtz pair of preset 22 (B ≈ 0.60 mT along z) with v₀ = "
+                      "(1000, 0, 200) m/s. It is a test particle: it does not change the field.",
+                      "Egy proton (q = 1,602×10⁻¹⁹ C, m = 1,673×10⁻²⁷ kg) a 22. előbeállítás "
+                      "Helmholtz-párjának közepe közeléből indul (B ≈ 0,60 mT, z irányú) v₀ = "
+                      "(1000, 0, 200) m/s sebességgel. Próbarészecske: nem változtatja meg a "
+                      "teret."),
+        expected_behavior=L("The magnetic force is perpendicular to the velocity, so the "
+                            "proton moves on a helix about the field: gyration with ω_c = |q|B/m "
+                            "≈ 5.8×10⁴ rad/s and radius r_c = m v⊥/(|q|B) ≈ 17 mm, drifting "
+                            "along z at 200 m/s. Only magnetic forces act, so the kinetic energy "
+                            "stays constant. In the nearly uniform centre the path matches the "
+                            "ideal helix.",
+                            "A mágneses erő merőleges a sebességre, így a proton csavarvonalon "
+                            "mozog a tér körül: körfrekvenciája ω_c = |q|B/m ≈ 5,8×10⁴ rad/s, "
+                            "sugara r_c = m v⊥/(|q|B) ≈ 17 mm, közben z irányban 200 m/s-mal "
+                            "halad. Csak mágneses erő hat, így a mozgási energia állandó. A közel "
+                            "homogén középen a pálya az ideális csavarvonalnak felel meg."),
+        scene=Scene(objects=_helmholtz(), domain=_HH_DOMAIN),
+        view_hint=ViewHint(mode="3d", plane="xy", probe_m=(0.0, 0.0, -0.03)),
+        test_charge=TestCharge.model_validate({
+            "charge_C": 1.602176634e-19, "mass_kg": 1.67262192369e-27,
+            "position_m": (0.0, 0.0, -0.03), "velocity_m_per_s": (1000.0, 0.0, 200.0),
+            "trajectory": {"enabled": True, "start_s": 0.0, "end_s": 3.3e-4,
+                           "tolerance": 0.02, "max_steps": 20000}}),
+        time=TimeHint(start_s=0.0, end_s=3.3e-4, step_s=1.1e-6),
+    ),
+    Preset(
+        id="combined_induction_motion", number=25, available=True,
+        equation_ids=[*_EQ_MOT, "current_sinusoidal", "e_ind_from_a", "translational_velocity",
+                      "faraday_integral", "lenz_law"],
+        name=L("Combined transformer and motional induction",
+               "Transzformátor- és mozgási indukció együtt"),
+        description=L("A circular source loop (radius 0.10 m) carries I(t) = 10 sin(2π·1 Hz·t) "
+                      "A. A coaxial measurement loop (radius 0.03 m) oscillates along the axis "
+                      "about z = 0.05 m with amplitude 0.03 m at 0.5 Hz. Both the field and the "
+                      "circuit change.",
+                      "Egy kör alakú forráshurok (sugár 0,10 m) árama I(t) = 10 sin(2π·1 Hz·t) "
+                      "A. Egy koaxiális mérőhurok (sugár 0,03 m) a tengely mentén z = 0,05 m "
+                      "körül 0,03 m amplitúdóval, 0,5 Hz-cel rezeg. A tér és az áramkör is "
+                      "változik."),
+        expected_behavior=L("The transformer EMF ∮E_ind·dl (changing current) and the motional "
+                            "EMF ∮(u × B)·dl (moving loop) are shown separately; their sum, the "
+                            "generalized EMF, equals −dΦ/dt of the flux through the moving "
+                            "surface at every time.",
+                            "A transzformátor-EMF ∮E_ind·dl (változó áram) és a mozgási EMF "
+                            "∮(u × B)·dl (mozgó hurok) külön látható; összegük, az általánosított "
+                            "EMF minden időpontban megegyezik a mozgó felületen átmenő fluxus "
+                            "−dΦ/dt értékével."),
+        scene=Scene(objects=[SceneObject(
+            id="loop1", name="Source loop", role=Role.CURRENT_SOURCE,
+            primitive=RingPrimitive(radius_m=0.1),
+            source=CircularLoopSource.model_validate({"current_A": 0.0, "profile": {
+                "type": "sinusoidal", "dc_A": 0.0, "peak_A": 10.0, "frequency_Hz": 1.0,
+                "phase_rad": 0.0}}))],
+            domain=Domain(min_m=(-0.15, -0.15, -0.1), max_m=(0.15, 0.15, 0.15))),
+        view_hint=ViewHint(mode="2d", plane="xz", probe_m=(0.02, 0.0, 0.05)),
+        flux_surfaces=[FluxSurface.model_validate({
+            "id": "F1", "name": "Moving loop", "shape": {"type": "circle", "radius_m": 0.03},
+            "center_m": (0.0, 0.0, 0.05),
+            "motion": {"translation": {"type": "sinusoidal", "amplitude_m": 0.03,
+                                       "axis": (0.0, 0.0, 1.0), "frequency_Hz": 0.5,
+                                       "phase_rad": 0.0}}})],
+        time=TimeHint(start_s=0.0, end_s=2.0, step_s=0.01, initial_s=0.2),
+    ),
+]
+
+PRESETS: list[Preset] = sorted(_AVAILABLE + _MAGNETIC + _COILS_AND_MAGNETS + _INDUCTION + _MOTION + [
     Preset(id=pid, number=n, name=L(en, hu), available=False, planned_phase=phase)
     for n, pid, en, hu, phase in _PLANNED
 ], key=lambda p: p.number)

@@ -535,3 +535,44 @@ panel and scrolled the page horizontally (tabs now wrap).
 | End-to-end, native stack (`scripts/native.py`) with Redis and worker | 63 of 63 checks (53 earlier + 10 for Phase 4A: preset 15 verified with Lenz signs, E_ind/∂B/∂t display-only, time stepping on the grid, deterministic playback, probe at t, preset 16 corner, preset 21 mutual reciprocity, persistence, profile editor, Hungarian) |
 | Visual inspection | E_ind circulating clockwise around a counter-clockwise current increasing at t = 0; toroid with its measurement loop, normal +e_φ, M₁₂ = M₂₁ = 114.378 nH |
 | Windows, Docker | not executed in this phase |
+
+## Verification record for Phase 4B (moving conductors, motional EMF, Lorentz force)
+
+Development environment: Linux x86_64, Python 3.12, PostgreSQL 16 (native cluster), Node 22,
+Redis 7 with the solver worker.
+
+**Independent references:** closed forms in an analytical uniform field (same code path as scenes:
+`uniform_field_model`, with the symmetric-gauge potential for time-varying B): Φ = BLx and
+EMF = −BLv for the sliding rod, Φ = BA cos ωt and EMF = BAω sin ωt for rotating coils, the
+analytical dΦ/dt of a rotating loop in a sinusoidal field; for the finite-coil presets a direct
+40-point Gauss–Legendre quadrature of the solver's B along the rod; finite differences of the
+pose for the analytical velocities; cyclotron circle, helix, constant acceleration and straight
+line for the Boris pusher.
+
+| Check | Reference | Tolerance | Result |
+|---|---|---|---|
+| Motion profiles (stationary, constant velocity, constant acceleration, sinusoidal, rotation, combined): V and ω vs pose derivatives; closed-form positions; right-hand rule; u = V + ω × (r − c); window jumps with left/right limits; invalid input rejected | central differences; closed forms | 1e-7; 1e-15 | 20 tests pass |
+| Sliding rod, uniform B: EMF = −BLv, flux = BLx, dΦ/dt = BLv, Lenz; v, L, B reversal and scaling; reversed traversal; in-plane B; rod off the rails invalid; velocity jump undefined / left / right | closed form | 1e-12 (EMF), 1e-10 (dΦ/dt) | pass |
+| Rotating coil, uniform B: Φ = BA cos ωt, EMF = BAω sin ωt at 4 times; ω scaling; orientation and sense reversal; circle and polygon; N-turn ×N | closed form | 1e-14 abs (EMF), 1e-7 rel (dΦ/dt) | pass |
+| Pure translation in uniform B: EMF = 0, dΦ/dt = 0 | | 1e-15 | pass |
+| Time-varying B, stationary loop (transformer only); time-varying B + rotating loop (transformer + motional) | analytical dΦ/dt | 1e-6 rel (numerical dΦ/dt), 1e-10 (EMF) | verified |
+| Richardson derivative: smooth, one-sided, symmetric kink, NaN | | | pass |
+| Preset 22 (Helmholtz pair): EMF vs direct quadrature of B along the rod at 3 times; BLv reference within 5 % but not equal | Gauss–Legendre | 1e-9 | pass |
+| Preset 23: 9 times verified incl. EMF = 0 instants; waveform within 1 % of the uniform reference | | | pass |
+| Preset 25: transformer and motional EMF both nonzero; generalized law | | tolerance | verified |
+| Time-varying wire: motional-only (unsupported total); filament piercing a moving surface: singular | | | pass |
+| Stationary surfaces unchanged; persisted forms without motion/turns/convention | | | pass |
+| Lorentz force: F = q(E + v × B), sign of q, zero charge, current reversal, P_B within rounding bound, singular point, partial when E_ind unsupported, induced field in F_E | exact | 1e-15 rel | pass |
+| Boris: cyclotron circle (radius 1e-4 rel, closes after one period, |v| conserved 1e-9), helix (v∥ constant, pitch), uniform E, zero field, second-order step refinement, never crosses a wire, unsupported time-varying wire, preset 24 helix (ΔK/K < 1e-12, r_c) | closed forms | as stated | pass |
+| API (7 tests): presets 22–25 reproducible and cached, convention at a jump, turns, /lorentz, /particle (cache, speed ≥ c refused), equation statuses, persistence of moving surfaces and the test charge, old projects unchanged | | | pass |
+
+**Changes to existing tests (intended, nothing weakened):** the preset catalog now has 25 entries
+with 17 available (`tests/api/test_api.py`, `tests/core/test_scene_and_solver_support.py`).
+
+| Item | Result |
+|---|---|
+| Python tests | 568 passed, 0 skipped (500 earlier; 68 new), incl. 5 integration tests against PostgreSQL and Redis |
+| ruff, mypy (strict) | clean |
+| Frontend type-check, lint, unit tests, production build | clean; 76 passed (70 earlier, 6 new) |
+| End-to-end, native stack (`scripts/native.py`) with Redis and worker | 69 of 69 checks (63 earlier + 6 for Phase 4B: sliding rod verified with BLv reference, velocity jump undefined/left, rotating coil waveform, combined preset, Lorentz force and proton trajectory with species change, persistence of the test charge; plus the Hungarian Lorentz tab) |
+| Windows, Docker | not executed in this phase |

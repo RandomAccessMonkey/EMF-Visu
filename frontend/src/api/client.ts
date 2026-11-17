@@ -3,23 +3,30 @@ import type {
   AmpereHeader,
   AmperePath,
   CurrentProfile,
-  InductionHeader,
-  ProfileSamples,
   EquationsResponse,
+  ErrorBody,
+  FluxSurface,
   GaussSituation,
   GaussSurface,
-  ErrorBody,
   Health,
+  InductionHeader,
   JobCreated,
   JobStatus,
+  LorentzRequest,
+  LorentzResult,
+  ParticleRequest,
   Preset,
   ProbeResponse,
+  ProfileSamples,
   ProjectOut,
   ProjectSummary,
   Scene,
   SolveRequest,
   SolverStatus,
+  TestCharge,
+  TrajectoryResult,
   Vec3,
+  VelocityConvention,
 } from './types'
 
 const BASE = `${import.meta.env.VITE_API_URL ?? ''}/api/v1`
@@ -101,8 +108,8 @@ export const api = {
     return (await res.json()) as ProbeResponse
   },
 
-  async equations(scene: Scene, signal?: AbortSignal, surfaces: GaussSurface[] = [], paths: AmperePath[] = [], fluxSurfaces: AmperePath[] = []): Promise<EquationsResponse> {
-    const res = await request('/equations/evaluate', json({ scene, surfaces, paths, flux_surfaces: fluxSurfaces }, 'POST', signal))
+  async equations(scene: Scene, signal?: AbortSignal, surfaces: GaussSurface[] = [], paths: AmperePath[] = [], fluxSurfaces: FluxSurface[] = [], testCharge: TestCharge | null = null): Promise<EquationsResponse> {
+    const res = await request('/equations/evaluate', json({ scene, surfaces, paths, flux_surfaces: fluxSurfaces, test_charge: testCharge }, 'POST', signal))
     return (await res.json()) as EquationsResponse
   },
 
@@ -118,10 +125,20 @@ export const api = {
     return { ...body, cache: res.headers.get('X-EMF-Cache') === 'hit' ? 'hit' : 'miss' }
   },
   /** Flux, Faraday's law, Lenz signs and mutual inductance at one time (Phase 4A). */
-  async induction(scene: Scene, surfaces: AmperePath[], timeS: number, signal?: AbortSignal): Promise<InductionHeader & { cache: 'hit' | 'miss' }> {
-    const res = await request('/induction', json({ scene, induction: { surfaces, time_s: timeS, mutual: true } }, 'POST', signal))
+  async induction(scene: Scene, surfaces: FluxSurface[], timeS: number, signal?: AbortSignal, convention: VelocityConvention = 'undefined'): Promise<InductionHeader & { cache: 'hit' | 'miss' }> {
+    const res = await request('/induction', json({ scene, induction: { surfaces, time_s: timeS, mutual: true, velocity_convention: convention } }, 'POST', signal))
     const body = (await res.json()) as InductionHeader
     return { ...body, cache: res.headers.get('X-EMF-Cache') === 'hit' ? 'hit' : 'miss' }
+  },
+  /** Lorentz force on a test charge at one point and time (Phase 4B). */
+  async lorentz(scene: Scene, req: LorentzRequest, signal?: AbortSignal): Promise<LorentzResult> {
+    const res = await request('/lorentz', json({ scene, lorentz: req }, 'POST', signal))
+    return (await res.json()) as LorentzResult
+  },
+  /** Nonrelativistic test-particle trajectory (Phase 4B). */
+  async particle(scene: Scene, req: ParticleRequest, signal?: AbortSignal): Promise<TrajectoryResult> {
+    const res = await request('/particle', json({ scene, particle: req }, 'POST', signal))
+    return (await res.json()) as TrajectoryResult
   },
   /** I(t) and dI/dt of a profile on an even grid, evaluated by the engine (for plotting). */
   async profileSample(profile: CurrentProfile, startS: number, endS: number, signal?: AbortSignal): Promise<ProfileSamples> {
@@ -176,9 +193,10 @@ export const api = {
     id?: string,
     surfaces: GaussSurface[] = [],
     paths: AmperePath[] = [],
-    fluxSurfaces: AmperePath[] = [],
+    fluxSurfaces: FluxSurface[] = [],
+    testCharge: TestCharge | null = null,
   ): Promise<ProjectOut> {
-    const init = json({ name, scene, view, surfaces, paths, flux_surfaces: fluxSurfaces }, id ? 'PUT' : 'POST')
+    const init = json({ name, scene, view, surfaces, paths, flux_surfaces: fluxSurfaces, test_charge: testCharge }, id ? 'PUT' : 'POST')
     return (await (await request(id ? `/projects/${id}` : '/projects', init)).json()) as ProjectOut
   },
   async deleteProject(id: string): Promise<void> {

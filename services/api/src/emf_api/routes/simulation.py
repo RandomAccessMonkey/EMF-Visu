@@ -5,10 +5,11 @@ from typing import Annotated
 import numpy as np
 from fastapi import APIRouter, Depends, Response
 
-from emf_core import engine
+from emf_core import engine, lorentz
 from emf_core.ampere import AmpereHeader
 from emf_core.gauss_situations import SITUATIONS, GaussSituation
 from emf_core.induction import InductionHeader
+from emf_core.lorentz import LorentzResult, TrajectoryResult
 from emf_core.postprocess import differential
 from emf_core.presets import PRESETS, Preset
 from emf_core.scene import profiles
@@ -26,6 +27,8 @@ from ..schemas import (
     ErrorBody,
     FluxBody,
     InductionBody,
+    LorentzBody,
+    ParticleBody,
     ProbeBody,
     ProbeContribution,
     ProbeDiagnostic,
@@ -179,7 +182,7 @@ def _diagnostics(point: np.ndarray, positions: np.ndarray, charges: np.ndarray, 
 def evaluate_equations(body: EquationsBody, orch: Orch) -> EquationsResponse:
     """Equations with their applicability status for the model that this scene resolves to."""
     views, reasons, solver_ids = orch.equations(body.scene, body.surfaces, body.paths,
-                                                body.flux_surfaces)
+                                                body.flux_surfaces, body.test_charge)
     return EquationsResponse(supported=bool(solver_ids),
                              solver_id=solver_ids[0] if solver_ids else None,
                              solver_ids=solver_ids,
@@ -232,6 +235,23 @@ def induction_law(body: InductionBody, orch: Orch) -> Response:
     except UnsupportedSceneError as exc:
         raise api_error(422, "unsupported", "no available solver supports this configuration",
                         exc.reasons) from exc
+    return Response(blob, media_type="application/json",
+                    headers={"X-EMF-Cache": "hit" if hit else "miss"})
+
+
+@router.post("/lorentz")
+def lorentz_force(body: LorentzBody) -> LorentzResult:
+    """Lorentz force F = q(E + v × B) on a test charge at one point and time (Phase 4B): the
+    electric part from the electrostatic field and the induced field E_ind, the magnetic part
+    from the magnetostatic B at the instantaneous currents, with powers qE·v and q(v × B)·v."""
+    return lorentz.lorentz_probe(body.scene, body.lorentz)
+
+
+@router.post("/particle", response_class=Response,
+             responses={**_ERRORS, 200: {"model": TrajectoryResult}})
+def particle(body: ParticleBody, orch: Orch) -> Response:
+    """Nonrelativistic test-particle trajectory in the prescribed fields (Boris scheme)."""
+    blob, hit = orch.solve_particle(body.scene, body.particle)
     return Response(blob, media_type="application/json",
                     headers={"X-EMF-Cache": "hit" if hit else "miss"})
 

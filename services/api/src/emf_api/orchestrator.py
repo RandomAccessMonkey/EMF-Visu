@@ -3,12 +3,14 @@ cache) and dispatches long solves to the solver's queue."""
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections import OrderedDict
 from threading import Lock
 
 import numpy as np
 
-from emf_core import ampere, engine, induction, wire
+from emf_core import ampere, engine, induction, lorentz, wire
 from emf_core.ampere import AmperePath, AmpereRequest
 from emf_core.equations import EquationRegistry, EquationView, default_registry
 from emf_core.geometry.surfaces import GaussSurface
@@ -150,9 +152,31 @@ class Orchestrator:
                 self._cache.popitem(last=False)
         return blob, False
 
+    def solve_particle(self, scene: Scene, request: lorentz.ParticleRequest
+                       ) -> tuple[bytes, bool]:
+        """Test-particle trajectory (JSON bytes; Phase 4B), cached by scene and request."""
+        s = scene.model_dump(mode="json")
+        for o in s["objects"]:
+            o.pop("name", None)
+        key = "particle:" + hashlib.sha256(json.dumps(
+            {"scene": s, "particle": request.model_dump(mode="json")}, sort_keys=True,
+            separators=(",", ":")).encode()).hexdigest()
+        with self._lock:
+            hit = self._cache.get(key)
+            if hit is not None:
+                self._cache.move_to_end(key)
+                return hit, True
+        blob = lorentz.trajectory(scene, request).model_dump_json().encode()
+        with self._lock:
+            self._cache[key] = blob
+            while len(self._cache) > self._cache_entries:
+                self._cache.popitem(last=False)
+        return blob, False
+
     def equations(self, scene: Scene, surfaces: list[GaussSurface] | None = None,
                   paths: list[AmperePath] | None = None,
-                  flux_surfaces: list[FluxSurface] | None = None
+                  flux_surfaces: list[FluxSurface] | None = None,
+                  test_charge: lorentz.TestCharge | None = None
                   ) -> tuple[list[EquationView], list[LocalizedText], list[str]]:
         """Equation views for the model(s) that would be used for this scene: the electric
         and/or magnetic sub-model, merged (see EquationRegistry.evaluate_merged). If a needed
@@ -192,6 +216,28 @@ class Orchestrator:
                                                "flux_derivative", "mutual_inductance"],
                     "checked_equation_ids": [*ctx.checked_equation_ids, "faraday_integral",
                                              "mutual_reciprocity"],
+                })
+            moving = [f for f in flux_surfaces or [] if f.moving]
+            if kind == "magnetic" and moving:
+                rods = sum(isinstance(f.shape, induction.SlidingRodShape) for f in moving)
+                rot = sum(f.motion is not None and f.motion.rotation.type != "none"
+                          for f in moving)
+                ctx = ctx.model_copy(update={
+                    "moving_surfaces": len(moving), "sliding_rods": rods, "rotating_surfaces": rot,
+                    "evaluated_equation_ids": [*ctx.evaluated_equation_ids, "rigid_body_pose",
+                                               "material_velocity", "motional_field",
+                                               "motional_emf", "moving_surface_flux"],
+                    "checked_equation_ids": [*ctx.checked_equation_ids,
+                                             "generalized_faraday"],
+                })
+            if kind == "magnetic" and flux_surfaces:
+                ctx = ctx.model_copy(update={"multi_turn_surfaces": sum(
+                    f.turns > 1 for f in flux_surfaces)})
+            if test_charge is not None and test_charge.enabled:
+                ctx = ctx.model_copy(update={
+                    "test_charge": True, "trajectory": test_charge.trajectory.enabled,
+                    "evaluated_equation_ids": [*ctx.evaluated_equation_ids, "lorentz_force",
+                                               "electric_force", "magnetic_force"],
                 })
             contexts.append(ctx)
             solver_ids.append(solver.id)

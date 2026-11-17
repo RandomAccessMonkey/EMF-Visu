@@ -13,6 +13,8 @@ import { CurlGlyphs, SourceMarkers, VolumeScalars } from './CalculusLayers'
 import { Contours, FieldLines, Isosurfaces } from './FieldProducts'
 import { AmpereLayer } from './AmpereLayer'
 import { FluxLayer } from './FluxLayer'
+import { LorentzLayer } from './LorentzLayer'
+import type { LorentzData } from '@/sim/useLorentz'
 import { GaussLayer } from './GaussLayer'
 import type { AmpereData } from '@/sim/useAmpere'
 import type { InductionData } from '@/sim/useInduction'
@@ -248,10 +250,13 @@ interface Props {
   ampere?: AmpereData | undefined
   /** Faraday results (Phase 4A), for the circulation sense on each measurement surface. */
   induction?: InductionData | undefined
+  /** Test charge and trajectory (Phase 4B). */
+  lorentz?: LorentzData
 }
 
-export function Viewport({ result, magnetic, image, arrowScale, magneticArrowScale, flux, ampere, induction }: Props) {
+export function Viewport({ result, magnetic, image, arrowScale, magneticArrowScale, flux, ampere, induction, lorentz }: Props) {
   const fluxSurfaces = useSceneStore((s) => s.fluxSurfaces)
+  const testCharge = useSceneStore((s) => s.testCharge)
   const surfaces = useSceneStore((s) => s.surfaces)
   const paths = useSceneStore((s) => s.paths)
   const selectedPathId = useSceneStore((s) => s.selectedPathId)
@@ -289,7 +294,7 @@ export function Viewport({ result, magnetic, image, arrowScale, magneticArrowSca
       <ambientLight intensity={1.4} />
       <directionalLight position={[3, -4, 6]} intensity={1.6} />
       <Cameras domain={domain} />
-      <Invalidator deps={[scene, selectedId, v.mode, v.plane, v.offset, v.probePoint, v.showGrid, v.tool, result, v.showFieldLines, v.lineDensity, v.showContours, v.showIsosurfaces, v.showCurl, v.curlField, v.showSources, v.showVolumeScalars, v.heatmap, flux, surfaces, selectedSurfaceId, patch, cell, magnetic, v.showBArrows, v.magneticField, v.showBLines, v.showCurrents, v.showCurrentDirection, v.contribution, paths, ampere, selectedPathId, fluxSurfaces, induction]} />
+      <Invalidator deps={[scene, selectedId, v.mode, v.plane, v.offset, v.probePoint, v.showGrid, v.tool, result, v.showFieldLines, v.lineDensity, v.showContours, v.showIsosurfaces, v.showCurl, v.curlField, v.showSources, v.showVolumeScalars, v.heatmap, flux, surfaces, selectedSurfaceId, patch, cell, magnetic, v.showBArrows, v.magneticField, v.showBLines, v.showCurrents, v.showCurrentDirection, v.contribution, paths, ampere, selectedPathId, fluxSurfaces, induction, lorentz?.probe, lorentz?.trajectory, lorentz?.current, v.showMotionVectors, testCharge]} />
       {v.mode === '3d' && <DomainFrame domain={domain} />}
       {v.showGrid && <GridAxes domain={domain} />}
       {grid && <SlicePlane image={image} grid={grid} visible={sliceVisible && v.heatmap !== 'none'} />}
@@ -315,6 +320,7 @@ export function Viewport({ result, magnetic, image, arrowScale, magneticArrowSca
       <GaussLayer flux={flux} marker={marker} />
       <AmpereLayer ampere={ampere} marker={marker} />
       <FluxLayer induction={induction} marker={marker} />
+      {lorentz && <LorentzLayer data={lorentz} marker={marker} />}
       <SceneObjects marker={marker} offSlice={offSlice} wireLength={diag} />
       <ProbeMarker size={marker} />
     </Canvas>

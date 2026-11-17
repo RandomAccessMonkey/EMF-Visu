@@ -6,11 +6,11 @@ import type { Legend as LegendData } from '@/render/fieldImages'
 import type { SimulationResult } from '@/api/container'
 import { CLASS_COLORS, FLUX_COLORS } from '@/render/gaussColors'
 import type { FluxData } from '@/sim/gauss'
-import { useSceneStore } from '@/state/sceneStore'
+import { isMovingSurface, useSceneStore } from '@/state/sceneStore'
 import { SOURCE_COLORS, ZERO_VECTOR_COLOR } from '@/render/CalculusLayers'
 import { ZERO_CSS } from '@/render/fieldImages'
 import { FIELD_LINE_COLOR, isNumericalBEnd, isNumericalEnd, LEVEL_COLORS, NUMERICAL_LINE_COLOR } from '@/render/FieldProducts'
-import { AMPERE_PATH_COLOR, CORE_COLOR, FLUX_SURFACE_COLOR, INDUCED_E_COLOR, MAGNETIC_LINE_COLOR, MAGNETIC_NUMERICAL_LINE_COLOR, MAGNETIC_SOURCE_COLOR, MAGNET_COLOR, MAGNET_SOUTH_COLOR } from '@/render/magneticColors'
+import { AMPERE_PATH_COLOR, CONDUCTOR_VELOCITY_COLOR, CORE_COLOR, FLUX_SURFACE_COLOR, FORCE_B_COLOR, FORCE_E_COLOR, FORCE_TOTAL_COLOR, INDUCED_E_COLOR, MOTIONAL_COLOR, MOVING_SEGMENT_COLOR, PARTICLE_COLOR, PARTICLE_VELOCITY_COLOR, STATIONARY_SEGMENT_COLOR, TRAJECTORY_COLOR, MAGNETIC_LINE_COLOR, MAGNETIC_NUMERICAL_LINE_COLOR, MAGNETIC_SOURCE_COLOR, MAGNET_COLOR, MAGNET_SOUTH_COLOR } from '@/render/magneticColors'
 import { contributionColor, effectiveContribution } from '@/render/MagneticLayers'
 import { PLANE_BASIS } from '@/sim/request'
 import { useViewStore } from '@/state/viewStore'
@@ -71,6 +71,8 @@ function MagneticLegend({ result, arrows }: { result: SimulationResult; arrows: 
   const kinds = new Set(result.header.current_sources.map((c) => c.kind))
   const paths = useSceneStore((s) => s.paths)
   const fluxCount = useSceneStore((s) => s.fluxSurfaces.length)
+  const moving = useSceneStore((s) => s.fluxSurfaces.some(isMovingSurface))
+  const charge = useSceneStore((s) => !!s.testCharge?.enabled)
   const contribution = effectiveContribution(v.contribution, ids)
   const which = contribution === 'total' ? t('legend.mTotal') : contribution === 'all' ? t('legend.mAll') : t('legend.mSingle', { name: names[contribution] ?? contribution })
   return (
@@ -122,6 +124,22 @@ function MagneticLegend({ result, arrows }: { result: SimulationResult; arrows: 
         <p className="max-w-56 text-[10px] leading-snug text-muted">
           <Swatch color={INDUCED_E_COLOR} />
           {t('legend.eInd')}
+        </p>
+      )}
+      {moving && (
+        <p className="max-w-56 text-[10px] leading-snug text-muted" data-testid="legend-motion">
+          <Swatch color={MOVING_SEGMENT_COLOR} />
+          {t('legend.moving')} <Swatch color={STATIONARY_SEGMENT_COLOR} />
+          {t('legend.stationary')} <Swatch color={CONDUCTOR_VELOCITY_COLOR} />u <Swatch color={MOTIONAL_COLOR} />u × B
+        </p>
+      )}
+      {charge && (
+        <p className="max-w-56 text-[10px] leading-snug text-muted" data-testid="legend-lorentz">
+          <Swatch color={PARTICLE_COLOR} />q <Swatch color={PARTICLE_VELOCITY_COLOR} />v <Swatch color={FORCE_E_COLOR} />qE <Swatch color={FORCE_B_COLOR} />qv×B{' '}
+          <Swatch color={FORCE_TOTAL_COLOR} />F <Swatch color={TRAJECTORY_COLOR} />
+          {t('legend.trajectory')}
+          <br />
+          {t('legend.forceScale')}
         </p>
       )}
       {fluxCount > 0 && (

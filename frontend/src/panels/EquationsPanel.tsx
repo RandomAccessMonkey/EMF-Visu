@@ -17,7 +17,7 @@ const TONE: Record<EquationStatus, 'ok' | 'accent' | 'muted' | 'warn'> = {
   not_applicable: 'muted',
   not_evaluated: 'warn',
 }
-const ORDER: EquationView['category'][] = ['electrostatics', 'maxwell', 'constitutive', 'magnetostatics', 'induction', 'additional']
+const ORDER: EquationView['category'][] = ['electrostatics', 'maxwell', 'constitutive', 'magnetostatics', 'induction', 'motion', 'additional']
 
 function Details({ eq }: { eq: EquationView }) {
   const { t, loc } = useT()
@@ -84,16 +84,17 @@ export function EquationsPanel() {
   const surfaces = useSceneStore((s) => s.surfaces)
   const paths = useSceneStore((s) => s.paths)
   const fluxSurfaces = useSceneStore((s) => s.fluxSurfaces)
+  const testCharge = useSceneStore((s) => s.testCharge)
   const dragging = useViewStore((s) => s.dragging)
   const beginner = useViewStore((s) => s.level === 'beginner')
   // Statuses depend on the physical model, not on where objects are: key on the physics subset.
   const key = useMemo(
-    () => JSON.stringify({ scene: scenePhysics(scene), surfaces: surfaces.map(surfacePhysics), paths: paths.map(pathPhysics), flux: fluxSurfaces.map(pathPhysics) }),
-    [scene, surfaces, paths, fluxSurfaces],
+    () => JSON.stringify({ scene: scenePhysics(scene), surfaces: surfaces.map(surfacePhysics), paths: paths.map(pathPhysics), flux: fluxSurfaces.map(pathPhysics), tc: testCharge ? { on: testCharge.enabled, traj: testCharge.trajectory.enabled } : null }),
+    [scene, surfaces, paths, fluxSurfaces, testCharge],
   )
   const query = useQuery({
     queryKey: ['equations', key],
-    queryFn: ({ signal }) => api.equations(scene, signal, surfaces.map(surfacePhysics), paths, fluxSurfaces),
+    queryFn: ({ signal }) => api.equations(scene, signal, surfaces.map(surfacePhysics), paths, fluxSurfaces, testCharge),
     enabled: !dragging,
     placeholderData: keepPreviousData,
     staleTime: Infinity,

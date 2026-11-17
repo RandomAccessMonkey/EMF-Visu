@@ -10,6 +10,7 @@ from emf_core.equations import EquationView
 from emf_core.geometry.surfaces import GaussSurface
 from emf_core.i18n import LocalizedText
 from emf_core.induction import FluxSurface, InductionRequest
+from emf_core.lorentz import LorentzRequest, ParticleRequest, TestCharge
 from emf_core.scene.models import Scene, Vec3
 from emf_core.scene.profiles import CurrentProfile
 from emf_core.solvers import SolverDescriptor, SolveRequest
@@ -203,6 +204,8 @@ class EquationsBody(BaseModel):
     paths: list[AmperePath] = Field(default=[], max_length=16)
     # Faraday measurement surfaces (Phase 4A), for the statuses of the induction equations.
     flux_surfaces: list[FluxSurface] = Field(default=[], max_length=8)
+    # Phase 4B: a test charge is defined (Lorentz-force equations), and its trajectory is on.
+    test_charge: TestCharge | None = None
 
 
 class ProfileSampleBody(BaseModel):
@@ -224,6 +227,16 @@ class ProfileSamples(BaseModel):
 class InductionBody(BaseModel):
     scene: Scene
     induction: InductionRequest
+
+
+class LorentzBody(BaseModel):
+    scene: Scene
+    lorentz: LorentzRequest
+
+
+class ParticleBody(BaseModel):
+    scene: Scene
+    particle: ParticleRequest
 
 
 class AmpereBody(BaseModel):
@@ -278,6 +291,8 @@ class ProjectIn(BaseModel):
     paths: list[AmperePath] = Field(default=[], max_length=16)
     # Faraday measurement surfaces (Phase 4A), stored under "flux_surfaces".
     flux_surfaces: list[FluxSurface] = Field(default=[], max_length=8)
+    # Test charge and trajectory settings (Phase 4B), stored under "test_charge".
+    test_charge: TestCharge | None = None
 
 
 class ProjectSummary(BaseModel):
@@ -293,3 +308,4 @@ class ProjectOut(ProjectSummary):
     surfaces: list[GaussSurface] = []
     paths: list[AmperePath] = []
     flux_surfaces: list[FluxSurface] = []
+    test_charge: TestCharge | None = None

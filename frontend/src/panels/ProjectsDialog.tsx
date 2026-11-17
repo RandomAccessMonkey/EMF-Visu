@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { api } from '@/api/client'
+import type { TestCharge } from '@/api/types'
 import { Button, Dialog } from '@/components/ui/controls'
 import { useT } from '@/i18n'
 import { useSceneStore } from '@/state/sceneStore'
@@ -17,7 +18,7 @@ export function ProjectsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
   const refresh = () => client.invalidateQueries({ queryKey: ['projects'] })
   const save = useMutation({
     mutationFn: (asNew: boolean) =>
-      api.saveProject(effectiveName.trim(), useSceneStore.getState().scene, { ...useViewStore.getState().settings() }, asNew ? undefined : (projectId ?? undefined), useSceneStore.getState().surfaces, useSceneStore.getState().paths, useSceneStore.getState().fluxSurfaces),
+      api.saveProject(effectiveName.trim(), useSceneStore.getState().scene, { ...useViewStore.getState().settings() }, asNew ? undefined : (projectId ?? undefined), useSceneStore.getState().surfaces, useSceneStore.getState().paths, useSceneStore.getState().fluxSurfaces, useSceneStore.getState().testCharge),
     onSuccess: (p) => {
       useSceneStore.setState({ projectId: p.id, projectName: p.name })
       setName('')
@@ -31,6 +32,7 @@ export function ProjectsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
       useSceneStore.getState().setSurfaces(p.surfaces ?? [])
       useSceneStore.getState().setPaths(p.paths ?? [])
       useSceneStore.getState().setFluxSurfaces(p.flux_surfaces ?? [])
+      useSceneStore.getState().setTestCharge((p.test_charge as TestCharge | null | undefined) ?? null)
       useViewStore.getState().set({ ...sanitizeView(p.view), probePoint: null })
       onOpenChange(false)
     },

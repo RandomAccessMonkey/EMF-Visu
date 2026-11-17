@@ -914,10 +914,93 @@ async function main() {
   assert.equal(await page.getByTestId('profile-editor').getByRole('img').count(), 0)
   step('profile editor: sinusoidal profile makes the scene time-dependent (waveform from the engine); constant restores it')
 
+  // ------------------------------------------- Phase 4B: moving conductors and the Lorentz force
+  await page.getByRole('button', { name: /^22\s*Sliding-rod generator/ }).click()
+  await settled()
+  await page.getByTestId('time-bar').waitFor()
+  await faradayVerified()
+  const moving = page.getByTestId('moving-result')
+  await moving.waitFor({ timeout: 20000 })
+  assert.match(await page.getByTestId('emf-total').innerText(), /µV/)
+  await page.getByTestId('uniform-reference').getByText(/Uniform-field approximation/).waitFor()
+  await page.getByTestId('legend-motion').waitFor()
+  await shot('29-sliding-rod')
+  step('preset 22: sliding rod verified (motional EMF = −dΦ/dt from flux values); BLv shown as labelled reference')
+  await tField.fill('0.3')
+  await tField.press('Enter')
+  await page.getByTestId('faraday-result').getByText('Motion undefined', { exact: true }).waitFor({ timeout: 20000 })
+  await page.getByRole('combobox', { name: 'Velocity at a jump' }).selectOption('left')
+  await faradayVerified()
+  await page.getByRole('combobox', { name: 'Velocity at a jump' }).selectOption('undefined')
+  step('at the rod stop (t = 0.3 s) the EMF is undefined; a one-sided convention evaluates it')
+
+  await page.getByRole('button', { name: /^23\s*Generator principle/ }).click()
+  await settled()
+  await faradayVerified()
+  for (let k = 0; k < 3; k++) {
+    await page.getByRole('button', { name: 'Step forward' }).click()
+    await faradayVerified()
+    await page.waitForTimeout(300)
+  }
+  await page.getByTestId('waveforms').waitFor({ timeout: 20000 })
+  await page.getByTestId('motion-editor').waitFor()
+  await shot('30-rotating-coil')
+  step('preset 23: rotating coil verified at successive times; waveform built from computed results')
+
+  await page.getByRole('button', { name: /^25\s*Combined transformer and motional/ }).click()
+  await settled()
+  await faradayVerified()
+  assert.ok(await moving.getByText(/Transformer EMF/).isVisible())
+  assert.ok(await moving.getByText(/Motional EMF/).isVisible())
+  step('preset 25: transformer and motional EMF shown separately; generalized law verified')
+
+  await page.getByRole('button', { name: /^24\s*Charged particle in a magnetic field/ }).click()
+  await settled()
+  await page.getByRole('tab', { name: 'Lorentz' }).click()
+  const lres = page.getByTestId('lorentz-result')
+  await lres.getByText('Complete', { exact: true }).waitFor({ timeout: 20000 })
+  const fBefore = await page.getByTestId('force-magnitude').innerText()
+  await page.getByTestId('trajectory-result').getByText('Completed', { exact: true }).waitFor({ timeout: 60000 })
+  const dK = Math.abs(Number(await page.getByTestId('energy-change').innerText()))
+  assert.ok(dK < 1e-10, `kinetic energy changed in a magnetic-only field: ${dK}`)
+  await page.getByTestId('legend-lorentz').waitFor()
+  await shot('31-proton-helix')
+  // An alpha particle (2e) doubles |F|; an electron (−e) keeps |F| but reverses F.
+  await page.getByRole('button', { name: 'Alpha' }).click()
+  await page.waitForFunction((b) => {
+    const el = document.querySelector('[data-testid="force-magnitude"]')
+    return el && el.textContent !== b
+  }, fBefore, { timeout: 20000 })
+  await page.getByRole('button', { name: 'Electron' }).click()
+  await page.waitForFunction((b) => {
+    const el = document.querySelector('[data-testid="force-magnitude"]')
+    return el && el.textContent === b
+  }, fBefore, { timeout: 20000 })
+  step('preset 24: Lorentz force complete, P_B = 0; proton trajectory completed with constant kinetic energy; species change updates the force')
+
+  // Persistence of the test charge and moving surfaces.
+  const bname = `e2e 4B ${Date.now()}`
+  await page.getByRole('button', { name: 'Projects' }).click()
+  await page.getByLabel('Project name').fill(bname)
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await page.getByText(bname).first().waitFor()
+  await page.reload()
+  await page.getByRole('button', { name: 'Projects' }).click()
+  await page.locator('li', { hasText: bname }).getByRole('button', { name: 'Load' }).click()
+  await page.getByRole('tab', { name: 'Lorentz' }).click()
+  await page.getByTestId('lorentz-result').getByText('Complete', { exact: true }).waitFor({ timeout: 20000 })
+  await valueIs(page.getByRole('spinbutton', { name: 'Charge', exact: true }), '-1.6021766e-19')
+  await page.getByRole('button', { name: 'Projects' }).click()
+  await page.locator('li', { hasText: bname }).getByRole('button', { name: 'Delete' }).click()
+  await page.keyboard.press('Escape')
+  step('the test charge (electron) and its trajectory settings are saved and restored with the project')
+
   // Hungarian Faraday labels.
   await page.getByRole('radio', { name: 'HU' }).click()
   await page.getByRole('tab', { name: 'Faraday' }).click()
   await page.getByText('Faraday-törvény és mágneses fluxus').waitFor()
+  await page.getByRole('tab', { name: 'Lorentz' }).click()
+  await page.getByText('Próbatöltés', { exact: true }).first().waitFor()
   await page.getByRole('radio', { name: 'EN' }).click()
   step('Faraday panel in Hungarian')
 

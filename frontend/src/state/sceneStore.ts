@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { AmperePath, CurrentProfile, Domain, GaussSurface, PathDisplay, PrimitiveType, Scene, SceneObject, Source, SurfaceDisplay, Transform, Vec3 } from '@/api/types'
+import type { AmperePath, CurrentProfile, Domain, FluxSurface, GaussSurface, PathDisplay, PrimitiveType, Scene, SceneObject, Source, SurfaceDisplay, TestCharge, Transform, Vec3 } from '@/api/types'
 
 export const EMPTY_SCENE: Scene = {
   schema_version: 1,
@@ -216,10 +216,44 @@ export function makePath(existing: AmperePath[], kind: PathKind, name: string, d
   }
 }
 
-export const pathDisplayOf = (p: AmperePath): PathDisplay => p.display ?? DEFAULT_PATH_DISPLAY
+export const pathDisplayOf = (p: AmperePath | FluxSurface): PathDisplay => p.display ?? DEFAULT_PATH_DISPLAY
 
 /** Physics-relevant part of a path (display and name excluded): for cache keys. */
-export const pathPhysics = (p: AmperePath): unknown => ({ ...p, name: '', display: null })
+export const pathPhysics = (p: AmperePath | FluxSurface): unknown => ({ ...p, name: '', display: null })
+
+/** Phase 4B: a measurement surface that moves (rigid motion or the sliding-rod circuit). */
+export const isMovingSurface = (f: FluxSurface): boolean => !!f.motion || f.shape.type === 'sliding_rod'
+
+export type FluxKind = PathKind | 'sliding_rod'
+
+/** The sliding-rod generator circuit with domain-relative defaults (Phase 4B). */
+export function makeSlidingRod(existing: FluxSurface[], name: string, domain: Domain): FluxSurface {
+  const base = makePath(existing as AmperePath[], 'rectangle', name, domain)
+  const span = Math.min(...[0, 1, 2].map((a) => domain.max_m[a]! - domain.min_m[a]!))
+  const len = Math.round(span * 0.5 * 1000) / 1000
+  return {
+    ...base,
+    turns: 1,
+    center_m: [-len / 2, 0, 0],
+    shape: {
+      type: 'sliding_rod',
+      rail_separation_m: Math.round(len * 0.4 * 1000) / 1000,
+      rail_length_m: len,
+      rod_position_m: Math.round(len * 0.1 * 1000) / 1000,
+      rod_motion: { type: 'constant_velocity', velocity_m_per_s: [Math.round(len * 1000) / 1000, 0, 0], t0_s: 0 },
+    },
+  }
+}
+
+/** Default test charge: a proton at the origin moving along +x (Phase 4B). */
+export const DEFAULT_TEST_CHARGE: TestCharge = {
+  enabled: true,
+  charge_C: 1.602176634e-19,
+  mass_kg: 1.67262192369e-27,
+  position_m: [0, 0, 0],
+  velocity_m_per_s: [1e5, 0, 0],
+  trajectory: { enabled: false, start_s: 0, end_s: 1e-6, tolerance: 0.02, max_steps: 20000, show_trail: true, show_forces: true },
+}
 
 /** Last relative permeability per ideal toroid, so switching to the finite model and back
  *  restores it (the finite model has no core). Display/editing memory only. */
@@ -267,14 +301,18 @@ interface SceneState {
   setPaths: (paths: AmperePath[]) => void
   /** Faraday measurement surfaces (Phase 4A): stationary planar surfaces bounded by a closed
    *  path, with the same geometry and orientation conventions as Ampère paths. */
-  fluxSurfaces: AmperePath[]
+  fluxSurfaces: FluxSurface[]
   selectedFluxId: string | null
   selectFlux: (id: string | null) => void
-  addFlux: (kind: PathKind, name: string) => void
-  updateFlux: (id: string, patch: Partial<AmperePath>) => void
+  addFlux: (kind: FluxKind, name: string) => void
+  updateFlux: (id: string, patch: Partial<FluxSurface>) => void
   setFluxDisplay: (id: string, patch: Partial<PathDisplay>) => void
   removeFlux: (id: string) => void
-  setFluxSurfaces: (surfaces: AmperePath[]) => void
+  setFluxSurfaces: (surfaces: FluxSurface[]) => void
+  /** Test charge for the Lorentz-force probe and its optional trajectory (Phase 4B); null when
+   *  none is defined. */
+  testCharge: TestCharge | null
+  setTestCharge: (tc: TestCharge | null) => void
   /** Set or clear a current source's time profile (Phase 4A). The engine derives the source's
    *  current at t = 0 from the profile; the client never evaluates it. */
   setProfile: (id: string, profile: CurrentProfile | null) => void
@@ -337,8 +375,8 @@ export const useSceneStore = create<SceneState>((set) => ({
   selectFlux: (id) => set({ selectedFluxId: id }),
   addFlux: (kind, name) =>
     set((s) => {
-      const base = makePath(s.fluxSurfaces, kind, name, s.scene.domain)
-      const surface = { ...base, id: base.id.replace(/^A/, 'F'), display: { ...DEFAULT_PATH_DISPLAY, show_surface: true } }
+      const base = kind === 'sliding_rod' ? makeSlidingRod(s.fluxSurfaces, name, s.scene.domain) : makePath(s.fluxSurfaces as AmperePath[], kind, name, s.scene.domain)
+      const surface: FluxSurface = { turns: 1, ...base, id: base.id.replace(/^A/, 'F'), display: { ...DEFAULT_PATH_DISPLAY, show_surface: true } }
       return { fluxSurfaces: [...s.fluxSurfaces, surface], selectedFluxId: surface.id }
     }),
   updateFlux: (id, patch) => set((s) => ({ fluxSurfaces: s.fluxSurfaces.map((x) => (x.id === id ? { ...x, ...patch } : x)) })),
@@ -347,6 +385,8 @@ export const useSceneStore = create<SceneState>((set) => ({
   removeFlux: (id) =>
     set((s) => ({ fluxSurfaces: s.fluxSurfaces.filter((x) => x.id !== id), selectedFluxId: s.selectedFluxId === id ? null : s.selectedFluxId })),
   setFluxSurfaces: (fluxSurfaces) => set({ fluxSurfaces, selectedFluxId: fluxSurfaces[0]?.id ?? null }),
+  testCharge: null,
+  setTestCharge: (testCharge) => set({ testCharge }),
   setProfile: (id, profile) =>
     set((s) => ({
       scene: mapObject(s.scene, id, (o) =>

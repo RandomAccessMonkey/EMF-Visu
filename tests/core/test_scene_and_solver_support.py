@@ -92,8 +92,9 @@ def test_catalog_reports_planned_solvers_as_unavailable():
 
 
 def test_presets_catalog():
-    # Phase 4A added preset 21 (toroid and mutual induction) after the planned 1-20.
-    assert [p.number for p in PRESETS] == list(range(1, 22))
+    # Phase 4A added preset 21 (toroid and mutual induction) after the planned 1-20; Phase 4B
+    # added 22-25 (moving conductors and a test particle).
+    assert [p.number for p in PRESETS] == list(range(1, 26))
     for p in PRESETS:
         if p.available:
             assert p.scene is not None and engine.run(p.scene, REQ).header.status == "ok"

@@ -53,6 +53,11 @@ export interface ViewSettings {
   timeEnd: number
   timeStep: number
   playbackSpeed: number
+  /** Phase 4B: one-sided velocity used where a conductor's velocity jumps ('undefined': the
+   *  instantaneous motional EMF is reported as not defined there). */
+  velocityConvention: 'undefined' | 'left' | 'right'
+  /** Moving-conductor overlays: velocity arrows and u × B arrows along the conductor. */
+  showMotionVectors: boolean
 }
 
 export const DEFAULT_VIEW: ViewSettings = {
@@ -89,6 +94,8 @@ export const DEFAULT_VIEW: ViewSettings = {
   timeStart: 0,
   timeEnd: 1,
   timeStep: 0.01,
+  velocityConvention: 'undefined',
+  showMotionVectors: true,
   playbackSpeed: 1,
 }
 
@@ -167,6 +174,7 @@ export function sanitizeView(raw: Record<string, unknown>): Partial<ViewSettings
     delete out.timeEnd
     delete out.timeStart
   }
+  if (out.velocityConvention !== undefined && !['undefined', 'left', 'right'].includes(out.velocityConvention as string)) delete out.velocityConvention
   if (out.heatmap !== undefined && !(SCALAR_MAPS as readonly string[]).includes(out.heatmap as string)) delete out.heatmap
   return out as Partial<ViewSettings>
 }

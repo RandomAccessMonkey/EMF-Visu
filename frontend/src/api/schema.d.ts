@@ -170,6 +170,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lorentz": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lorentz Force
+         * @description Lorentz force F = q(E + v × B) on a test charge at one point and time (Phase 4B): the
+         *     electric part from the electrostatic field and the induced field E_ind, the magnetic part
+         *     from the magnetostatic B at the instantaneous currents, with powers qE·v and q(v × B)·v.
+         */
+        post: operations["lorentz_force_api_v1_lorentz_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/particle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Particle
+         * @description Nonrelativistic test-particle trajectory in the prescribed fields (Boris scheme).
+         */
+        post: operations["particle_api_v1_particle_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/profile/sample": {
         parameters: {
             query?: never;
@@ -587,6 +629,84 @@ export interface components {
             /** Detail */
             detail?: string | null;
         };
+        /** ConstantAcceleration */
+        ConstantAcceleration: {
+            /** T Start S */
+            t_start_s?: number | null;
+            /** T End S */
+            t_end_s?: number | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "constant_acceleration";
+            /**
+             * Velocity M Per S
+             * @default [
+             *       0,
+             *       0,
+             *       0
+             *     ]
+             */
+            velocity_m_per_s: [
+                number,
+                number,
+                number
+            ];
+            /**
+             * Acceleration M Per S2
+             * @default [
+             *       0,
+             *       0,
+             *       0
+             *     ]
+             */
+            acceleration_m_per_s2: [
+                number,
+                number,
+                number
+            ];
+            /**
+             * T0 S
+             * @default 0
+             */
+            t0_s: number;
+        };
+        /** ConstantAngularVelocity */
+        ConstantAngularVelocity: {
+            /** T Start S */
+            t_start_s?: number | null;
+            /** T End S */
+            t_end_s?: number | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "constant_angular_velocity";
+            /**
+             * Axis
+             * @default [
+             *       0,
+             *       0,
+             *       1
+             *     ]
+             */
+            axis: [
+                number,
+                number,
+                number
+            ];
+            /**
+             * Omega Rad Per S
+             * @default 1
+             */
+            omega_rad_per_s: number;
+            /**
+             * T0 S
+             * @default 0
+             */
+            t0_s: number;
+        };
         /** ConstantProfile */
         ConstantProfile: {
             /**
@@ -599,6 +719,36 @@ export interface components {
              * @default 1
              */
             current_A: number;
+        };
+        /** ConstantVelocity */
+        ConstantVelocity: {
+            /** T Start S */
+            t_start_s?: number | null;
+            /** T End S */
+            t_end_s?: number | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "constant_velocity";
+            /**
+             * Velocity M Per S
+             * @default [
+             *       0,
+             *       0,
+             *       0
+             *     ]
+             */
+            velocity_m_per_s: [
+                number,
+                number,
+                number
+            ];
+            /**
+             * T0 S
+             * @default 0
+             */
+            t0_s: number;
         };
         /** Crossing */
         Crossing: {
@@ -746,6 +896,32 @@ export interface components {
             height_m: number;
         };
         /**
+         * DerivativeInfo
+         * @description How dΦ/dt was obtained: analytically (stationary surface: Σ dI_j/dt Φ_j) or by
+         *     Richardson-extrapolated finite differences of the flux values in time (moving surface).
+         */
+        DerivativeInfo: {
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "analytical" | "central" | "forward" | "backward";
+            /** Step S */
+            step_s?: number | null;
+            /**
+             * Levels
+             * @default 0
+             */
+            levels: number;
+            /**
+             * Converged
+             * @default true
+             */
+            converged: boolean;
+            /** Error V */
+            error_V?: number | null;
+        };
+        /**
          * Domain
          * @description Axis-aligned region of interest. It bounds sampling and visualization; the Phase 1
          *     analytical model itself is unbounded (potential reference at infinity).
@@ -830,7 +1006,7 @@ export interface components {
              * Category
              * @enum {string}
              */
-            category: "maxwell" | "electrostatics" | "magnetostatics" | "induction" | "constitutive" | "additional";
+            category: "maxwell" | "electrostatics" | "magnetostatics" | "induction" | "motion" | "constitutive" | "additional";
             name: components["schemas"]["LocalizedText"];
             /** Latex */
             latex: string;
@@ -883,6 +1059,7 @@ export interface components {
              * @default []
              */
             flux_surfaces: components["schemas"]["FluxSurface"][];
+            test_charge?: components["schemas"]["TestCharge"] | null;
         };
         /** EquationsResponse */
         EquationsResponse: {
@@ -1061,9 +1238,15 @@ export interface components {
         };
         /**
          * FluxSurface
-         * @description A stationary measurement surface: the planar region bounded by the path, oriented by the
-         *     right-hand rule (the same geometry and conventions as an Ampère path). ``rtol`` is the
-         *     relative tolerance of the Faraday comparison.
+         * @description A measurement surface: the planar region bounded by the path, oriented by the right-hand
+         *     rule (the same geometry and conventions as an Ampère path). ``rtol`` is the relative
+         *     tolerance of the Faraday comparison.
+         *
+         *     Phase 4B (all optional, absent = the Phase 4A stationary surface): ``motion`` moves the
+         *     surface and its boundary rigidly (reference pose = ``center_m`` and the rotation);
+         *     ``turns`` > 1 makes it an explicitly defined N-turn measurement coil of N identical,
+         *     coincident, series-connected turns (flux linkage NΦ); the ``sliding_rod`` shape is the
+         *     rail generator, whose rod moves by its own ``rod_motion``.
          */
         FluxSurface: {
             /** Id */
@@ -1074,7 +1257,7 @@ export interface components {
              */
             name: string;
             /** Shape */
-            shape: components["schemas"]["CirclePath"] | components["schemas"]["RectanglePath"] | components["schemas"]["PolygonPath"];
+            shape: components["schemas"]["CirclePath"] | components["schemas"]["RectanglePath"] | components["schemas"]["PolygonPath"] | components["schemas"]["SlidingRodShape"];
             /**
              * Center M
              * @default [
@@ -1112,6 +1295,12 @@ export interface components {
              */
             rtol: number;
             display?: components["schemas"]["PathDisplay"] | null;
+            motion?: components["schemas"]["MotionProfile"] | null;
+            /**
+             * Turns
+             * @default 1
+             */
+            turns: number;
         };
         /** GaussSituation */
         GaussSituation: {
@@ -1307,6 +1496,12 @@ export interface components {
              * @default true
              */
             mutual: boolean;
+            /**
+             * Velocity Convention
+             * @default undefined
+             * @enum {string}
+             */
+            velocity_convention: "undefined" | "left" | "right";
         };
         /**
          * InfiniteWireSource
@@ -1478,6 +1673,87 @@ export interface components {
             en: string;
             /** Hu */
             hu: string;
+        };
+        /** LorentzBody */
+        LorentzBody: {
+            scene: components["schemas"]["Scene"];
+            lorentz: components["schemas"]["LorentzRequest"];
+        };
+        /** LorentzRequest */
+        LorentzRequest: {
+            /** Charge C */
+            charge_C: number;
+            /** Velocity M Per S */
+            velocity_m_per_s: [
+                number,
+                number,
+                number
+            ];
+            /** Point M */
+            point_m: [
+                number,
+                number,
+                number
+            ];
+            /**
+             * Time S
+             * @default 0
+             */
+            time_s: number;
+        };
+        /** LorentzResult */
+        LorentzResult: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "complete" | "partial" | "singular";
+            status_reason?: components["schemas"]["LocalizedText"] | null;
+            /** Time S */
+            time_s: number;
+            /** Point M */
+            point_m: number[];
+            /** Charge C */
+            charge_C: number;
+            /** Velocity M Per S */
+            velocity_m_per_s: number[];
+            /** Speed M Per S */
+            speed_m_per_s: number;
+            /** E Static V Per M */
+            E_static_V_per_m: number[] | null;
+            /** E Ind V Per M */
+            E_ind_V_per_m: number[] | null;
+            /** E Ind Supported */
+            e_ind_supported: boolean;
+            /** E V Per M */
+            E_V_per_m: number[] | null;
+            /** B T */
+            B_T: number[] | null;
+            /** F E N */
+            F_E_N: number[] | null;
+            /** F B N */
+            F_B_N: number[] | null;
+            /** F Total N */
+            F_total_N: number[] | null;
+            /** F E Magnitude N */
+            F_E_magnitude_N: number | null;
+            /** F B Magnitude N */
+            F_B_magnitude_N: number | null;
+            /** F Total Magnitude N */
+            F_total_magnitude_N: number | null;
+            /** Power E W */
+            power_E_W: number | null;
+            /** Power B W */
+            power_B_W: number | null;
+            /** Power Total W */
+            power_total_W: number | null;
+            /** Power B Bound W */
+            power_B_bound_W: number | null;
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings: components["schemas"]["LocalizedText"][];
         };
         /**
          * MagneticContribution
@@ -1702,6 +1978,36 @@ export interface components {
              */
             flux_surfaces: number;
             /**
+             * Moving Surfaces
+             * @default 0
+             */
+            moving_surfaces: number;
+            /**
+             * Sliding Rods
+             * @default 0
+             */
+            sliding_rods: number;
+            /**
+             * Rotating Surfaces
+             * @default 0
+             */
+            rotating_surfaces: number;
+            /**
+             * Multi Turn Surfaces
+             * @default 0
+             */
+            multi_turn_surfaces: number;
+            /**
+             * Test Charge
+             * @default false
+             */
+            test_charge: boolean;
+            /**
+             * Trajectory
+             * @default false
+             */
+            trajectory: boolean;
+            /**
              * Checked Equation Ids
              * @default []
              */
@@ -1713,6 +2019,81 @@ export interface components {
              * @default []
              */
             evaluated_equation_ids: string[];
+        };
+        /**
+         * MotionProfile
+         * @description Rigid motion of a measurement conductor relative to its reference pose.
+         */
+        MotionProfile: {
+            /** Translation */
+            translation?: components["schemas"]["StationaryTranslation"] | components["schemas"]["ConstantVelocity"] | components["schemas"]["ConstantAcceleration"] | components["schemas"]["SinusoidalTranslation"];
+            /** Rotation */
+            rotation?: components["schemas"]["NoRotation"] | components["schemas"]["ConstantAngularVelocity"];
+        };
+        /**
+         * MotionState
+         * @description Instantaneous pose and velocities of a moving measurement conductor (Phase 4B).
+         */
+        MotionState: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "rigid" | "sliding_rod";
+            /** Center M */
+            center_m: number[];
+            /** Rotation */
+            rotation: number[][];
+            /** Side */
+            side: ("left" | "right") | null;
+            /** Unique */
+            unique: boolean;
+            /** Velocity M Per S */
+            velocity_m_per_s: number[] | null;
+            /** Angular Velocity Rad Per S */
+            angular_velocity_rad_per_s: number[] | null;
+            /** Velocity Left M Per S */
+            velocity_left_m_per_s: number[];
+            /** Velocity Right M Per S */
+            velocity_right_m_per_s: number[];
+            /** Angular Velocity Left Rad Per S */
+            angular_velocity_left_rad_per_s: number[];
+            /** Angular Velocity Right Rad Per S */
+            angular_velocity_right_rad_per_s: number[];
+            /** Max Speed M Per S */
+            max_speed_m_per_s?: number | null;
+            /** Rod Position M */
+            rod_position_m?: number | null;
+            /** Rod Velocity M Per S */
+            rod_velocity_m_per_s?: number | null;
+            /** Rod Length M */
+            rod_length_m?: number | null;
+            /**
+             * Rails M
+             * @default []
+             */
+            rails_m: number[][][];
+            /**
+             * Rod M
+             * @default []
+             */
+            rod_m: number[][];
+        };
+        /**
+         * MotionalSample
+         * @description u, B and u × B at a point of the conductor (for display; values from the engine).
+         */
+        MotionalSample: {
+            /** Point M */
+            point_m: number[];
+            /** U M Per S */
+            u_m_per_s: number[];
+            /** B T */
+            B_T: number[] | null;
+            /** U Cross B V Per M */
+            u_cross_B_V_per_m: number[] | null;
+            /** Moving */
+            moving: boolean;
         };
         /** Mutual */
         Mutual: {
@@ -1736,6 +2117,14 @@ export interface components {
             reciprocity_ok?: boolean | null;
             reason?: components["schemas"]["LocalizedText"] | null;
         };
+        /** NoRotation */
+        NoRotation: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "none";
+        };
         /**
          * OneSidedValue
          * @description A one-sided limit at a sheet or core boundary, evaluated at ±offset along the normal.
@@ -1752,6 +2141,50 @@ export interface components {
             B_T: number[] | null;
             /** H A Per M */
             H_A_per_m: number[] | null;
+        };
+        /** ParticleBody */
+        ParticleBody: {
+            scene: components["schemas"]["Scene"];
+            particle: components["schemas"]["ParticleRequest"];
+        };
+        /** ParticleRequest */
+        ParticleRequest: {
+            /** Charge C */
+            charge_C: number;
+            /** Mass Kg */
+            mass_kg: number;
+            /** Position M */
+            position_m: [
+                number,
+                number,
+                number
+            ];
+            /** Velocity M Per S */
+            velocity_m_per_s: [
+                number,
+                number,
+                number
+            ];
+            /**
+             * Start S
+             * @default 0
+             */
+            start_s: number;
+            /**
+             * End S
+             * @default 0.000001
+             */
+            end_s: number;
+            /**
+             * Tolerance
+             * @default 0.02
+             */
+            tolerance: number;
+            /**
+             * Max Steps
+             * @default 20000
+             */
+            max_steps: number;
         };
         /**
          * PathDisplay
@@ -2089,6 +2522,7 @@ export interface components {
              */
             flux_surfaces: components["schemas"]["FluxSurface"][];
             time?: components["schemas"]["TimeHint"] | null;
+            test_charge?: components["schemas"]["TestCharge"] | null;
         };
         /**
          * PresetVariant
@@ -2426,6 +2860,7 @@ export interface components {
              * @default []
              */
             flux_surfaces: components["schemas"]["FluxSurface"][];
+            test_charge?: components["schemas"]["TestCharge"] | null;
         };
         /** ProjectOut */
         ProjectOut: {
@@ -2463,6 +2898,7 @@ export interface components {
              * @default []
              */
             flux_surfaces: components["schemas"]["FluxSurface"][];
+            test_charge?: components["schemas"]["TestCharge"] | null;
         };
         /** ProjectSummary */
         ProjectSummary: {
@@ -2779,6 +3215,77 @@ export interface components {
              */
             phase_rad: number;
         };
+        /** SinusoidalTranslation */
+        SinusoidalTranslation: {
+            /** T Start S */
+            t_start_s?: number | null;
+            /** T End S */
+            t_end_s?: number | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "sinusoidal";
+            /**
+             * Amplitude M
+             * @default 0.01
+             */
+            amplitude_m: number;
+            /**
+             * Axis
+             * @default [
+             *       1,
+             *       0,
+             *       0
+             *     ]
+             */
+            axis: [
+                number,
+                number,
+                number
+            ];
+            /**
+             * Frequency Hz
+             * @default 1
+             */
+            frequency_Hz: number;
+            /**
+             * Phase Rad
+             * @default 0
+             */
+            phase_rad: number;
+        };
+        /**
+         * SlidingRodShape
+         * @description Sliding-rod generator (Phase 4B), in the surface's local frame: two stationary rails
+         *     along +x at y = ±L/2 from x = 0 to x = rail_length, a stationary connecting segment at
+         *     x = 0, and a straight rod joining the rails at x(t) = rod_position + d_x(t). The circuit is
+         *     the rectangle [0, x(t)] × [−L/2, L/2]; only the rod moves (velocity along the rails).
+         */
+        SlidingRodShape: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "sliding_rod";
+            /**
+             * Rail Separation M
+             * @default 0.1
+             */
+            rail_separation_m: number;
+            /**
+             * Rail Length M
+             * @default 0.3
+             */
+            rail_length_m: number;
+            /**
+             * Rod Position M
+             * @default 0.05
+             */
+            rod_position_m: number;
+            /** Rod Motion */
+            rod_motion?: components["schemas"]["StationaryTranslation"] | components["schemas"]["ConstantVelocity"] | components["schemas"]["ConstantAcceleration"] | components["schemas"]["SinusoidalTranslation"];
+        };
         /**
          * SolenoidSource
          * @description Finite solenoid (Phase 3B) on a ``coil`` primitive, role ``current_source``: every turn
@@ -2901,6 +3408,14 @@ export interface components {
              */
             radius_m: number;
         };
+        /** StationaryTranslation */
+        StationaryTranslation: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "stationary";
+        };
         /**
          * SurfaceDisplay
          * @description Visualization metadata. Ignored by the engine and excluded from every cache key.
@@ -2942,7 +3457,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "verified" | "line_not_converged" | "surface_not_converged" | "invalid" | "singular" | "unsupported" | "failed";
+            status: "verified" | "line_not_converged" | "surface_not_converged" | "invalid" | "singular" | "unsupported" | "failed" | "derivative_not_converged" | "motion_undefined";
             status_reason?: components["schemas"]["LocalizedText"] | null;
             /** Time S */
             time_s: number;
@@ -3010,6 +3525,39 @@ export interface components {
              * @default false
              */
             no_change: boolean;
+            /**
+             * Moving
+             * @default false
+             */
+            moving: boolean;
+            /**
+             * Turns
+             * @default 1
+             */
+            turns: number;
+            motion?: components["schemas"]["MotionState"] | null;
+            /** Emf Motional V */
+            emf_motional_V?: number | null;
+            /** Emf Motional Error V */
+            emf_motional_error_V?: number | null;
+            /** Emf Total V */
+            emf_total_V?: number | null;
+            /** Emf Total Error V */
+            emf_total_error_V?: number | null;
+            /** Generalized Complete */
+            generalized_complete?: boolean | null;
+            /**
+             * Motional Samples
+             * @default []
+             */
+            motional_samples: components["schemas"]["MotionalSample"][];
+            derivative?: components["schemas"]["DerivativeInfo"] | null;
+            reference?: components["schemas"]["UniformReference"] | null;
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings: components["schemas"]["LocalizedText"][];
         };
         /** SymbolDef */
         SymbolDef: {
@@ -3018,6 +3566,55 @@ export interface components {
             meaning: components["schemas"]["LocalizedText"];
             /** Unit */
             unit: string;
+        };
+        /**
+         * TestCharge
+         * @description A test charge (Phase 4B): the Lorentz-force probe (charge, laboratory-frame velocity,
+         *     position) and the initial state and controls of its optional trajectory.
+         */
+        TestCharge: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Charge C
+             * @default 1.602176634e-19
+             */
+            charge_C: number;
+            /**
+             * Mass Kg
+             * @default 1.67262192369e-27
+             */
+            mass_kg: number;
+            /**
+             * Position M
+             * @default [
+             *       0,
+             *       0,
+             *       0
+             *     ]
+             */
+            position_m: [
+                number,
+                number,
+                number
+            ];
+            /**
+             * Velocity M Per S
+             * @default [
+             *       100000,
+             *       0,
+             *       0
+             *     ]
+             */
+            velocity_m_per_s: [
+                number,
+                number,
+                number
+            ];
+            trajectory?: components["schemas"]["TrajectorySettings"];
         };
         /**
          * TimeHint
@@ -3147,6 +3744,103 @@ export interface components {
              */
             phase_rad: number;
         };
+        /** TrajectoryResult */
+        TrajectoryResult: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "completed" | "max_steps" | "singular" | "unsupported" | "invalid";
+            status_reason?: components["schemas"]["LocalizedText"] | null;
+            method: components["schemas"]["LocalizedText"];
+            /** Steps */
+            steps: number;
+            /** Samples */
+            samples: components["schemas"]["TrajectorySample"][];
+            /** Min Step S */
+            min_step_s?: number | null;
+            /** Max Step S */
+            max_step_s?: number | null;
+            /** End Time S */
+            end_time_s: number;
+            /** Magnetic Only */
+            magnetic_only: boolean;
+            /** Energy Relative Change */
+            energy_relative_change: number | null;
+            /** Gyrofrequency Rad Per S */
+            gyrofrequency_rad_per_s: number | null;
+            /** Gyroradius M */
+            gyroradius_m: number | null;
+            /** Gyroperiod S */
+            gyroperiod_s: number | null;
+            /** Max Speed Fraction C */
+            max_speed_fraction_c: number;
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings: components["schemas"]["LocalizedText"][];
+        };
+        /** TrajectorySample */
+        TrajectorySample: {
+            /** T S */
+            t_s: number;
+            /** Position M */
+            position_m: number[];
+            /** Velocity M Per S */
+            velocity_m_per_s: number[];
+            /** Speed M Per S */
+            speed_m_per_s: number;
+            /** Kinetic Energy J */
+            kinetic_energy_J: number;
+            /** F E N */
+            F_E_N?: number[] | null;
+            /** F B N */
+            F_B_N?: number[] | null;
+            /** F Total N */
+            F_total_N?: number[] | null;
+        };
+        /**
+         * TrajectorySettings
+         * @description Trajectory controls of a test charge (persisted with a project).
+         */
+        TrajectorySettings: {
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /**
+             * Start S
+             * @default 0
+             */
+            start_s: number;
+            /**
+             * End S
+             * @default 0.000001
+             */
+            end_s: number;
+            /**
+             * Tolerance
+             * @default 0.02
+             */
+            tolerance: number;
+            /**
+             * Max Steps
+             * @default 20000
+             */
+            max_steps: number;
+            /**
+             * Show Trail
+             * @default true
+             */
+            show_trail: boolean;
+            /**
+             * Show Forces
+             * @default true
+             */
+            show_forces: boolean;
+        };
         /**
          * Transform
          * @description Local transform relative to the parent object (or to the world if there is no parent).
@@ -3206,6 +3900,26 @@ export interface components {
             normal: number[];
             /** Radius M */
             radius_m: number;
+        };
+        /**
+         * UniformReference
+         * @description Idealized uniform-field reference (an approximation, never the result).
+         */
+        UniformReference: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "sliding_rod_BLv" | "rotating_coil";
+            /** B T */
+            B_T: number[];
+            /** Point M */
+            point_m: number[];
+            /** Flux Wb */
+            flux_Wb: number | null;
+            /** Emf V */
+            emf_V: number;
+            note: components["schemas"]["LocalizedText"];
         };
         /** ValidationError */
         ValidationError: {
@@ -3830,6 +4544,90 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InductionHeader"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    lorentz_force_api_v1_lorentz_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LorentzBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LorentzResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    particle_api_v1_particle_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ParticleBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrajectoryResult"];
                 };
             };
             /** @description Request Entity Too Large */

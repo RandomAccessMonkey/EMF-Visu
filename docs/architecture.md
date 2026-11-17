@@ -878,6 +878,92 @@ boundary through a filament, sources without a vector potential (EMF).
 `ResultHeader.time_sources` and `induction`, probe `time_s` with `time_values`, `POST /induction`,
 `POST /profile/sample`, `AmpereRequest.time_s`, project `flux_surfaces`.
 
+## 9h. Phase 4B: moving conductors, motional EMF and the Lorentz force
+
+**Scope.** Stationary sources (every Phase 3/4A source, currents static or following the Phase 4A
+profiles) and *moving passive measurement conductors*; a test charge with the Lorentz force and
+an optional nonrelativistic trajectory. Out of scope: moving sources, induced currents and
+circuits, back-reaction, resistance, heating, friction, relativistic motion, self-fields.
+
+**Motion model** (`scene/motion.py`). A conductor keeps its reference geometry in its local
+frame; its pose is `r_world = R(t) r_local + c(t)` with `R(t) = R_rot(t) R0`, `c(t) = c0 + d(t)`
+(reference pose = the stored centre and Euler rotation). Translations: stationary, constant
+velocity, constant acceleration, sinusoidal; rotation: constant angular velocity about a world
+axis through `c(t)` (signed ω, right-hand rule). Each profile may have an active window
+`[t_start, t_end]`; outside it the pose is held. Velocities are analytical,
+`u = V + ω × (r − c)`. At a window end the left and right velocities differ: the pose reports
+both, and the request's `velocity_convention` (`undefined` | `left` | `right`) decides whether
+the instantaneous motional EMF is evaluated there (`undefined` → status `motion_undefined`).
+
+**Measurement conductors.** `FluxSurface` gained optional `motion`, `turns` (an explicitly
+defined N-turn coil of identical, coincident, series-connected turns: every flux and EMF ×N)
+and the `sliding_rod` shape (rails along local x at y = ±L/2, a fixed connecting segment at
+x = 0, a rod at x(t) moved by `rod_motion` along the rails only). All are excluded from the
+serialized form when absent, so Phase 4A surfaces and projects are byte-for-byte unchanged and
+take the Phase 4A code path.
+
+**Moving-surface computation** (`motional.py`, one field model for scenes and analytical tests:
+per-source unit B and unit A columns, combined with I_j(t) and dI_j/dt):
+
+- Φ_B(t): adaptive 5×5 Gauss–Legendre quadtree on the *posed* geometry (Phase 4A
+  `surface_integrate`, ring pre-splitting near filaments), surface normal turning with the body.
+- Transformer EMF ∮E_ind·dl = −Σ dI_j/dt ∮A_j·dl on the instantaneous boundary.
+- Motional EMF ∮(u × B)·dl by adaptive Gauss–Kronrod on the moving pieces only (all pieces of a
+  rigid body, the rod of the sliding rod), breakpoints graded at filament approaches.
+- Generalized EMF = transformer + motional; the electrostatic part of E integrates to zero on a
+  closed path and is counted as zero. If a changing source has no E_ind (infinite wire, ideal
+  toroid) the result is `unsupported` and labelled *motional-only* (motional EMF, flux and
+  dΦ/dt still shown).
+- dΦ_B/dt from the flux values only: second-order central differences (one-sided three-point
+  formulas at a velocity or current-profile jump, on the chosen side), Richardson-extrapolated,
+  steps halved from 0.05 × the characteristic time until two extrapolations agree within 0.1 ×
+  the comparison tolerance. Each stencil flux uses the *same frozen quadrature cells* (accepted
+  cells of the adaptive integral at t), so the discretization is a smooth function of time.
+- Tolerance: rtol × max(|EMF|, |dΦ/dt|, Σ|İ_j| max(|Φ_j|, |C_j|) + ∫|u||B||dl|): the last two
+  terms are instant-independent scales, so a zero EMF (u × B ⊥ dl everywhere) is judged
+  absolutely, not relatively.
+- Statuses: verified, line_not_converged, surface_not_converged, derivative_not_converged,
+  singular (filament pierces the surface or touches the boundary), motion_undefined,
+  unsupported, invalid (e.g. rod off the rails), failed.
+- Uniform-field references (labelled approximations, static fields only): sliding rod
+  EMF ≈ −(B·n) L v with B at the rod midpoint; pure rotation Φ ≈ A B·n(t), EMF ≈ −A B·(ω × n)
+  with B at the coil centre.
+
+**Lorentz force and particles** (`lorentz.py`). `F_E = q(E_static + E_ind)`, `F_B = q v × B`
+with v the particle's own laboratory velocity; powers qE·v and q(v × B)·v (with its rounding
+bound). E_static from the Phase 2A point-charge solver, E_ind and B from the magnetostatic
+solver at the instantaneous currents. Unavailable E_ind → `partial`; a point on a filament or a
+charge → `singular`. Trajectories: Boris scheme (drift–kick–rotate–kick–drift, fields at the
+half-step position and time), step ≤ η/ω_c, ≤ η d/|v| (d: distance to the nearest filament or
+point charge, so the particle never jumps over a singular region), electric-acceleration and
+current-time-scale limits, profile corners as step ends. Stops on singular or unsupported
+fields, at c, or at max steps. Warnings above 0.01 c.
+
+**API.** `InductionRequest.velocity_convention`; `SurfaceResult` adds `moving`, `turns`,
+`motion` (pose, velocities, rails/rod), `emf_motional_V`, `emf_total_V`,
+`generalized_complete`, `motional_samples` (u, B, u × B along the conductor),
+`derivative`, `reference`, `warnings`; `POST /lorentz`, `POST /particle` (cached); equations
+body `test_charge`; project `test_charge`. Equation registry: category `motion` with 21 new
+equations (pose, velocities, motional term and EMF, generalized EMF and Faraday law, moving
+flux, sliding-rod and rotating-coil references, N-turn linkage, electric and magnetic force,
+no-work theorem, cyclotron frequency and radius, Newton–Lorentz, nonrelativistic validity,
+kinetic energy); `lorentz_force` now has a context-derived status.
+
+**Frontend.** Faraday tab: sliding-rod button, motion editor (translation, rotation, windows,
+N turns), rod editor, velocity-convention selector, transformer/motional/generalized EMF rows,
+derivative method and convergence, uniform-field reference, and waveforms built only from the
+computed times. Viewport: moving surfaces drawn from the engine's posed polyline, normal,
+velocity and u × B arrows, stationary rails vs. moving rod. Lorentz tab: test charge (species
+shortcuts, q, m, position, v), force table with powers, trajectory controls and results
+(ω_c, r_c, ΔK/K, kinetic-energy plot); viewport particle, force arrows, trail and the computed
+sample at the simulation time (never interpolated). The time bar appears for moving surfaces
+and enabled trajectories as well.
+
+**Presets 22–25.** Sliding-rod generator (Helmholtz pair R = 0.15 m, 100 A per loop; rails
+0.10 m apart, rod at 0.50 m/s, stops at 0.3 s), rotating rectangular coil (0.08 × 0.06 m,
+ω = 2π rad/s about x), proton in the Helmholtz field (helix, r_c ≈ 17 mm), combined
+transformer and motional induction (sinusoidal loop, axially oscillating measurement loop).
+
 ## 10. Implementation status and roadmap
 
 | Area | Phase 1 state |
@@ -889,7 +975,7 @@ boundary through a filament, sources without a vector potential (EMF).
 | Analytical solver | point charges in vacuum |
 | Probe | E, φ, D, ∇·E, ∇×E, ∇·D, ∇×D at a point, per-charge contributions, singular state with the distributional statement, finite-difference check (advanced). Energy density: later milestone |
 | Equation registry | all required equations plus superposition, with computed statuses and usage; derivations are empty |
-| Presets | 1–4, 9–16 and 21 available (10 with three variants, 13 with two, view hints incl. a default probe point, 12–14 with default Ampère paths, 15, 16, 21 with measurement surfaces and a time range); 5–8 and 17–20 listed as unavailable |
+| Presets | 1–4, 9–16 and 21–25 available (22–25: moving conductors and a test particle, Phase 4B) (10 with three variants, 13 with two, view hints incl. a default probe point, 12–14 with default Ampère paths, 15, 16, 21 with measurement surfaces and a time range); 5–8 and 17–20 listed as unavailable |
 | Persistence | projects (scene incl. current profiles + view settings incl. simulation time and range + Gaussian surfaces + Ampère paths + Faraday measurement surfaces) in PostgreSQL |
 | Job queue | analytical worker, progress, cancellation |
 | Time-dependent currents, timeline | implemented (Phase 4A): constant, sinusoidal, ramp and piecewise-linear profiles with analytical dI/dt, deterministic playback |
@@ -902,7 +988,8 @@ boundary through a filament, sources without a vector potential (EMF).
 | Magnetostatics (Phase 3B) | finite discrete-turn solenoids, finite-turn toroids (vacuum) and the ideal continuous-winding toroid (linear core), uniformly magnetized cylindrical permanent magnets (bound sheet current), B and H with material regions, sheet and core boundaries with one-sided limits, idealized comparisons (ideal long solenoid, ideal toroid, dipole far field), axis profile |
 | Magnetostatics (later) | not started: nonlinear or field-dependent materials, demagnetization, magnetic flux through open surfaces, general magnetic materials |
 | Induction (Phase 4A, magnetoquasistatic, stationary geometry) | B(t), ∂B/∂t, Coulomb-gauge vector potential of closed circular currents, E_ind = −∂A/∂t, magnetic flux through stationary surfaces, Faraday's law verified independently, Lenz signs, mutual inductance with reciprocity |
-| Induction (Phase 4B and later) | not started: motional EMF (moving conductors or paths), induced currents and circuits, back-reaction, eddy currents, full-wave fields |
+| Moving conductors (Phase 4B) | rigid motion profiles, sliding-rod circuit, N-turn measurement coils, motional EMF ∮(u×B)·dl, generalized Faraday law verified against finite differences of the moving-surface flux, Lorentz force probe, Boris test-particle trajectories |
+| Induction (later) | not started: induced currents and circuits, back-reaction, moving sources, eddy currents, full-wave fields |
 | FEM (DOLFINx, Gmsh), FDTD (Meep) | not started (Phase 5); reported as unavailable |
 | Circuit subsystem (MNA) | not started; reported as unavailable |
 
@@ -922,6 +1009,14 @@ Acceptance criteria per phase are unchanged from the approved plan:
 - **Circuits:** MNA DC, transient and AC against RC, RL and RLC closed forms; labelled uncoupled.
 
 ## 11. Known limitations
+
+- Phase 4B: only measurement conductors move (rigidly, or the sliding rod's rod); sources stay
+  fixed. The EMF is an open-circuit EMF: no current, resistance, back-reaction or force on the
+  conductor. Motion is nonrelativistic (Galilean u × B). Rotation axes pass through the
+  conductor's centre. A moving surface's mutual inductance is not reported. dΦ/dt of a moving
+  surface is a converged finite-difference estimate with an error bound, not an analytical value.
+  Test particles: nonrelativistic, no radiation reaction, self-field or interactions; the
+  trajectory display shows the computed sample at or before the simulation time.
 
 - Phase 4A induction is magnetoquasistatic and stationary: no motional EMF, no induced currents or
   circuits, no eddy currents or back-reaction, no retardation or radiation. E_ind is only the
