@@ -13,7 +13,8 @@ import { useViewStore } from '@/state/viewStore'
 import { ArrowField } from './ArrowField'
 import type { LogScale } from './colormaps'
 import { magnitudes, sampling } from './fieldImages'
-import { CONTRIBUTION_COLORS, MAGNETIC_SOURCE_COLOR } from './magneticColors'
+import { CONTRIBUTION_COLORS, INDUCED_E_COLOR, MAGNETIC_SOURCE_COLOR } from './magneticColors'
+import type { MagneticVector } from '@/state/viewStore'
 
 /** The contribution actually shown: a saved choice that no longer fits the scene (a removed
  *  source, or 'all' with fewer than two sources) falls back to the total field. */
@@ -23,8 +24,9 @@ export function effectiveContribution(choice: string, ids: string[]): string {
 }
 
 /** Name of the vector array for the chosen field and contribution ('total' or a source id). */
-export const magneticArrayName = (id: 'arrows' | 'vol', field: 'B' | 'H', contribution: string) =>
-  contribution === 'total' || contribution === 'all' ? `${id}.${field}` : `${id}.${field}@${contribution}`
+/** Per-source arrays exist for B and H only; dB/dt and E_ind are always the total. */
+export const magneticArrayName = (id: 'arrows' | 'vol', field: MagneticVector, contribution: string) =>
+  contribution === 'total' || contribution === 'all' || field === 'dB_dt' || field === 'E_ind' ? `${id}.${field}` : `${id}.${field}@${contribution}`
 
 export const contributionColor = (ids: string[], id: string) =>
   CONTRIBUTION_COLORS[Math.max(0, ids.indexOf(id)) % CONTRIBUTION_COLORS.length]!
@@ -56,7 +58,7 @@ export function MagneticArrows({ result, id, scale }: { result: SimulationResult
   const ids = useMemo(() => result.header.current_sources.map((c) => c.object_id), [result])
   const contribution = effectiveContribution(choice, ids)
   const layers = useMemo(() => {
-    if (contribution === 'all' && id === 'arrows') {
+    if (contribution === 'all' && id === 'arrows' && (field === 'B' || field === 'H')) {
       return ids.map((oid) => ({ data: samples(result, id, `${id}.${field}@${oid}`, density), color: contributionColor(ids, oid) }))
     }
     // The 3D lattice carries the total field only.
@@ -74,10 +76,11 @@ export function MagneticArrows({ result, id, scale }: { result: SimulationResult
             magnitudes={data.mags}
             scale={scale}
             cell={data.cell}
-            lengthMode={color ? 'log' : lengthMode}
+            lengthMode={color || field === 'E_ind' ? 'log' : lengthMode}
             sizeFactor={sizeFactor}
             palette="magnetic"
-            solidColor={color}
+            // E_ind in its own solid colour (length ∝ log|E_ind|): never mistaken for electrostatic E.
+            solidColor={color ?? (field === 'E_ind' ? INDUCED_E_COLOR : undefined)}
           />
         ) : null,
       )}

@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { AmperePath, Domain, GaussSurface, PathDisplay, PrimitiveType, Scene, SceneObject, Source, SurfaceDisplay, Transform, Vec3 } from '@/api/types'
+import type { AmperePath, CurrentProfile, Domain, GaussSurface, PathDisplay, PrimitiveType, Scene, SceneObject, Source, SurfaceDisplay, Transform, Vec3 } from '@/api/types'
 
 export const EMPTY_SCENE: Scene = {
   schema_version: 1,
@@ -265,6 +265,19 @@ interface SceneState {
   setPathDisplay: (id: string, patch: Partial<PathDisplay>) => void
   removePath: (id: string) => void
   setPaths: (paths: AmperePath[]) => void
+  /** Faraday measurement surfaces (Phase 4A): stationary planar surfaces bounded by a closed
+   *  path, with the same geometry and orientation conventions as Ampère paths. */
+  fluxSurfaces: AmperePath[]
+  selectedFluxId: string | null
+  selectFlux: (id: string | null) => void
+  addFlux: (kind: PathKind, name: string) => void
+  updateFlux: (id: string, patch: Partial<AmperePath>) => void
+  setFluxDisplay: (id: string, patch: Partial<PathDisplay>) => void
+  removeFlux: (id: string) => void
+  setFluxSurfaces: (surfaces: AmperePath[]) => void
+  /** Set or clear a current source's time profile (Phase 4A). The engine derives the source's
+   *  current at t = 0 from the profile; the client never evaluates it. */
+  setProfile: (id: string, profile: CurrentProfile | null) => void
   add: (kind: NewObjectKind, name: string) => void
   addDipole: (name: string) => void
   setDipole: (groupId: string, charge_C: number, separation_m: number) => void
@@ -319,6 +332,27 @@ export const useSceneStore = create<SceneState>((set) => ({
   removePath: (id) =>
     set((s) => ({ paths: s.paths.filter((x) => x.id !== id), selectedPathId: s.selectedPathId === id ? null : s.selectedPathId })),
   setPaths: (paths) => set({ paths, selectedPathId: paths[0]?.id ?? null }),
+  fluxSurfaces: [],
+  selectedFluxId: null,
+  selectFlux: (id) => set({ selectedFluxId: id }),
+  addFlux: (kind, name) =>
+    set((s) => {
+      const base = makePath(s.fluxSurfaces, kind, name, s.scene.domain)
+      const surface = { ...base, id: base.id.replace(/^A/, 'F'), display: { ...DEFAULT_PATH_DISPLAY, show_surface: true } }
+      return { fluxSurfaces: [...s.fluxSurfaces, surface], selectedFluxId: surface.id }
+    }),
+  updateFlux: (id, patch) => set((s) => ({ fluxSurfaces: s.fluxSurfaces.map((x) => (x.id === id ? { ...x, ...patch } : x)) })),
+  setFluxDisplay: (id, patch) =>
+    set((s) => ({ fluxSurfaces: s.fluxSurfaces.map((x) => (x.id === id ? { ...x, display: { ...pathDisplayOf(x), ...patch } } : x)) })),
+  removeFlux: (id) =>
+    set((s) => ({ fluxSurfaces: s.fluxSurfaces.filter((x) => x.id !== id), selectedFluxId: s.selectedFluxId === id ? null : s.selectedFluxId })),
+  setFluxSurfaces: (fluxSurfaces) => set({ fluxSurfaces, selectedFluxId: fluxSurfaces[0]?.id ?? null }),
+  setProfile: (id, profile) =>
+    set((s) => ({
+      scene: mapObject(s.scene, id, (o) =>
+        o.source && 'current_A' in o.source ? { ...o, source: { ...o.source, profile } as typeof o.source } : o,
+      ),
+    })),
   add: (kind, name) =>
     set((s) => {
       const obj = makeObject(s.scene, kind, name)

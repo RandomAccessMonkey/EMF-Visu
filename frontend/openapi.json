@@ -334,6 +334,110 @@
         }
       }
     },
+    "/api/v1/induction": {
+      "post": {
+        "tags": [
+          "simulation"
+        ],
+        "summary": "Induction Law",
+        "description": "Magnetic flux through stationary surfaces, its time derivative, the induced EMF\n\u222eE_ind\u00b7dl and the Faraday comparison at one simulation time, with Lenz's-law signs and\nmutual inductances (Phase 4A, magnetoquasistatic).",
+        "operationId": "induction_law_api_v1_induction_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InductionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InductionHeader"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request Entity Too Large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/profile/sample": {
+      "post": {
+        "tags": [
+          "simulation"
+        ],
+        "summary": "Profile Sample",
+        "description": "I(t) and dI/dt of a current profile on an even time grid, for plotting (Phase 4A).",
+        "operationId": "profile_sample_api_v1_profile_sample_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileSampleBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileSamples"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/gauss/situations": {
       "get": {
         "tags": [
@@ -1099,6 +1203,11 @@
             "maxItems": 16,
             "minItems": 1,
             "title": "Paths"
+          },
+          "time_s": {
+            "type": "number",
+            "title": "Time S",
+            "default": 0.0
           }
         },
         "additionalProperties": false,
@@ -1368,16 +1477,49 @@
       },
       "CircularLoopSource": {
         "properties": {
+          "current_A": {
+            "type": "number",
+            "title": "Current A",
+            "default": 10.0
+          },
+          "profile": {
+            "anyOf": [
+              {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ConstantProfile"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SinusoidalProfile"
+                  },
+                  {
+                    "$ref": "#/components/schemas/RampProfile"
+                  },
+                  {
+                    "$ref": "#/components/schemas/PiecewiseLinearProfile"
+                  }
+                ],
+                "discriminator": {
+                  "propertyName": "type",
+                  "mapping": {
+                    "constant": "#/components/schemas/ConstantProfile",
+                    "piecewise_linear": "#/components/schemas/PiecewiseLinearProfile",
+                    "ramp": "#/components/schemas/RampProfile",
+                    "sinusoidal": "#/components/schemas/SinusoidalProfile"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile"
+          },
           "type": {
             "type": "string",
             "const": "circular_loop",
             "title": "Type",
             "default": "circular_loop"
-          },
-          "current_A": {
-            "type": "number",
-            "title": "Current A",
-            "default": 10.0
           }
         },
         "additionalProperties": false,
@@ -1440,6 +1582,24 @@
           "ok"
         ],
         "title": "ComponentHealth"
+      },
+      "ConstantProfile": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "constant",
+            "title": "Type",
+            "default": "constant"
+          },
+          "current_A": {
+            "type": "number",
+            "title": "Current A",
+            "default": 1.0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ConstantProfile"
       },
       "Crossing": {
         "properties": {
@@ -2088,6 +2248,15 @@
             "maxItems": 16,
             "title": "Paths",
             "default": []
+          },
+          "flux_surfaces": {
+            "items": {
+              "$ref": "#/components/schemas/FluxSurface"
+            },
+            "type": "array",
+            "maxItems": 8,
+            "title": "Flux Surfaces",
+            "default": []
           }
         },
         "type": "object",
@@ -2526,6 +2695,117 @@
         ],
         "title": "FluxRequest"
       },
+      "FluxSurface": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "default": ""
+          },
+          "shape": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CirclePath"
+              },
+              {
+                "$ref": "#/components/schemas/RectanglePath"
+              },
+              {
+                "$ref": "#/components/schemas/PolygonPath"
+              }
+            ],
+            "title": "Shape",
+            "discriminator": {
+              "propertyName": "type",
+              "mapping": {
+                "circle": "#/components/schemas/CirclePath",
+                "polygon": "#/components/schemas/PolygonPath",
+                "rectangle": "#/components/schemas/RectanglePath"
+              }
+            }
+          },
+          "center_m": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Center M",
+            "default": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          },
+          "rotation_euler_xyz_rad": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Rotation Euler Xyz Rad",
+            "default": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          },
+          "reversed": {
+            "type": "boolean",
+            "title": "Reversed",
+            "default": false
+          },
+          "rtol": {
+            "type": "number",
+            "maximum": 0.01,
+            "minimum": 1e-10,
+            "title": "Rtol",
+            "default": 0.0001
+          },
+          "display": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PathDisplay"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "shape"
+        ],
+        "title": "FluxSurface",
+        "description": "A stationary measurement surface: the planar region bounded by the path, oriented by the\nright-hand rule (the same geometry and conventions as an Amp\u00e8re path). ``rtol`` is the\nrelative tolerance of the Faraday comparison."
+      },
       "GaussSituation": {
         "properties": {
           "id": {
@@ -2797,18 +3077,197 @@
         "title": "IdealSolenoidInfo",
         "description": "Ideal long-solenoid comparison values (an idealization, never the solver's field)."
       },
+      "InductionBody": {
+        "properties": {
+          "scene": {
+            "$ref": "#/components/schemas/Scene"
+          },
+          "induction": {
+            "$ref": "#/components/schemas/InductionRequest"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scene",
+          "induction"
+        ],
+        "title": "InductionBody"
+      },
+      "InductionHeader": {
+        "properties": {
+          "solver_id": {
+            "type": "string",
+            "title": "Solver Id"
+          },
+          "solver_version": {
+            "type": "string",
+            "title": "Solver Version"
+          },
+          "time_s": {
+            "type": "number",
+            "title": "Time S"
+          },
+          "regime": {
+            "type": "string",
+            "const": "magnetoquasistatic",
+            "title": "Regime",
+            "default": "magnetoquasistatic"
+          },
+          "gauge": {
+            "type": "string",
+            "const": "coulomb",
+            "title": "Gauge",
+            "default": "coulomb"
+          },
+          "method": {
+            "$ref": "#/components/schemas/LocalizedText"
+          },
+          "surfaces": {
+            "items": {
+              "$ref": "#/components/schemas/SurfaceResult"
+            },
+            "type": "array",
+            "title": "Surfaces"
+          }
+        },
+        "type": "object",
+        "required": [
+          "solver_id",
+          "solver_version",
+          "time_s",
+          "method",
+          "surfaces"
+        ],
+        "title": "InductionHeader"
+      },
+      "InductionInfo": {
+        "properties": {
+          "time_s": {
+            "type": "number",
+            "title": "Time S"
+          },
+          "time_dependent": {
+            "type": "boolean",
+            "title": "Time Dependent"
+          },
+          "derivative_unique": {
+            "type": "boolean",
+            "title": "Derivative Unique"
+          },
+          "e_ind_available": {
+            "type": "boolean",
+            "title": "E Ind Available"
+          },
+          "unsupported_object_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unsupported Object Ids",
+            "default": []
+          },
+          "regime": {
+            "type": "string",
+            "const": "magnetoquasistatic",
+            "title": "Regime",
+            "default": "magnetoquasistatic"
+          },
+          "gauge": {
+            "type": "string",
+            "const": "coulomb",
+            "title": "Gauge",
+            "default": "coulomb"
+          },
+          "quasistatic_ratio": {
+            "type": "number",
+            "title": "Quasistatic Ratio",
+            "default": 0.0
+          }
+        },
+        "type": "object",
+        "required": [
+          "time_s",
+          "time_dependent",
+          "derivative_unique",
+          "e_ind_available"
+        ],
+        "title": "InductionInfo",
+        "description": "Status of the time-dependent quantities of a magnetic result (Phase 4A)."
+      },
+      "InductionRequest": {
+        "properties": {
+          "surfaces": {
+            "items": {
+              "$ref": "#/components/schemas/FluxSurface"
+            },
+            "type": "array",
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Surfaces"
+          },
+          "time_s": {
+            "type": "number",
+            "title": "Time S",
+            "default": 0.0
+          },
+          "mutual": {
+            "type": "boolean",
+            "title": "Mutual",
+            "default": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "surfaces"
+        ],
+        "title": "InductionRequest"
+      },
       "InfiniteWireSource": {
         "properties": {
+          "current_A": {
+            "type": "number",
+            "title": "Current A",
+            "default": 10.0
+          },
+          "profile": {
+            "anyOf": [
+              {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ConstantProfile"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SinusoidalProfile"
+                  },
+                  {
+                    "$ref": "#/components/schemas/RampProfile"
+                  },
+                  {
+                    "$ref": "#/components/schemas/PiecewiseLinearProfile"
+                  }
+                ],
+                "discriminator": {
+                  "propertyName": "type",
+                  "mapping": {
+                    "constant": "#/components/schemas/ConstantProfile",
+                    "piecewise_linear": "#/components/schemas/PiecewiseLinearProfile",
+                    "ramp": "#/components/schemas/RampProfile",
+                    "sinusoidal": "#/components/schemas/SinusoidalProfile"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile"
+          },
           "type": {
             "type": "string",
             "const": "infinite_wire",
             "title": "Type",
             "default": "infinite_wire"
-          },
-          "current_A": {
-            "type": "number",
-            "title": "Current A",
-            "default": 10.0
           }
         },
         "additionalProperties": false,
@@ -2966,6 +3425,25 @@
         ],
         "title": "JobStatus"
       },
+      "Keyframe": {
+        "properties": {
+          "t_s": {
+            "type": "number",
+            "title": "T S"
+          },
+          "current_A": {
+            "type": "number",
+            "title": "Current A"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "t_s",
+          "current_A"
+        ],
+        "title": "Keyframe"
+      },
       "LatticeSampling": {
         "properties": {
           "kind": {
@@ -2997,7 +3475,9 @@
                     "B",
                     "H",
                     "div_B",
-                    "div_H"
+                    "div_H",
+                    "dB_dt",
+                    "E_ind"
                   ]
                 },
                 "type": "array",
@@ -3074,6 +3554,44 @@
         ],
         "title": "LatticeSampling",
         "description": "Regular axis-aligned 3D lattice, inclusive of both ends. Shape (nz, ny, nx[, 3])."
+      },
+      "Lenz": {
+        "properties": {
+          "flux_trend": {
+            "type": "string",
+            "enum": [
+              "increasing",
+              "decreasing",
+              "steady"
+            ],
+            "title": "Flux Trend"
+          },
+          "emf_sign": {
+            "type": "integer",
+            "enum": [
+              1,
+              0,
+              -1
+            ],
+            "title": "Emf Sign"
+          },
+          "circulation": {
+            "type": "string",
+            "enum": [
+              "along_path",
+              "against_path",
+              "none"
+            ],
+            "title": "Circulation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "flux_trend",
+          "emf_sign",
+          "circulation"
+        ],
+        "title": "Lenz"
       },
       "LevelRange": {
         "properties": {
@@ -3232,6 +3750,45 @@
               }
             ],
             "title": "H Magnitude A Per M"
+          },
+          "dI_dt_A_per_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Di Dt A Per S"
+          },
+          "dB_dt_T_per_s": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Db Dt T Per S"
+          },
+          "E_ind_V_per_m": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "E Ind V Per M"
           }
         },
         "type": "object",
@@ -3519,6 +4076,24 @@
             "title": "Gauss Invalid",
             "default": false
           },
+          "profile_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Profile Types",
+            "default": []
+          },
+          "e_ind_available": {
+            "type": "boolean",
+            "title": "E Ind Available",
+            "default": true
+          },
+          "flux_surfaces": {
+            "type": "integer",
+            "title": "Flux Surfaces",
+            "default": 0
+          },
           "checked_equation_ids": {
             "items": {
               "type": "string"
@@ -3550,6 +4125,111 @@
         ],
         "title": "ModelContext",
         "description": "What physical model produced a result. The equation registry derives every equation's\napplicability status from this, so statuses are computed rather than hard-coded."
+      },
+      "Mutual": {
+        "properties": {
+          "object_id": {
+            "type": "string",
+            "title": "Object Id"
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available"
+          },
+          "M12_H": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "M12 H"
+          },
+          "M12_error_H": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "M12 Error H"
+          },
+          "M21_H": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "M21 H"
+          },
+          "M21_error_H": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "M21 Error H"
+          },
+          "reciprocity_difference_H": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reciprocity Difference H"
+          },
+          "reciprocity_relative": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reciprocity Relative"
+          },
+          "reciprocity_ok": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reciprocity Ok"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LocalizedText"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "object_id",
+          "available"
+        ],
+        "title": "Mutual"
       },
       "OneSidedValue": {
         "properties": {
@@ -3904,6 +4584,31 @@
         "title": "PermanentMagnetSource",
         "description": "Uniformly magnetized cylinder (Phase 3B) on a ``cylinder`` primitive, role\n``magnetic_material``: M = M e_z(local) inside, 0 outside. Negative M reverses the polarity.\nA prescribed magnetization (no hysteresis, no demagnetization curve)."
       },
+      "PiecewiseLinearProfile": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "piecewise_linear",
+            "title": "Type",
+            "default": "piecewise_linear"
+          },
+          "keyframes": {
+            "items": {
+              "$ref": "#/components/schemas/Keyframe"
+            },
+            "type": "array",
+            "maxItems": 64,
+            "minItems": 2,
+            "title": "Keyframes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "keyframes"
+        ],
+        "title": "PiecewiseLinearProfile"
+      },
       "PlaneGridSampling": {
         "properties": {
           "kind": {
@@ -3935,7 +4640,9 @@
                     "B",
                     "H",
                     "div_B",
-                    "div_H"
+                    "div_H",
+                    "dB_dt",
+                    "E_ind"
                   ]
                 },
                 "type": "array",
@@ -4190,7 +4897,9 @@
                     "B",
                     "H",
                     "div_B",
-                    "div_H"
+                    "div_H",
+                    "dB_dt",
+                    "E_ind"
                   ]
                 },
                 "type": "array",
@@ -4367,6 +5076,24 @@
             "type": "array",
             "title": "Ampere Paths",
             "default": []
+          },
+          "flux_surfaces": {
+            "items": {
+              "$ref": "#/components/schemas/FluxSurface"
+            },
+            "type": "array",
+            "title": "Flux Surfaces",
+            "default": []
+          },
+          "time": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TimeHint"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -4429,6 +5156,11 @@
             "maxItems": 3,
             "minItems": 3,
             "title": "Point M"
+          },
+          "time_s": {
+            "type": "number",
+            "title": "Time S",
+            "default": 0.0
           }
         },
         "type": "object",
@@ -4918,6 +5650,42 @@
               }
             ],
             "title": "Relative Precision Bound"
+          },
+          "time_s": {
+            "type": "number",
+            "title": "Time S",
+            "default": 0.0
+          },
+          "time_dependent": {
+            "type": "boolean",
+            "title": "Time Dependent",
+            "default": false
+          },
+          "time_sources": {
+            "items": {
+              "$ref": "#/components/schemas/TimeSourceInfo"
+            },
+            "type": "array",
+            "title": "Time Sources",
+            "default": []
+          },
+          "time_values": {
+            "items": {
+              "$ref": "#/components/schemas/ProbeValue"
+            },
+            "type": "array",
+            "title": "Time Values",
+            "default": []
+          },
+          "e_ind_available": {
+            "type": "boolean",
+            "title": "E Ind Available",
+            "default": true
+          },
+          "derivative_unique": {
+            "type": "boolean",
+            "title": "Derivative Unique",
+            "default": true
           }
         },
         "type": "object",
@@ -5130,6 +5898,99 @@
         ],
         "title": "ProbeValue"
       },
+      "ProfileSampleBody": {
+        "properties": {
+          "profile": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ConstantProfile"
+              },
+              {
+                "$ref": "#/components/schemas/SinusoidalProfile"
+              },
+              {
+                "$ref": "#/components/schemas/RampProfile"
+              },
+              {
+                "$ref": "#/components/schemas/PiecewiseLinearProfile"
+              }
+            ],
+            "title": "Profile",
+            "discriminator": {
+              "propertyName": "type",
+              "mapping": {
+                "constant": "#/components/schemas/ConstantProfile",
+                "piecewise_linear": "#/components/schemas/PiecewiseLinearProfile",
+                "ramp": "#/components/schemas/RampProfile",
+                "sinusoidal": "#/components/schemas/SinusoidalProfile"
+              }
+            }
+          },
+          "start_s": {
+            "type": "number",
+            "title": "Start S"
+          },
+          "end_s": {
+            "type": "number",
+            "title": "End S"
+          },
+          "count": {
+            "type": "integer",
+            "maximum": 2001.0,
+            "minimum": 2.0,
+            "title": "Count",
+            "default": 201
+          }
+        },
+        "type": "object",
+        "required": [
+          "profile",
+          "start_s",
+          "end_s"
+        ],
+        "title": "ProfileSampleBody",
+        "description": "Sample a current profile for display (Phase 4A); evaluated by the engine."
+      },
+      "ProfileSamples": {
+        "properties": {
+          "t_s": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "T S"
+          },
+          "current_A": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Current A"
+          },
+          "dI_dt_A_per_s": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Di Dt A Per S"
+          },
+          "corners_s": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Corners S"
+          }
+        },
+        "type": "object",
+        "required": [
+          "t_s",
+          "current_A",
+          "dI_dt_A_per_s",
+          "corners_s"
+        ],
+        "title": "ProfileSamples"
+      },
       "ProjectIn": {
         "properties": {
           "name": {
@@ -5163,6 +6024,15 @@
             "type": "array",
             "maxItems": 16,
             "title": "Paths",
+            "default": []
+          },
+          "flux_surfaces": {
+            "items": {
+              "$ref": "#/components/schemas/FluxSurface"
+            },
+            "type": "array",
+            "maxItems": 8,
+            "title": "Flux Surfaces",
             "default": []
           }
         },
@@ -5216,6 +6086,14 @@
             "type": "array",
             "title": "Paths",
             "default": []
+          },
+          "flux_surfaces": {
+            "items": {
+              "$ref": "#/components/schemas/FluxSurface"
+            },
+            "type": "array",
+            "title": "Flux Surfaces",
+            "default": []
           }
         },
         "type": "object",
@@ -5258,6 +6136,39 @@
           "updated_at"
         ],
         "title": "ProjectSummary"
+      },
+      "RampProfile": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "ramp",
+            "title": "Type",
+            "default": "ramp"
+          },
+          "start_A": {
+            "type": "number",
+            "title": "Start A",
+            "default": 0.0
+          },
+          "slope_A_per_s": {
+            "type": "number",
+            "title": "Slope A Per S",
+            "default": 1.0
+          },
+          "t_start_s": {
+            "type": "number",
+            "title": "T Start S",
+            "default": 0.0
+          },
+          "t_end_s": {
+            "type": "number",
+            "title": "T End S",
+            "default": 1.0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "RampProfile"
       },
       "RectanglePath": {
         "properties": {
@@ -5446,6 +6357,24 @@
             "type": "array",
             "title": "Current Sources",
             "default": []
+          },
+          "time_sources": {
+            "items": {
+              "$ref": "#/components/schemas/TimeSourceInfo"
+            },
+            "type": "array",
+            "title": "Time Sources",
+            "default": []
+          },
+          "induction": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InductionInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "in_plane_tolerance_m": {
             "anyOf": [
@@ -5788,18 +6717,87 @@
         ],
         "title": "SimulationBody"
       },
+      "SinusoidalProfile": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "sinusoidal",
+            "title": "Type",
+            "default": "sinusoidal"
+          },
+          "dc_A": {
+            "type": "number",
+            "title": "Dc A",
+            "default": 0.0
+          },
+          "peak_A": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Peak A",
+            "default": 1.0
+          },
+          "frequency_Hz": {
+            "type": "number",
+            "maximum": 1000000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Frequency Hz",
+            "default": 1.0
+          },
+          "phase_rad": {
+            "type": "number",
+            "title": "Phase Rad",
+            "default": 0.0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "SinusoidalProfile"
+      },
       "SolenoidSource": {
         "properties": {
+          "current_A": {
+            "type": "number",
+            "title": "Current A",
+            "default": 1.0
+          },
+          "profile": {
+            "anyOf": [
+              {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ConstantProfile"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SinusoidalProfile"
+                  },
+                  {
+                    "$ref": "#/components/schemas/RampProfile"
+                  },
+                  {
+                    "$ref": "#/components/schemas/PiecewiseLinearProfile"
+                  }
+                ],
+                "discriminator": {
+                  "propertyName": "type",
+                  "mapping": {
+                    "constant": "#/components/schemas/ConstantProfile",
+                    "piecewise_linear": "#/components/schemas/PiecewiseLinearProfile",
+                    "ramp": "#/components/schemas/RampProfile",
+                    "sinusoidal": "#/components/schemas/SinusoidalProfile"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile"
+          },
           "type": {
             "type": "string",
             "const": "solenoid",
             "title": "Type",
             "default": "solenoid"
-          },
-          "current_A": {
-            "type": "number",
-            "title": "Current A",
-            "default": 1.0
           }
         },
         "additionalProperties": false,
@@ -5850,7 +6848,9 @@
                 "B",
                 "H",
                 "div_B",
-                "div_H"
+                "div_H",
+                "dB_dt",
+                "E_ind"
               ]
             },
             "type": "array",
@@ -5908,6 +6908,11 @@
             "maxItems": 4,
             "title": "Source Contributions",
             "default": []
+          },
+          "time_s": {
+            "type": "number",
+            "title": "Time S",
+            "default": 0.0
           }
         },
         "additionalProperties": false,
@@ -6011,6 +7016,85 @@
         ],
         "title": "SolverStatus"
       },
+      "SourceFlux": {
+        "properties": {
+          "object_id": {
+            "type": "string",
+            "title": "Object Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "current_A": {
+            "type": "number",
+            "title": "Current A"
+          },
+          "dI_dt_A_per_s": {
+            "type": "number",
+            "title": "Di Dt A Per S"
+          },
+          "unit_flux_Wb_per_A": {
+            "type": "number",
+            "title": "Unit Flux Wb Per A"
+          },
+          "unit_flux_error": {
+            "type": "number",
+            "title": "Unit Flux Error"
+          },
+          "unit_circulation_Wb_per_A": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Circulation Wb Per A"
+          },
+          "unit_circulation_error": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Circulation Error"
+          },
+          "flux_Wb": {
+            "type": "number",
+            "title": "Flux Wb"
+          },
+          "emf_V": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emf V"
+          }
+        },
+        "type": "object",
+        "required": [
+          "object_id",
+          "kind",
+          "current_A",
+          "dI_dt_A_per_s",
+          "unit_flux_Wb_per_A",
+          "unit_flux_error",
+          "unit_circulation_Wb_per_A",
+          "unit_circulation_error",
+          "flux_Wb",
+          "emf_V"
+        ],
+        "title": "SourceFlux"
+      },
       "SpherePrimitive": {
         "properties": {
           "type": {
@@ -6079,6 +7163,323 @@
         "title": "SurfaceDisplay",
         "description": "Visualization metadata. Ignored by the engine and excluded from every cache key."
       },
+      "SurfaceResult": {
+        "properties": {
+          "surface_id": {
+            "type": "string",
+            "title": "Surface Id"
+          },
+          "valid": {
+            "type": "boolean",
+            "title": "Valid"
+          },
+          "invalid_reasons": {
+            "items": {
+              "$ref": "#/components/schemas/LocalizedText"
+            },
+            "type": "array",
+            "title": "Invalid Reasons",
+            "default": []
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "verified",
+              "line_not_converged",
+              "surface_not_converged",
+              "invalid",
+              "singular",
+              "unsupported",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "status_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LocalizedText"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "time_s": {
+            "type": "number",
+            "title": "Time S"
+          },
+          "derivative_unique": {
+            "type": "boolean",
+            "title": "Derivative Unique",
+            "default": true
+          },
+          "normal": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Normal"
+          },
+          "center_m": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Center M"
+          },
+          "area_m2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Area M2"
+          },
+          "perimeter_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Perimeter M"
+          },
+          "polyline_m": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Polyline M",
+            "default": []
+          },
+          "flux_Wb": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flux Wb"
+          },
+          "flux_error_Wb": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flux Error Wb"
+          },
+          "dflux_dt_V": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dflux Dt V"
+          },
+          "dflux_dt_error_V": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dflux Dt Error V"
+          },
+          "emf_V": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emf V"
+          },
+          "emf_error_V": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emf Error V"
+          },
+          "difference_V": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Difference V"
+          },
+          "relative_error": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relative Error"
+          },
+          "tolerance_V": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tolerance V"
+          },
+          "surface_converged": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Surface Converged"
+          },
+          "line_converged": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line Converged"
+          },
+          "surface_cells": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Surface Cells"
+          },
+          "line_subintervals": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line Subintervals"
+          },
+          "min_distance_to_filament_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Distance To Filament M"
+          },
+          "lenz": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Lenz"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SourceFlux"
+            },
+            "type": "array",
+            "title": "Sources",
+            "default": []
+          },
+          "static_flux_Wb": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Static Flux Wb"
+          },
+          "mutual": {
+            "items": {
+              "$ref": "#/components/schemas/Mutual"
+            },
+            "type": "array",
+            "title": "Mutual",
+            "default": []
+          },
+          "no_change": {
+            "type": "boolean",
+            "title": "No Change",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "surface_id",
+          "valid",
+          "status",
+          "time_s"
+        ],
+        "title": "SurfaceResult"
+      },
       "SymbolDef": {
         "properties": {
           "latex": {
@@ -6101,18 +7502,135 @@
         ],
         "title": "SymbolDef"
       },
+      "TimeHint": {
+        "properties": {
+          "start_s": {
+            "type": "number",
+            "title": "Start S"
+          },
+          "end_s": {
+            "type": "number",
+            "title": "End S"
+          },
+          "step_s": {
+            "type": "number",
+            "title": "Step S"
+          },
+          "initial_s": {
+            "type": "number",
+            "title": "Initial S",
+            "default": 0.0
+          }
+        },
+        "type": "object",
+        "required": [
+          "start_s",
+          "end_s",
+          "step_s"
+        ],
+        "title": "TimeHint",
+        "description": "Simulation-time range and step a time-dependent preset opens with (Phase 4A). The\nphysics at a time t does not depend on these; they only set the playback."
+      },
+      "TimeSourceInfo": {
+        "properties": {
+          "object_id": {
+            "type": "string",
+            "title": "Object Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "profile_type": {
+            "type": "string",
+            "enum": [
+              "constant",
+              "sinusoidal",
+              "ramp",
+              "piecewise_linear"
+            ],
+            "title": "Profile Type"
+          },
+          "current_A": {
+            "type": "number",
+            "title": "Current A"
+          },
+          "dI_dt_A_per_s": {
+            "type": "number",
+            "title": "Di Dt A Per S"
+          },
+          "dI_dt_left_A_per_s": {
+            "type": "number",
+            "title": "Di Dt Left A Per S"
+          },
+          "derivative_unique": {
+            "type": "boolean",
+            "title": "Derivative Unique"
+          },
+          "induction_supported": {
+            "type": "boolean",
+            "title": "Induction Supported"
+          }
+        },
+        "type": "object",
+        "required": [
+          "object_id",
+          "kind",
+          "profile_type",
+          "current_A",
+          "dI_dt_A_per_s",
+          "dI_dt_left_A_per_s",
+          "derivative_unique",
+          "induction_supported"
+        ],
+        "title": "TimeSourceInfo",
+        "description": "A current source at the simulation time (Phase 4A)."
+      },
       "ToroidFiniteSource": {
         "properties": {
+          "current_A": {
+            "type": "number",
+            "title": "Current A",
+            "default": 1.0
+          },
+          "profile": {
+            "anyOf": [
+              {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ConstantProfile"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SinusoidalProfile"
+                  },
+                  {
+                    "$ref": "#/components/schemas/RampProfile"
+                  },
+                  {
+                    "$ref": "#/components/schemas/PiecewiseLinearProfile"
+                  }
+                ],
+                "discriminator": {
+                  "propertyName": "type",
+                  "mapping": {
+                    "constant": "#/components/schemas/ConstantProfile",
+                    "piecewise_linear": "#/components/schemas/PiecewiseLinearProfile",
+                    "ramp": "#/components/schemas/RampProfile",
+                    "sinusoidal": "#/components/schemas/SinusoidalProfile"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile"
+          },
           "type": {
             "type": "string",
             "const": "toroid_finite",
             "title": "Type",
             "default": "toroid_finite"
-          },
-          "current_A": {
-            "type": "number",
-            "title": "Current A",
-            "default": 1.0
           }
         },
         "additionalProperties": false,
@@ -6122,16 +7640,49 @@
       },
       "ToroidIdealSource": {
         "properties": {
+          "current_A": {
+            "type": "number",
+            "title": "Current A",
+            "default": 1.0
+          },
+          "profile": {
+            "anyOf": [
+              {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ConstantProfile"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SinusoidalProfile"
+                  },
+                  {
+                    "$ref": "#/components/schemas/RampProfile"
+                  },
+                  {
+                    "$ref": "#/components/schemas/PiecewiseLinearProfile"
+                  }
+                ],
+                "discriminator": {
+                  "propertyName": "type",
+                  "mapping": {
+                    "constant": "#/components/schemas/ConstantProfile",
+                    "piecewise_linear": "#/components/schemas/PiecewiseLinearProfile",
+                    "ramp": "#/components/schemas/RampProfile",
+                    "sinusoidal": "#/components/schemas/SinusoidalProfile"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile"
+          },
           "type": {
             "type": "string",
             "const": "toroid_ideal",
             "title": "Type",
             "default": "toroid_ideal"
-          },
-          "current_A": {
-            "type": "number",
-            "title": "Current A",
-            "default": 1.0
           },
           "relative_permeability": {
             "type": "number",

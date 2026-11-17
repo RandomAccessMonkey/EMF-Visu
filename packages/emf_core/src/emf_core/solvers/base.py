@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Literal, Protocol
+from typing import Annotated, Any, Literal, Protocol
 
 import numpy as np
 from numpy.typing import NDArray
@@ -88,6 +88,9 @@ class SolveRequest(StrictModel):
     # Magnetic requests (Phase 3A): samplings on which each current source's own field B_i (and
     # H_i) is returned as well, as arrays "<sampling>.B@<object id>" / "<sampling>.H@<object id>".
     source_contributions: list[SamplingId] = Field(default=[], max_length=4)
+    # Phase 4A: simulation time (s) at which time-dependent source currents are evaluated
+    # (magnetoquasistatic). Scenes without current profiles do not depend on it.
+    time_s: Annotated[float, Field(allow_inf_nan=False)] = 0.0
 
     @property
     def field_kind(self) -> FieldKind:
@@ -115,8 +118,8 @@ class SolveRequest(StrictModel):
         kind = field_kind_of(self.all_quantities())
         if kind is None:
             raise ValueError("a request asks for either electric (E, phi, D and their "
-                             "derivatives) or magnetic (B, H, div_B, div_H) quantities; the two "
-                             "static fields are solved separately")
+                             "derivatives) or magnetic (B, H, div_B, div_H, dB_dt, E_ind) "
+                             "quantities; the two are solved separately")
         if kind == "magnetic" and (self.equipotentials is not None
                                    or self.isosurfaces is not None):
             raise ValueError("equipotentials and isosurfaces belong to electric requests")
@@ -181,6 +184,11 @@ class ModelContext(BaseModel):
     gauss_surfaces: int = 0
     gauss_boundary_ambiguous: bool = False
     gauss_invalid: bool = False
+    # Phase 4A: profile types of the current sources ("constant" when none is set), whether
+    # E_ind can be evaluated, and how many Faraday measurement surfaces the request has.
+    profile_types: list[str] = []
+    e_ind_available: bool = True
+    flux_surfaces: int = 0
     # Equations whose two sides the application computes independently and compares.
     checked_equation_ids: list[str] = []
     solver_id: str
@@ -360,6 +368,34 @@ class CurrentSourceInfo(BaseModel):
     plane_distance_m: dict[str, float] = {}
 
 
+class TimeSourceInfo(BaseModel):
+    """A current source at the simulation time (Phase 4A)."""
+
+    object_id: str
+    kind: str
+    profile_type: Literal["constant", "sinusoidal", "ramp", "piecewise_linear"]
+    current_A: float  # I(t), per turn
+    dI_dt_A_per_s: float  # right-hand derivative (the one used for dB/dt and E_ind)
+    dI_dt_left_A_per_s: float
+    derivative_unique: bool  # False at a corner of a ramp or piecewise-linear profile
+    induction_supported: bool  # E_ind of this source can be evaluated (closed circular turns)
+
+
+class InductionInfo(BaseModel):
+    """Status of the time-dependent quantities of a magnetic result (Phase 4A)."""
+
+    time_s: float
+    time_dependent: bool  # some source has a non-constant profile
+    derivative_unique: bool
+    e_ind_available: bool  # False if a source without a vector potential changes at t
+    unsupported_object_ids: list[str] = []
+    regime: Literal["magnetoquasistatic"] = "magnetoquasistatic"
+    gauge: Literal["coulomb"] = "coulomb"
+    # Largest f L / c over sinusoidal sources (L: domain diagonal): the quasistatic
+    # approximation needs it to be small (retardation across the region neglected).
+    quasistatic_ratio: float = 0.0
+
+
 class ResultHeader(BaseModel):
     format_version: Literal[1] = RESULT_FORMAT_VERSION
     status: Literal["ok", "failed", "cancelled"] = "ok"
@@ -382,6 +418,8 @@ class ResultHeader(BaseModel):
     equation_status: list[EquationStatusEntry] = []
     point_sources: list[PointSourceInfo] = []
     current_sources: list[CurrentSourceInfo] = []
+    time_sources: list[TimeSourceInfo] = []  # Phase 4A
+    induction: InductionInfo | None = None  # Phase 4A
     in_plane_tolerance_m: float | None = None
     field_lines: FieldLineSet | None = None
     equipotentials: EquipotentialSet | None = None

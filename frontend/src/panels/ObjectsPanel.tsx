@@ -23,8 +23,14 @@ function loadPreset(p: Preset, scene: NonNullable<Preset['scene']>) {
   useSceneStore.getState().load(scene, { presetId: p.id, presetScene: scene })
   // A preset's Ampère paths (Phase 3B) replace the current ones; presets without paths keep them.
   if (p.ampere_paths.length > 0) useSceneStore.getState().setPaths(p.ampere_paths)
+  // Phase 4A: a preset's measurement surfaces replace the current ones, and its time range sets
+  // the playback (identical initial parameters reproduce identical results).
+  if (p.flux_surfaces.length > 0) useSceneStore.getState().setFluxSurfaces(p.flux_surfaces)
   const hint = p.view_hint
+  const time = p.time
   useViewStore.getState().set({
+    playing: false,
+    ...(time ? { timeStart: time.start_s, timeEnd: time.end_s, timeStep: time.step_s, timeS: time.initial_s } : {}),
     probePoint: (hint?.probe_m as Vec3 | null | undefined) ?? null,
     ...(hint?.mode ? { mode: hint.mode } : {}),
     ...(hint?.plane ? { plane: hint.plane, offset: 0 } : {}),
@@ -104,6 +110,9 @@ const SHORT: Record<NonNullable<SceneObject['source']>['type'], MessageKey> = {
   permanent_magnet: 'objects.magnet',
 }
 
+/** Marks of a time-dependent current (Phase 4A) in the object list. */
+const PROFILE_MARK = { sinusoidal: '∿', ramp: '⟋', piecewise_linear: '⟋⟍' } as const
+
 function ObjectRow({ o, depth }: { o: SceneObject; depth: number }) {
   const { t } = useT()
   const selected = useSceneStore((s) => s.selectedId === o.id)
@@ -115,6 +124,7 @@ function ObjectRow({ o, depth }: { o: SceneObject; depth: number }) {
   const q = chargeOf(o)
   const current = currentOf(o)
   const magnetization = magnetizationOf(o)
+  const profile = o.source && 'profile' in o.source && o.source.profile && o.source.profile.type !== 'constant' ? o.source.profile.type : null
   const turns = o.primitive.type === 'coil' || o.primitive.type === 'torus' ? o.primitive.turns : 1
   const label = o.name || o.id
   const isGroup = o.primitive.type === 'group'
@@ -125,7 +135,7 @@ function ObjectRow({ o, depth }: { o: SceneObject; depth: number }) {
     : q !== undefined
       ? formatSI(q, 'C')
       : current !== undefined
-        ? `${turns > 1 ? `${turns}×` : ''}${formatSI(current, 'A')} · ${t(SHORT[o.source!.type])}`
+        ? `${turns > 1 ? `${turns}×` : ''}${profile ? `${PROFILE_MARK[profile]} I(t)` : formatSI(current, 'A')} · ${t(SHORT[o.source!.type])}`
         : magnetization !== undefined
           ? `M = ${formatSI(magnetization, 'A/m')}`
           : t(`primitive.${o.primitive.type}` as MessageKey)

@@ -4,7 +4,7 @@ import { api } from '@/api/client'
 import type { AmpereHeader, AmperePath, Scene } from '@/api/types'
 import { pathPhysics, useSceneStore } from '@/state/sceneStore'
 import { useViewStore } from '@/state/viewStore'
-import { fieldScene, scenePhysics } from './request'
+import { fieldScene, isTimeDependent, scenePhysics } from './request'
 
 export type AmpereData = AmpereHeader & { cache: 'hit' | 'miss' }
 
@@ -29,11 +29,13 @@ export function useAmpere() {
   const scene = useSceneStore((s) => s.scene)
   const paths = useSceneStore((s) => s.paths)
   const dragging = useViewStore((s) => s.dragging)
-  const live = useMemo(() => ({ key: ampereKey(scene, paths), scene: fieldScene(scene, 'magnetic'), paths }), [scene, paths])
+  const timeS = useViewStore((s) => s.timeS)
+  const t = isTimeDependent(scene) ? timeS : 0 // Phase 4A: currents at the simulation time
+  const live = useMemo(() => ({ key: `${ampereKey(scene, paths)}|${t}`, scene: fieldScene(scene, 'magnetic'), paths, t }), [scene, paths, t])
   const bundle = useDebounced(live, 200)
   const query = useQuery({
     queryKey: ['ampere', bundle.key],
-    queryFn: ({ signal }): Promise<AmpereData> => api.ampere(bundle.scene, bundle.paths, signal),
+    queryFn: ({ signal }): Promise<AmpereData> => api.ampere(bundle.scene, bundle.paths, signal, bundle.t),
     enabled: bundle.paths.length > 0 && !dragging,
     placeholderData: keepPreviousData,
     staleTime: Infinity,

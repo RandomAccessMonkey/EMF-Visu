@@ -477,3 +477,61 @@ computed exactly with 60-digit decimal arithmetic.
 | Frontend type-check, lint, unit tests, production build | clean; 63 passed |
 | End-to-end, native stack (`scripts/native.py`) with Redis and worker | 53 of 53 checks |
 | Windows, Docker | not executed in this phase |
+
+## Verification record for Phase 4A (induction, magnetoquasistatic)
+
+Development environment: Linux x86_64, Python 3.12, PostgreSQL 16 (native cluster), Node 22,
+Redis 7 with the solver worker.
+
+**Independent references:** `loop_vector_potential_reference` (direct numerical line integral of
+A = μ₀I/(4π)∮dl'/|r − r'|, no elliptic integrals); the analytical axis limit
+A_φ ≈ μ₀Ia²ρ/(4(a²+z²)^{3/2}) and the dipole far field; finite-difference curls with their own
+uncertainty estimates; QUADPACK over ρ of the Biot–Savart reference B_z for the flux through a
+coaxial disk; Maxwell's closed form for the mutual inductance of coaxial circles; central
+differences of I(t) for the profile derivatives. QUADPACK roundoff warnings fail these tests.
+
+| Check | Reference | Tolerance | Result |
+|---|---|---|---|
+| Profiles: constant, sinusoid (value, derivative, quarter-period phase), ramp (inside, before, after, corners), piecewise linear (slopes, holds, corners); invalid parameters rejected; current_A derived as I(0); determinism | analytical; central differences | 1e-15; 1e-6 | 19 tests pass |
+| A of a loop, 45 points ρ = 0.01 … 10a | line integral | 1e-13 | pass |
+| A near the wire, d/a = 1e-1 … 1e-13 | line integral | 1e-13 | pass (measured ≤ 6.5e-16) |
+| A on and near the axis; far field; m = 0.5 switch | axis limit; dipole | (3/8)(ρ/a)²; 2e-4; 1e-11 jump | pass |
+| A: linearity, exact reversal, direction and world transforms | line integral | 1e-12 | pass |
+| ∇×A = B and ∇·A = 0 (loop, tilted loop, solenoid) | finite differences vs the solver's B | FD uncertainty + 1e-7 | pass |
+| Constant scenes unchanged by t; dB/dt = E_ind = 0 | bitwise | | pass |
+| B(t) = I(t) B_unit, ∂B/∂t = İ B_unit at 5 times (offset sinusoid) | the solver at 1 A | 1e-12 | pass |
+| E_ind = −İ A_unit; sign over a period; zero at current peaks | | 1e-12 | pass |
+| Lenz direction of E_ind (ramp up): against the current at 18 points | | sign | pass |
+| ∇×E_ind = −∂B/∂t (sinusoidal loop + ramped tilted solenoid) | finite differences | FD uncertainty + 1e-7 | pass |
+| Superposition of two time-dependent sources | sum | 1e-12 | pass |
+| Static magnet: B changes, ∂B/∂t and E_ind do not | bitwise | | pass |
+| Time-varying wire or ideal toroid: E_ind not evaluated (no partial field); constant wire allowed | | | pass |
+| Filament points singular, 1e-9 m away finite (B, ∂B/∂t, E_ind) | | | pass |
+| Corner of a ramp reported (left/right dI/dt); quasistatic ratio warning | | | pass |
+| Coaxial disk flux, 4 radii/heights | QUADPACK reference; Maxwell | 1e-8; 1e-9 | pass |
+| Flux under refinement (rtol 1e-3 … 1e-9); disk 1e-3·a above the wire | Maxwell | error ≤ estimate; 1e-6 | pass |
+| Normal reversal, rigid motion of source and surface, concave polygon triangulation | | 1e-12; 1e-9; exact | pass |
+| Faraday ∮E_ind·dl = −dΦ/dt: 3 geometries × 9 phases, ramp up/down/held, constant current, extremum, reversed boundary, superposition, magnet background, rectangle, polygon, solenoid end loop, toroid rectangle | independent quadratures | rtol 1e-4 (scale-aware floor) | all verified; measured relative differences 1e-16 … 1e-8 |
+| Invalid surface; filament in or through the surface; boundary through a filament | | | invalid; singular (not zero) |
+| Time-varying wire: flux shown, EMF unsupported | | | pass |
+| Mutual inductance: amplitude independence, orientation reversal, EMF = −M₁₂ dI/dt, reciprocity M₁₂ = M₂₁ (coaxial, tilted and offset, rectangle) | Maxwell; independent flux both ways | 1e-9 … 1e-6 | pass |
+| API (7 tests): units and header, cache by time, electric requests unaffected by profiles, probe at t (E_ind direction, singular, not evaluated), /induction and its cache, equation statuses, presets 15/16/21 reproducible, persistence of profiles, surfaces and time, old projects | | | pass |
+
+**Changes to existing tests (intended, nothing weakened):** the preset catalog now has 21 entries
+with 13 available (`tests/api/test_api.py`, `tests/core/test_scene_and_solver_support.py`); the
+end-to-end "unimplemented presets are disabled" check uses the dielectric preset because the
+Faraday preset is now available.
+
+**Fixed during this phase:** the Ampère rule marked ∮H·dl = I_enc "not applicable" for any
+time-varying scene (it holds in the magnetoquasistatic regime), and the Ampère check evaluated
+currents at t = 0 only (now at the simulation time). The seventh side-panel tab overflowed the
+panel and scrolled the page horizontally (tabs now wrap).
+
+| Item | Result |
+|---|---|
+| Python tests | 500 passed, 0 skipped (411 earlier; 89 new), incl. 5 integration tests against PostgreSQL and Redis |
+| ruff, mypy (strict) | clean |
+| Frontend type-check, lint, unit tests, production build | clean; 70 passed (63 earlier, 7 new) |
+| End-to-end, native stack (`scripts/native.py`) with Redis and worker | 63 of 63 checks (53 earlier + 10 for Phase 4A: preset 15 verified with Lenz signs, E_ind/∂B/∂t display-only, time stepping on the grid, deterministic playback, probe at t, preset 16 corner, preset 21 mutual reciprocity, persistence, profile editor, Hungarian) |
+| Visual inspection | E_ind circulating clockwise around a counter-clockwise current increasing at t = 0; toroid with its measurement loop, normal +e_φ, M₁₂ = M₂₁ = 114.378 nH |
+| Windows, Docker | not executed in this phase |

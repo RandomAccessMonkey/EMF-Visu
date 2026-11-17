@@ -3,6 +3,8 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useMemo } from 'react'
 import { useT, type MessageKey } from '@/i18n'
 import { AmperePanel } from '@/panels/AmperePanel'
+import { FaradayPanel } from '@/panels/FaradayPanel'
+import { TimeBar } from '@/panels/TimeBar'
 import { EquationsPanel } from '@/panels/EquationsPanel'
 import { GaussPanel } from '@/panels/GaussPanel'
 import { Legend, ViewStatement } from '@/panels/Legend'
@@ -16,12 +18,14 @@ import { heatImage, isMagneticKind, magnitudeScale, magnitudes } from '@/render/
 import { effectiveContribution, magneticArrayName } from '@/render/MagneticLayers'
 import { Viewport } from '@/render/Viewport'
 import { useAmpere } from '@/sim/useAmpere'
+import { useInduction } from '@/sim/useInduction'
+import { isTimeDependent } from '@/sim/request'
 import { useFlux } from '@/sim/useFlux'
 import { useSimulation } from '@/sim/useSimulation'
 import { useSceneStore } from '@/state/sceneStore'
 import { useViewStore } from '@/state/viewStore'
 
-const TABS = ['parameters', 'visualization', 'gauss', 'ampere', 'equations', 'results'] as const
+const TABS = ['parameters', 'visualization', 'gauss', 'ampere', 'faraday', 'equations', 'results'] as const
 
 function useKeyboardShortcuts() {
   useEffect(() => {
@@ -57,6 +61,9 @@ export default function App() {
   const sim = useSimulation()
   const flux = useFlux()
   const ampere = useAmpere()
+  const induction = useInduction()
+  const timeDependent = useSceneStore((s) => isTimeDependent(s.scene))
+  const hasFluxSurfaces = useSceneStore((s) => s.fluxSurfaces.length > 0)
   const heatKind = useViewStore((s) => s.heatmap)
   useKeyboardShortcuts()
   useEffect(() => {
@@ -95,6 +102,7 @@ export default function App() {
         </aside>
         <main className="order-1 flex min-h-[45vh] min-w-0 flex-1 flex-col lg:order-2">
           <ViewStatement />
+          {(timeDependent || hasFluxSurfaces) && <TimeBar waiting={sim.magnetic.isFetching || sim.magnetic.isStale || induction.isFetching} />}
           <div className="relative min-h-0 flex-1">
           <Viewport
             flux={sim.error ? undefined : flux.data}
@@ -104,6 +112,7 @@ export default function App() {
             arrowScale={sim.error ? null : arrowScale}
             magneticArrowScale={sim.magnetic.error ? null : magneticArrowScale}
             ampere={ampere.data}
+            induction={induction.data}
           />
           <Legend
             heat={(isMagneticKind(heatKind) ? sim.magnetic.error : sim.error) ? null : (image?.legend ?? null)}
@@ -128,7 +137,7 @@ export default function App() {
           </div>
         </main>
         <Tabs.Root defaultValue="parameters" className="order-3 flex max-h-[45vh] w-full shrink-0 flex-col border-border bg-panel lg:max-h-none lg:w-80 lg:border-l">
-          <Tabs.List aria-label={t('layout.panels')} className="flex border-b border-border">
+          <Tabs.List aria-label={t('layout.panels')} className="flex flex-wrap border-b border-border">
             {TABS.map((tab) => (
               <Tabs.Trigger
                 key={tab}
@@ -144,6 +153,7 @@ export default function App() {
             <Tabs.Content value="visualization"><VisualizationPanel sim={sim} /></Tabs.Content>
             <Tabs.Content value="gauss"><GaussPanel flux={flux.data} /></Tabs.Content>
             <Tabs.Content value="ampere"><AmperePanel ampere={ampere.data} stale={ampere.isStale} error={ampere.error} /></Tabs.Content>
+            <Tabs.Content value="faraday"><FaradayPanel induction={induction.data} stale={induction.isStale} error={induction.error} /></Tabs.Content>
             <Tabs.Content value="equations"><EquationsPanel /></Tabs.Content>
             <Tabs.Content value="results"><ResultsPanel sim={sim} flux={flux.data} /></Tabs.Content>
           </div>

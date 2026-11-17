@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from .ampere import AmperePath
 from .i18n import L, LocalizedText
+from .induction import FluxSurface
 from .scene.models import (
     CircularLoopSource,
     CoilPrimitive,
@@ -51,6 +52,16 @@ class ViewHint(BaseModel):
     probe_m: tuple[float, float, float] | None = None  # default probe point (Phase 3B)
 
 
+class TimeHint(BaseModel):
+    """Simulation-time range and step a time-dependent preset opens with (Phase 4A). The
+    physics at a time t does not depend on these; they only set the playback."""
+
+    start_s: float
+    end_s: float
+    step_s: float
+    initial_s: float = 0.0
+
+
 class Preset(BaseModel):
     id: str
     number: int
@@ -64,6 +75,9 @@ class Preset(BaseModel):
     variants: list[PresetVariant] = []  # the first variant, if any, is the default scene
     view_hint: ViewHint | None = None
     ampere_paths: list[AmperePath] = []  # default Ampère paths (Phase 3B)
+    # Phase 4A: default Faraday measurement surfaces and the time range the preset opens with.
+    flux_surfaces: list[FluxSurface] = []
+    time: TimeHint | None = None
 
 
 def _charge(oid: str, name: str, q: float, pos: tuple[float, float, float],
@@ -382,10 +396,6 @@ _PLANNED: list[tuple[int, str, str, str, int]] = [
     (6, "parallel_plate_capacitor", "Parallel plate capacitor", "Síkkondenzátor", 2),
     (7, "coaxial_conductors", "Coaxial cylindrical conductors", "Koaxiális hengeres vezetők", 2),
     (8, "charged_conducting_sphere", "Charged conducting sphere", "Töltött vezető gömb", 2),
-    (15, "changing_b_in_loop", "Changing magnetic field inside a loop",
-     "Változó mágneses mező egy hurokban", 4),
-    (16, "faraday_induction", "Faraday induction demonstration",
-     "Faraday-féle indukció bemutatása", 4),
     (17, "electrostatic_plus_induced", "Electrostatic field combined with an induced rotational "
      "electric field", "Elektrosztatikus mező és indukált örvényes elektromos mező együtt", 4),
     (18, "dielectric_in_capacitor", "Dielectric material inside a capacitor",
@@ -396,7 +406,149 @@ _PLANNED: list[tuple[int, str, str, str, int]] = [
      "Elektromágneses síkhullám terjedése", 5),
 ]
 
-PRESETS: list[Preset] = sorted(_AVAILABLE + _MAGNETIC + _COILS_AND_MAGNETS + [
+# --------------------------------------------------------------- Phase 4A: induction presets
+
+_EQ_IND = ["current_sinusoidal", "vector_potential_coulomb", "e_ind_from_a", "e_decomposition",
+           "faraday_differential", "magnetic_flux", "flux_derivative", "faraday_integral",
+           "lenz_law", "magnetoquasistatic", "loop_field_elliptic"]
+
+
+def _toroid_measurement_rotation(phi: float) -> tuple[float, float, float]:
+    """Euler XYZ angles that put a rectangle's local x along e_rho(phi) and local y along +z
+    (normal along -e_phi): the plane through the toroid axis at azimuth phi."""
+    import numpy as np
+    from scipy.spatial.transform import Rotation
+
+    ex = np.array([np.cos(phi), np.sin(phi), 0.0])
+    ey = np.array([0.0, 0.0, 1.0])
+    mat = np.column_stack([ex, ey, np.cross(ex, ey)])
+    a, b, c = Rotation.from_matrix(mat).as_euler("XYZ")
+    return (float(a), float(b), float(c))
+
+
+_TOROID_PHI = 3.141592653589793 / 24  # midway between turns 0 and 1 (24 turns)
+
+_INDUCTION = [
+    Preset(
+        id="changing_b_in_loop", number=15, available=True, equation_ids=_EQ_IND,
+        name=L("Sinusoidally driven circular loop", "Szinuszosan táplált körvezető"),
+        description=L("A circular loop of radius 0.05 m carries I(t) = 2 sin(2π·1 Hz·t) A. A "
+                      "stationary disk of radius 0.03 m, coaxial with the loop and 0.02 m above "
+                      "it, is the Faraday measurement surface; its boundary circle is the "
+                      "integration path. Magnetoquasistatic model: B follows I(t) instantly.",
+                      "Egy 0,05 m sugarú körvezetőben I(t) = 2 sin(2π·1 Hz·t) A folyik. Egy "
+                      "álló, 0,03 m sugarú, a hurokkal koaxiális korong 0,02 m-rel fölötte a "
+                      "Faraday-mérőfelület; határoló köre az integrálási út. "
+                      "Magnetokvázisztatikus modell: B azonnal követi I(t)-t."),
+        expected_behavior=L("B grows and reverses with the current. The induced field E_ind "
+                            "circulates about the axis, largest when the current crosses zero "
+                            "(dI/dt largest) and zero at the current's peaks. Its direction "
+                            "opposes the change of flux (Lenz). ∮E_ind·dl and −dΦ/dt are "
+                            "computed independently and agree.",
+                            "B az árammal együtt nő és megfordul. Az indukált E_ind a tengely "
+                            "körül kering, akkor a legnagyobb, amikor az áram nullán halad át "
+                            "(dI/dt a legnagyobb), és nulla az áram csúcsainál. Iránya a "
+                            "fluxusváltozással ellentétes (Lenz). ∮E_ind·dl és −dΦ/dt "
+                            "egymástól függetlenül számítva megegyezik."),
+        scene=Scene(objects=[SceneObject(
+            id="loop1", name="Driven loop", role=Role.CURRENT_SOURCE,
+            primitive=RingPrimitive(radius_m=0.05),
+            source=CircularLoopSource.model_validate({"current_A": 0.0, "profile": {
+                "type": "sinusoidal", "dc_A": 0.0, "peak_A": 2.0, "frequency_Hz": 1.0,
+                "phase_rad": 0.0}}))],
+            domain=Domain(min_m=(-0.1, -0.1, -0.1), max_m=(0.1, 0.1, 0.1))),
+        view_hint=ViewHint(mode="2d", plane="xy", probe_m=(0.03, 0.0, 0.0)),
+        flux_surfaces=[FluxSurface.model_validate({
+            "id": "F1", "name": "Coaxial disk", "shape": {"type": "circle", "radius_m": 0.03},
+            "center_m": (0.0, 0.0, 0.02)})],
+        time=TimeHint(start_s=0.0, end_s=2.0, step_s=0.02),
+    ),
+    Preset(
+        id="faraday_induction", number=16, available=True,
+        equation_ids=["current_ramp", *_EQ_IND[1:], "finite_solenoid_superposition"],
+        name=L("Ramping finite solenoid", "Rámpával táplált véges szolenoid"),
+        description=L("The 20-turn solenoid of preset 12 (a = 0.04 m, L = 0.20 m) with its "
+                      "current ramped from 0 A to 5 A over 1 s (5 A/s), then held. A stationary "
+                      "coaxial measurement loop of radius 0.03 m sits 0.02 m beyond the end "
+                      "turn.",
+                      "A 12. előbeállítás 20 menetes szolenoidja (a = 0,04 m, L = 0,20 m), "
+                      "árama 1 s alatt 0 A-ről 5 A-re nő (5 A/s), majd állandó. Egy álló, "
+                      "koaxiális, 0,03 m sugarú mérőhurok 0,02 m-rel a végső menet után "
+                      "helyezkedik el."),
+        expected_behavior=L("During the ramp the axial B grows linearly and the flux through the "
+                            "loop increases at a constant rate, so the EMF is constant and "
+                            "negative: E_ind circulates clockwise seen along +z, against the "
+                            "growing flux (Lenz). After t = 1 s the current is constant: B stays, "
+                            "the EMF and E_ind vanish. At t = 0 and t = 1 s dI/dt jumps; the "
+                            "application reports both one-sided values.",
+                            "A rámpa alatt a tengelyirányú B lineárisan nő, a hurkon átmenő "
+                            "fluxus állandó ütemben nő, így az EMF állandó és negatív: E_ind +z "
+                            "felől nézve az óramutató járásával megegyezően kering, a növekvő "
+                            "fluxus ellen (Lenz). t = 1 s után az áram állandó: B megmarad, az "
+                            "EMF és E_ind eltűnik. t = 0-nál és t = 1 s-nál dI/dt ugrik; az "
+                            "alkalmazás mindkét egyoldali értéket megadja."),
+        scene=Scene(objects=[SceneObject(
+            id="solenoid1", name="Solenoid", role=Role.CURRENT_SOURCE,
+            primitive=CoilPrimitive(radius_m=0.04, length_m=0.2, turns=20),
+            source=SolenoidSource.model_validate({"current_A": 0.0, "profile": {
+                "type": "ramp", "start_A": 0.0, "slope_A_per_s": 5.0, "t_start_s": 0.0,
+                "t_end_s": 1.0}}))],
+            domain=Domain(min_m=(-0.15, -0.15, -0.25), max_m=(0.15, 0.15, 0.25))),
+        view_hint=ViewHint(mode="2d", plane="xz", probe_m=(0.02, 0.0, 0.12)),
+        flux_surfaces=[FluxSurface.model_validate({
+            "id": "F1", "name": "Measurement loop", "shape": {"type": "circle", "radius_m": 0.03},
+            "center_m": (0.0, 0.0, 0.12)})],
+        time=TimeHint(start_s=0.0, end_s=1.5, step_s=0.01, initial_s=0.5),
+    ),
+    Preset(
+        id="toroid_mutual_induction", number=21, available=True,
+        equation_ids=[*_EQ_IND, "finite_toroid_superposition", "mutual_inductance",
+                      "mutual_reciprocity"],
+        name=L("Finite-turn toroid and mutual induction",
+               "Véges menetszámú toroid és kölcsönös indukció"),
+        description=L("The finite-turn toroid of preset 13 (R = 0.12 m, b = 0.03 m, N = 24) "
+                      "driven by I(t) = sin(2π·50 Hz·t) A. A separate passive rectangular "
+                      "measurement loop (0.10 m × 0.10 m) encircles the winding's cross-section "
+                      "in the plane through the axis midway between two turns. No current flows "
+                      "in the measurement loop: only its EMF and the mutual inductance are "
+                      "computed.",
+                      "A 13. előbeállítás véges menetszámú toroidja (R = 0,12 m, b = 0,03 m, "
+                      "N = 24), I(t) = sin(2π·50 Hz·t) A árammal. Egy külön passzív, téglalap "
+                      "alakú mérőhurok (0,10 m × 0,10 m) körülöleli a tekercselés "
+                      "keresztmetszetét a tengelyen átmenő síkban, két menet között félúton. A "
+                      "mérőhurokban nem folyik áram: csak az EMF-je és a kölcsönös "
+                      "induktivitás számítódik."),
+        expected_behavior=L("Almost all of the toroidal flux passes through the measurement "
+                            "loop, so M₁₂ is large and EMF₂ = −M₁₂ dI/dt follows the source "
+                            "current's derivative. M₁₂ (flux of the toroid through the loop) "
+                            "and M₂₁ (flux of the loop's field through the 24 turns) are "
+                            "computed independently and agree (reciprocity).",
+                            "A toroidális fluxus szinte teljes egészében átmegy a mérőhurkon, "
+                            "így M₁₂ nagy, és EMF₂ = −M₁₂ dI/dt a forrásáram deriváltját követi. "
+                            "M₁₂ (a toroid fluxusa a hurkon át) és M₂₁ (a hurok terének fluxusa "
+                            "a 24 meneten át) egymástól függetlenül számítva megegyezik "
+                            "(reciprocitás)."),
+        scene=Scene(objects=[SceneObject(
+            id="toroid1", name="Toroid", role=Role.CURRENT_SOURCE,
+            primitive=TorusPrimitive(major_radius_m=0.12, winding_radius_m=0.03,
+                                     core_radius_m=0.03, turns=24),
+            source=ToroidFiniteSource.model_validate({"current_A": 0.0, "profile": {
+                "type": "sinusoidal", "dc_A": 0.0, "peak_A": 1.0, "frequency_Hz": 50.0,
+                "phase_rad": 0.0}}))],
+            domain=Domain(min_m=(-0.2, -0.2, -0.1), max_m=(0.2, 0.2, 0.1))),
+        view_hint=ViewHint(mode="2d", plane="xy", probe_m=(0.12, 0.0, 0.0)),
+        flux_surfaces=[FluxSurface.model_validate({
+            "id": "F1", "name": "Measurement loop",
+            "shape": {"type": "rectangle", "width_m": 0.1, "height_m": 0.1},
+            "center_m": (0.12 * 0.9914448613738104, 0.12 * 0.13052619222005157, 0.0),
+            "rotation_euler_xyz_rad": _toroid_measurement_rotation(_TOROID_PHI),
+            # traversed so that the normal is +e_phi, along the toroidal field: M12 > 0
+            "reversed": True})],
+        time=TimeHint(start_s=0.0, end_s=0.04, step_s=0.0005),
+    ),
+]
+
+PRESETS: list[Preset] = sorted(_AVAILABLE + _MAGNETIC + _COILS_AND_MAGNETS + _INDUCTION + [
     Preset(id=pid, number=n, name=L(en, hu), available=False, planned_phase=phase)
     for n, pid, en, hu, phase in _PLANNED
 ], key=lambda p: p.number)

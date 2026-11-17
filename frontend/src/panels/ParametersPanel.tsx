@@ -1,9 +1,10 @@
-import type { CurrentSourceInfo, Role, SceneObject, Vec3 } from '@/api/types'
+import type { CurrentSourceInfo, Role, SceneObject, TimeSourceInfo, Vec3 } from '@/api/types'
 import type { SimulationResult } from '@/api/container'
 import { Button, NumberField, Row, Section, Select, Slider } from '@/components/ui/controls'
 import { useT, type MessageKey } from '@/i18n'
 import { formatSI } from '@/lib/format'
 import { dipoleInfo, directionOfRotation, isMagneticSource, rotationForDirection, useSceneStore, type CurrentSource } from '@/state/sceneStore'
+import { ProfileEditor } from './ProfileEditor'
 import { CoilDimensions, MagnetDimensions, MagnetParameters, ToroidModel, TorusDimensions } from './MagneticSourceParams'
 import { useViewStore } from '@/state/viewStore'
 
@@ -158,7 +159,7 @@ const CURRENT_TEXT: Record<CurrentSource['type'], { hint: MessageKey; note: Mess
   toroid_ideal: { hint: 'params.currentHintTurns', note: 'params.toroidDirectionNote', dir: 'params.axis' },
 }
 
-function CurrentParameters({ o, source }: { o: SceneObject; source: CurrentSource }) {
+function CurrentParameters({ o, source, timeInfo }: { o: SceneObject; source: CurrentSource; timeInfo?: TimeSourceInfo }) {
   const { t } = useT()
   const update = useSceneStore((s) => s.update)
   const canReset = useSceneStore((s) => !!s.presetScene?.objects.some((x) => x.id === o.id))
@@ -169,6 +170,10 @@ function CurrentParameters({ o, source }: { o: SceneObject; source: CurrentSourc
   return (
     <Section title={t('params.current')}>
       {(source.type === 'toroid_finite' || source.type === 'toroid_ideal') && <ToroidModel o={o} source={source} />}
+      {/* Phase 4A: with a time profile the profile alone defines I(t) (no second current). */}
+      <ProfileEditor o={o} profile={source.profile} info={timeInfo} />
+      {source.profile == null && (
+      <>
       <Row label={`${t('params.current')} I`} hint={t(text.hint)}>
         <Slider label={t('params.current')} value={Math.max(-100, Math.min(100, source.current_A))} min={-100} max={100} step={0.5} onChange={setI} />
         <NumberField label={t('params.current')} value={source.current_A} unit="A" step={0.5} onChange={setI} />
@@ -184,6 +189,8 @@ function CurrentParameters({ o, source }: { o: SceneObject; source: CurrentSourc
           {t('params.reverse')}
         </Button>
       </Row>
+      </>
+      )}
       <p className="text-[11px] leading-snug text-muted">{t(text.note)}</p>
       <DirectionRows o={o} prefix={t(text.dir)} />
       {canReset && (
@@ -195,7 +202,7 @@ function CurrentParameters({ o, source }: { o: SceneObject; source: CurrentSourc
   )
 }
 
-function ObjectParameters({ o, info }: { o: SceneObject; info?: CurrentSourceInfo }) {
+function ObjectParameters({ o, info, timeInfo }: { o: SceneObject; info?: CurrentSourceInfo; timeInfo?: TimeSourceInfo }) {
   const { t } = useT()
   const { update, setTransform } = useSceneStore.getState()
   const advanced = useViewStore((s) => s.level === 'advanced')
@@ -240,7 +247,7 @@ function ObjectParameters({ o, info }: { o: SceneObject; info?: CurrentSourceInf
           <DipoleParameters o={o} />
         </Section>
       )}
-      {source && 'current_A' in source && <CurrentParameters o={o} source={source} />}
+      {source && 'current_A' in source && <CurrentParameters o={o} source={source} timeInfo={timeInfo} />}
       {source?.type === 'permanent_magnet' && (
         <>
           <MagnetParameters o={o} source={source} info={info} />
@@ -334,7 +341,7 @@ export function ParametersPanel({ magnetic }: { magnetic?: SimulationResult }) {
   const info = selected ? magnetic?.header.current_sources.find((c) => c.object_id === selected.id) : undefined
   return (
     <div>
-      {selected ? <ObjectParameters key={selected.id} o={selected} info={info} /> : <p className="border-b border-border px-3 py-3 text-xs text-muted">{t('params.nothingSelected')}</p>}
+      {selected ? <ObjectParameters key={selected.id} o={selected} info={info} timeInfo={selected ? magnetic?.header.time_sources.find((c) => c.object_id === selected.id) : undefined} /> : <p className="border-b border-border px-3 py-3 text-xs text-muted">{t('params.nothingSelected')}</p>}
       <DomainParameters />
     </div>
   )

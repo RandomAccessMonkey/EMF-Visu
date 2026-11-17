@@ -169,12 +169,47 @@ def loop_local_reference(u: float, rho: float, z: float, a: float, current: floa
     # component of each sub-interval is integrated to epsrel·|B| / (number of pieces). A purely
     # relative tolerance per component cannot be met where a component nearly cancels (B_rho
     # near the axis), and the comparisons are made on the vector anyway.
-    coarse = [sum(quad(f, lo, hi, epsabs=0.0, epsrel=1e-8, limit=400)[0] for lo, hi in pairs)
-              for f in (f_rho, f_z)]
-    atol = epsrel * math.hypot(*coarse) / (2 * len(pairs))
+    # Scale from the non-cancelling integrand |f_rho| + |f_z| (it bounds |B|·(4 pi / mu0 I a)).
+    coarse = sum(quad(lambda p: abs(f_rho(p)) + abs(f_z(p)), lo, hi, epsabs=0.0, epsrel=1e-8,
+                      limit=400)[0] for lo, hi in pairs)
+    atol = epsrel * coarse / (2 * len(pairs))
     tot = [0.0, 0.0]
     for lo, hi in pairs:
         for i, f in enumerate((f_rho, f_z)):
             tot[i] += quad(f, lo, hi, epsabs=atol, epsrel=epsrel, limit=400)[0]
     k = MU0 * current * a / (2.0 * math.pi)  # 2 × MU0 I a / (4 pi): both halves of the loop
     return k * tot[0], k * tot[1]
+
+
+def loop_vector_potential_reference(u: float, rho: float, z: float, a: float, current: float,
+                                    epsrel: float = 5e-14) -> float:
+    """A_phi of a circular loop by direct numerical integration of the Coulomb-gauge line
+    integral A = mu0 I / (4 pi) ∮ dl' / |r - r'| (Phase 4A), independent of elliptic
+    integrals: A_phi = mu0 I a / (4 pi) * 2 ∫_0^pi cos(phi) / R dphi with
+    R^2 = u^2 + z^2 + 4 a rho sin^2(phi/2) (u = rho - a passed separately, as for the field).
+    QUADPACK on breakpoints graded d/a * 4^j; the absolute tolerance is epsrel times the
+    integral of |cos(phi)| / R, because the cos-weighted integral cancels near the axis.
+    QUADPACK's error estimate reaches its floor at about 2e-14 for this integrand, hence the
+    default 5e-14. Near the axis the cancellation leaves an error of about eps a / rho:
+    validate rho << a against the analytical axis limit instead."""
+    from scipy.integrate import quad
+
+    dm = u * u + z * z
+
+    def inv_r(p: float) -> float:
+        return 1.0 / math.sqrt(dm + 4.0 * a * rho * math.sin(p / 2) ** 2)
+
+    edges = [0.0]
+    w = math.sqrt(dm) / a
+    while w < math.pi:
+        edges.append(w)
+        w *= 4.0
+    edges.append(math.pi)
+    edges = sorted({*edges, math.pi / 2})  # |cos| has a kink there
+    pairs = list(zip(edges[:-1], edges[1:], strict=True))
+    scale = sum(quad(lambda p: abs(math.cos(p)) * inv_r(p), lo, hi, epsabs=0.0, epsrel=1e-8,
+                     limit=400)[0] for lo, hi in pairs)
+    atol = epsrel * scale / len(pairs)
+    tot = sum(quad(lambda p: math.cos(p) * inv_r(p), lo, hi, epsabs=atol, epsrel=epsrel,
+                   limit=400)[0] for lo, hi in pairs)
+    return float(MU0 * current * a / (4.0 * math.pi) * 2.0 * tot)

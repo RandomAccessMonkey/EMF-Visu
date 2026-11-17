@@ -148,6 +148,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/induction": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Induction Law
+         * @description Magnetic flux through stationary surfaces, its time derivative, the induced EMF
+         *     ∮E_ind·dl and the Faraday comparison at one simulation time, with Lenz's-law signs and
+         *     mutual inductances (Phase 4A, magnetoquasistatic).
+         */
+        post: operations["induction_law_api_v1_induction_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/profile/sample": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Profile Sample
+         * @description I(t) and dI/dt of a current profile on an even time grid, for plotting (Phase 4A).
+         */
+        post: operations["profile_sample_api_v1_profile_sample_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/gauss/situations": {
         parameters: {
             query?: never;
@@ -348,6 +390,11 @@ export interface components {
         AmpereRequest: {
             /** Paths */
             paths: components["schemas"]["AmperePath"][];
+            /**
+             * Time S
+             * @default 0
+             */
+            time_s: number;
         };
         /** ArrayEntry */
         ArrayEntry: {
@@ -492,15 +539,17 @@ export interface components {
          */
         CircularLoopSource: {
             /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "circular_loop";
-            /**
              * Current A
              * @default 10
              */
             current_A: number;
+            /** Profile */
+            profile?: (components["schemas"]["ConstantProfile"] | components["schemas"]["SinusoidalProfile"] | components["schemas"]["RampProfile"] | components["schemas"]["PiecewiseLinearProfile"]) | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "circular_loop";
         };
         /**
          * CoilPrimitive
@@ -537,6 +586,19 @@ export interface components {
             ok: boolean;
             /** Detail */
             detail?: string | null;
+        };
+        /** ConstantProfile */
+        ConstantProfile: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "constant";
+            /**
+             * Current A
+             * @default 1
+             */
+            current_A: number;
         };
         /** Crossing */
         Crossing: {
@@ -816,6 +878,11 @@ export interface components {
              * @default []
              */
             paths: components["schemas"]["AmperePath"][];
+            /**
+             * Flux Surfaces
+             * @default []
+             */
+            flux_surfaces: components["schemas"]["FluxSurface"][];
         };
         /** EquationsResponse */
         EquationsResponse: {
@@ -992,6 +1059,60 @@ export interface components {
              */
             patch_details: boolean;
         };
+        /**
+         * FluxSurface
+         * @description A stationary measurement surface: the planar region bounded by the path, oriented by the
+         *     right-hand rule (the same geometry and conventions as an Ampère path). ``rtol`` is the
+         *     relative tolerance of the Faraday comparison.
+         */
+        FluxSurface: {
+            /** Id */
+            id: string;
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            /** Shape */
+            shape: components["schemas"]["CirclePath"] | components["schemas"]["RectanglePath"] | components["schemas"]["PolygonPath"];
+            /**
+             * Center M
+             * @default [
+             *       0,
+             *       0,
+             *       0
+             *     ]
+             */
+            center_m: [
+                number,
+                number,
+                number
+            ];
+            /**
+             * Rotation Euler Xyz Rad
+             * @default [
+             *       0,
+             *       0,
+             *       0
+             *     ]
+             */
+            rotation_euler_xyz_rad: [
+                number,
+                number,
+                number
+            ];
+            /**
+             * Reversed
+             * @default false
+             */
+            reversed: boolean;
+            /**
+             * Rtol
+             * @default 0.0001
+             */
+            rtol: number;
+            display?: components["schemas"]["PathDisplay"] | null;
+        };
         /** GaussSituation */
         GaussSituation: {
             /** Id */
@@ -1107,6 +1228,86 @@ export interface components {
             /** H A Per M */
             H_A_per_m: number;
         };
+        /** InductionBody */
+        InductionBody: {
+            scene: components["schemas"]["Scene"];
+            induction: components["schemas"]["InductionRequest"];
+        };
+        /** InductionHeader */
+        InductionHeader: {
+            /** Solver Id */
+            solver_id: string;
+            /** Solver Version */
+            solver_version: string;
+            /** Time S */
+            time_s: number;
+            /**
+             * Regime
+             * @default magnetoquasistatic
+             * @constant
+             */
+            regime: "magnetoquasistatic";
+            /**
+             * Gauge
+             * @default coulomb
+             * @constant
+             */
+            gauge: "coulomb";
+            method: components["schemas"]["LocalizedText"];
+            /** Surfaces */
+            surfaces: components["schemas"]["SurfaceResult"][];
+        };
+        /**
+         * InductionInfo
+         * @description Status of the time-dependent quantities of a magnetic result (Phase 4A).
+         */
+        InductionInfo: {
+            /** Time S */
+            time_s: number;
+            /** Time Dependent */
+            time_dependent: boolean;
+            /** Derivative Unique */
+            derivative_unique: boolean;
+            /** E Ind Available */
+            e_ind_available: boolean;
+            /**
+             * Unsupported Object Ids
+             * @default []
+             */
+            unsupported_object_ids: string[];
+            /**
+             * Regime
+             * @default magnetoquasistatic
+             * @constant
+             */
+            regime: "magnetoquasistatic";
+            /**
+             * Gauge
+             * @default coulomb
+             * @constant
+             */
+            gauge: "coulomb";
+            /**
+             * Quasistatic Ratio
+             * @default 0
+             */
+            quasistatic_ratio: number;
+        };
+        /** InductionRequest */
+        InductionRequest: {
+            /** Surfaces */
+            surfaces: components["schemas"]["FluxSurface"][];
+            /**
+             * Time S
+             * @default 0
+             */
+            time_s: number;
+            /**
+             * Mutual
+             * @default true
+             */
+            mutual: boolean;
+        };
         /**
          * InfiniteWireSource
          * @description Ideal infinitely long straight filament carrying a steady current (Phase 3A).
@@ -1118,15 +1319,17 @@ export interface components {
          */
         InfiniteWireSource: {
             /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "infinite_wire";
-            /**
              * Current A
              * @default 10
              */
             current_A: number;
+            /** Profile */
+            profile?: (components["schemas"]["ConstantProfile"] | components["schemas"]["SinusoidalProfile"] | components["schemas"]["RampProfile"] | components["schemas"]["PiecewiseLinearProfile"]) | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "infinite_wire";
         };
         /**
          * IsosurfaceRequest
@@ -1186,6 +1389,13 @@ export interface components {
             failure_reason?: string | null;
             result_header?: components["schemas"]["ResultHeader"] | null;
         };
+        /** Keyframe */
+        Keyframe: {
+            /** T S */
+            t_s: number;
+            /** Current A */
+            current_A: number;
+        };
         /**
          * LatticeSampling
          * @description Regular axis-aligned 3D lattice, inclusive of both ends. Shape (nz, ny, nx[, 3]).
@@ -1199,7 +1409,7 @@ export interface components {
             /** Id */
             id: string;
             /** Quantities */
-            quantities?: ("E" | "phi" | "D" | "div_E" | "curl_E" | "div_D" | "curl_D" | "B" | "H" | "div_B" | "div_H")[] | null;
+            quantities?: ("E" | "phi" | "D" | "div_E" | "curl_E" | "div_D" | "curl_D" | "B" | "H" | "div_B" | "div_H" | "dB_dt" | "E_ind")[] | null;
             /** Min M */
             min_m: [
                 number,
@@ -1218,6 +1428,24 @@ export interface components {
             ny: number;
             /** Nz */
             nz: number;
+        };
+        /** Lenz */
+        Lenz: {
+            /**
+             * Flux Trend
+             * @enum {string}
+             */
+            flux_trend: "increasing" | "decreasing" | "steady";
+            /**
+             * Emf Sign
+             * @enum {integer}
+             */
+            emf_sign: 1 | 0 | -1;
+            /**
+             * Circulation
+             * @enum {string}
+             */
+            circulation: "along_path" | "against_path" | "none";
         };
         /** LevelRange */
         LevelRange: {
@@ -1284,6 +1512,12 @@ export interface components {
             H_A_per_m: number[] | null;
             /** H Magnitude A Per M */
             H_magnitude_A_per_m: number | null;
+            /** Di Dt A Per S */
+            dI_dt_A_per_s?: number | null;
+            /** Db Dt T Per S */
+            dB_dt_T_per_s?: number[] | null;
+            /** E Ind V Per M */
+            E_ind_V_per_m?: number[] | null;
         };
         /** Material */
         Material: {
@@ -1453,6 +1687,21 @@ export interface components {
              */
             gauss_invalid: boolean;
             /**
+             * Profile Types
+             * @default []
+             */
+            profile_types: string[];
+            /**
+             * E Ind Available
+             * @default true
+             */
+            e_ind_available: boolean;
+            /**
+             * Flux Surfaces
+             * @default 0
+             */
+            flux_surfaces: number;
+            /**
              * Checked Equation Ids
              * @default []
              */
@@ -1464,6 +1713,28 @@ export interface components {
              * @default []
              */
             evaluated_equation_ids: string[];
+        };
+        /** Mutual */
+        Mutual: {
+            /** Object Id */
+            object_id: string;
+            /** Available */
+            available: boolean;
+            /** M12 H */
+            M12_H?: number | null;
+            /** M12 Error H */
+            M12_error_H?: number | null;
+            /** M21 H */
+            M21_H?: number | null;
+            /** M21 Error H */
+            M21_error_H?: number | null;
+            /** Reciprocity Difference H */
+            reciprocity_difference_H?: number | null;
+            /** Reciprocity Relative */
+            reciprocity_relative?: number | null;
+            /** Reciprocity Ok */
+            reciprocity_ok?: boolean | null;
+            reason?: components["schemas"]["LocalizedText"] | null;
         };
         /**
          * OneSidedValue
@@ -1591,6 +1862,16 @@ export interface components {
              */
             magnetization_A_per_m: number;
         };
+        /** PiecewiseLinearProfile */
+        PiecewiseLinearProfile: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "piecewise_linear";
+            /** Keyframes */
+            keyframes: components["schemas"]["Keyframe"][];
+        };
         /**
          * PlaneGridSampling
          * @description Regular grid on a planar cross-section through the 3D configuration.
@@ -1607,7 +1888,7 @@ export interface components {
             /** Id */
             id: string;
             /** Quantities */
-            quantities?: ("E" | "phi" | "D" | "div_E" | "curl_E" | "div_D" | "curl_D" | "B" | "H" | "div_B" | "div_H")[] | null;
+            quantities?: ("E" | "phi" | "D" | "div_E" | "curl_E" | "div_D" | "curl_D" | "B" | "H" | "div_B" | "div_H" | "dB_dt" | "E_ind")[] | null;
             /**
              * Center M
              * @default [
@@ -1745,7 +2026,7 @@ export interface components {
             /** Id */
             id: string;
             /** Quantities */
-            quantities?: ("E" | "phi" | "D" | "div_E" | "curl_E" | "div_D" | "curl_D" | "B" | "H" | "div_B" | "div_H")[] | null;
+            quantities?: ("E" | "phi" | "D" | "div_E" | "curl_E" | "div_D" | "curl_D" | "B" | "H" | "div_B" | "div_H" | "dB_dt" | "E_ind")[] | null;
             /** Points M */
             points_m: [
                 number,
@@ -1802,6 +2083,12 @@ export interface components {
              * @default []
              */
             ampere_paths: components["schemas"]["AmperePath"][];
+            /**
+             * Flux Surfaces
+             * @default []
+             */
+            flux_surfaces: components["schemas"]["FluxSurface"][];
+            time?: components["schemas"]["TimeHint"] | null;
         };
         /**
          * PresetVariant
@@ -1824,6 +2111,11 @@ export interface components {
                 number,
                 number
             ];
+            /**
+             * Time S
+             * @default 0
+             */
+            time_s: number;
         };
         /**
          * ProbeComparison
@@ -1986,6 +2278,36 @@ export interface components {
             quadrature_converged: boolean;
             /** Relative Precision Bound */
             relative_precision_bound?: number | null;
+            /**
+             * Time S
+             * @default 0
+             */
+            time_s: number;
+            /**
+             * Time Dependent
+             * @default false
+             */
+            time_dependent: boolean;
+            /**
+             * Time Sources
+             * @default []
+             */
+            time_sources: components["schemas"]["TimeSourceInfo"][];
+            /**
+             * Time Values
+             * @default []
+             */
+            time_values: components["schemas"]["ProbeValue"][];
+            /**
+             * E Ind Available
+             * @default true
+             */
+            e_ind_available: boolean;
+            /**
+             * Derivative Unique
+             * @default true
+             */
+            derivative_unique: boolean;
         };
         /** ProbeResponse */
         ProbeResponse: {
@@ -2049,6 +2371,34 @@ export interface components {
              */
             status: "defined" | "singular" | "not_evaluated";
         };
+        /**
+         * ProfileSampleBody
+         * @description Sample a current profile for display (Phase 4A); evaluated by the engine.
+         */
+        ProfileSampleBody: {
+            /** Profile */
+            profile: components["schemas"]["ConstantProfile"] | components["schemas"]["SinusoidalProfile"] | components["schemas"]["RampProfile"] | components["schemas"]["PiecewiseLinearProfile"];
+            /** Start S */
+            start_s: number;
+            /** End S */
+            end_s: number;
+            /**
+             * Count
+             * @default 201
+             */
+            count: number;
+        };
+        /** ProfileSamples */
+        ProfileSamples: {
+            /** T S */
+            t_s: number[];
+            /** Current A */
+            current_A: number[];
+            /** Di Dt A Per S */
+            dI_dt_A_per_s: number[];
+            /** Corners S */
+            corners_s: number[];
+        };
         /** ProjectIn */
         ProjectIn: {
             /** Name */
@@ -2071,6 +2421,11 @@ export interface components {
              * @default []
              */
             paths: components["schemas"]["AmperePath"][];
+            /**
+             * Flux Surfaces
+             * @default []
+             */
+            flux_surfaces: components["schemas"]["FluxSurface"][];
         };
         /** ProjectOut */
         ProjectOut: {
@@ -2103,6 +2458,11 @@ export interface components {
              * @default []
              */
             paths: components["schemas"]["AmperePath"][];
+            /**
+             * Flux Surfaces
+             * @default []
+             */
+            flux_surfaces: components["schemas"]["FluxSurface"][];
         };
         /** ProjectSummary */
         ProjectSummary: {
@@ -2120,6 +2480,34 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** RampProfile */
+        RampProfile: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "ramp";
+            /**
+             * Start A
+             * @default 0
+             */
+            start_A: number;
+            /**
+             * Slope A Per S
+             * @default 1
+             */
+            slope_A_per_s: number;
+            /**
+             * T Start S
+             * @default 0
+             */
+            t_start_s: number;
+            /**
+             * T End S
+             * @default 1
+             */
+            t_end_s: number;
         };
         /** RectanglePath */
         RectanglePath: {
@@ -2229,6 +2617,12 @@ export interface components {
              * @default []
              */
             current_sources: components["schemas"]["CurrentSourceInfo"][];
+            /**
+             * Time Sources
+             * @default []
+             */
+            time_sources: components["schemas"]["TimeSourceInfo"][];
+            induction?: components["schemas"]["InductionInfo"] | null;
             /** In Plane Tolerance M */
             in_plane_tolerance_m?: number | null;
             field_lines?: components["schemas"]["FieldLineSet"] | null;
@@ -2357,6 +2751,34 @@ export interface components {
             scene: components["schemas"]["Scene"];
             request: components["schemas"]["SolveRequest"];
         };
+        /** SinusoidalProfile */
+        SinusoidalProfile: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "sinusoidal";
+            /**
+             * Dc A
+             * @default 0
+             */
+            dc_A: number;
+            /**
+             * Peak A
+             * @default 1
+             */
+            peak_A: number;
+            /**
+             * Frequency Hz
+             * @default 1
+             */
+            frequency_Hz: number;
+            /**
+             * Phase Rad
+             * @default 0
+             */
+            phase_rad: number;
+        };
         /**
          * SolenoidSource
          * @description Finite solenoid (Phase 3B) on a ``coil`` primitive, role ``current_source``: every turn
@@ -2364,22 +2786,24 @@ export interface components {
          */
         SolenoidSource: {
             /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "solenoid";
-            /**
              * Current A
              * @default 1
              */
             current_A: number;
+            /** Profile */
+            profile?: (components["schemas"]["ConstantProfile"] | components["schemas"]["SinusoidalProfile"] | components["schemas"]["RampProfile"] | components["schemas"]["PiecewiseLinearProfile"]) | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "solenoid";
         };
         /** SolveRequest */
         SolveRequest: {
             /** Samplings */
             samplings: (components["schemas"]["PlaneGridSampling"] | components["schemas"]["LatticeSampling"] | components["schemas"]["PointsSampling"])[];
             /** Quantities */
-            quantities: ("E" | "phi" | "D" | "div_E" | "curl_E" | "div_D" | "curl_D" | "B" | "H" | "div_B" | "div_H")[];
+            quantities: ("E" | "phi" | "D" | "div_E" | "curl_E" | "div_D" | "curl_D" | "B" | "H" | "div_B" | "div_H" | "dB_dt" | "E_ind")[];
             /**
              * Quality
              * @default normal
@@ -2394,6 +2818,11 @@ export interface components {
              * @default []
              */
             source_contributions: string[];
+            /**
+             * Time S
+             * @default 0
+             */
+            time_s: number;
         };
         /** SolverDescriptor */
         SolverDescriptor: {
@@ -2422,6 +2851,29 @@ export interface components {
             in_process: boolean;
             /** Queue Worker Online */
             queue_worker_online: boolean;
+        };
+        /** SourceFlux */
+        SourceFlux: {
+            /** Object Id */
+            object_id: string;
+            /** Kind */
+            kind: string;
+            /** Current A */
+            current_A: number;
+            /** Di Dt A Per S */
+            dI_dt_A_per_s: number;
+            /** Unit Flux Wb Per A */
+            unit_flux_Wb_per_A: number;
+            /** Unit Flux Error */
+            unit_flux_error: number;
+            /** Unit Circulation Wb Per A */
+            unit_circulation_Wb_per_A: number | null;
+            /** Unit Circulation Error */
+            unit_circulation_error: number | null;
+            /** Flux Wb */
+            flux_Wb: number;
+            /** Emf V */
+            emf_V: number | null;
         };
         /** SpherePrimitive */
         SpherePrimitive: {
@@ -2475,6 +2927,90 @@ export interface components {
              */
             color_by_flux: boolean;
         };
+        /** SurfaceResult */
+        SurfaceResult: {
+            /** Surface Id */
+            surface_id: string;
+            /** Valid */
+            valid: boolean;
+            /**
+             * Invalid Reasons
+             * @default []
+             */
+            invalid_reasons: components["schemas"]["LocalizedText"][];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "verified" | "line_not_converged" | "surface_not_converged" | "invalid" | "singular" | "unsupported" | "failed";
+            status_reason?: components["schemas"]["LocalizedText"] | null;
+            /** Time S */
+            time_s: number;
+            /**
+             * Derivative Unique
+             * @default true
+             */
+            derivative_unique: boolean;
+            /** Normal */
+            normal?: number[] | null;
+            /** Center M */
+            center_m?: number[] | null;
+            /** Area M2 */
+            area_m2?: number | null;
+            /** Perimeter M */
+            perimeter_m?: number | null;
+            /**
+             * Polyline M
+             * @default []
+             */
+            polyline_m: number[][];
+            /** Flux Wb */
+            flux_Wb?: number | null;
+            /** Flux Error Wb */
+            flux_error_Wb?: number | null;
+            /** Dflux Dt V */
+            dflux_dt_V?: number | null;
+            /** Dflux Dt Error V */
+            dflux_dt_error_V?: number | null;
+            /** Emf V */
+            emf_V?: number | null;
+            /** Emf Error V */
+            emf_error_V?: number | null;
+            /** Difference V */
+            difference_V?: number | null;
+            /** Relative Error */
+            relative_error?: number | null;
+            /** Tolerance V */
+            tolerance_V?: number | null;
+            /** Surface Converged */
+            surface_converged?: boolean | null;
+            /** Line Converged */
+            line_converged?: boolean | null;
+            /** Surface Cells */
+            surface_cells?: number | null;
+            /** Line Subintervals */
+            line_subintervals?: number | null;
+            /** Min Distance To Filament M */
+            min_distance_to_filament_m?: number | null;
+            lenz?: components["schemas"]["Lenz"] | null;
+            /**
+             * Sources
+             * @default []
+             */
+            sources: components["schemas"]["SourceFlux"][];
+            /** Static Flux Wb */
+            static_flux_Wb?: number | null;
+            /**
+             * Mutual
+             * @default []
+             */
+            mutual: components["schemas"]["Mutual"][];
+            /**
+             * No Change
+             * @default false
+             */
+            no_change: boolean;
+        };
         /** SymbolDef */
         SymbolDef: {
             /** Latex */
@@ -2484,21 +3020,66 @@ export interface components {
             unit: string;
         };
         /**
+         * TimeHint
+         * @description Simulation-time range and step a time-dependent preset opens with (Phase 4A). The
+         *     physics at a time t does not depend on these; they only set the playback.
+         */
+        TimeHint: {
+            /** Start S */
+            start_s: number;
+            /** End S */
+            end_s: number;
+            /** Step S */
+            step_s: number;
+            /**
+             * Initial S
+             * @default 0
+             */
+            initial_s: number;
+        };
+        /**
+         * TimeSourceInfo
+         * @description A current source at the simulation time (Phase 4A).
+         */
+        TimeSourceInfo: {
+            /** Object Id */
+            object_id: string;
+            /** Kind */
+            kind: string;
+            /**
+             * Profile Type
+             * @enum {string}
+             */
+            profile_type: "constant" | "sinusoidal" | "ramp" | "piecewise_linear";
+            /** Current A */
+            current_A: number;
+            /** Di Dt A Per S */
+            dI_dt_A_per_s: number;
+            /** Di Dt Left A Per S */
+            dI_dt_left_A_per_s: number;
+            /** Derivative Unique */
+            derivative_unique: boolean;
+            /** Induction Supported */
+            induction_supported: boolean;
+        };
+        /**
          * ToroidFiniteSource
          * @description Finite-turn toroid (Phase 3B) on a ``torus`` primitive: N circular turns of radius
          *     b_winding, each counter-clockwise about its local +e_phi for I > 0. Vacuum: no core.
          */
         ToroidFiniteSource: {
             /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "toroid_finite";
-            /**
              * Current A
              * @default 1
              */
             current_A: number;
+            /** Profile */
+            profile?: (components["schemas"]["ConstantProfile"] | components["schemas"]["SinusoidalProfile"] | components["schemas"]["RampProfile"] | components["schemas"]["PiecewiseLinearProfile"]) | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "toroid_finite";
         };
         /**
          * ToroidIdealSource
@@ -2508,15 +3089,17 @@ export interface components {
          */
         ToroidIdealSource: {
             /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "toroid_ideal";
-            /**
              * Current A
              * @default 1
              */
             current_A: number;
+            /** Profile */
+            profile?: (components["schemas"]["ConstantProfile"] | components["schemas"]["SinusoidalProfile"] | components["schemas"]["RampProfile"] | components["schemas"]["PiecewiseLinearProfile"]) | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "toroid_ideal";
             /**
              * Relative Permeability
              * @default 1
@@ -3223,6 +3806,90 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    induction_law_api_v1_induction_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InductionBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InductionHeader"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    profile_sample_api_v1_profile_sample_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileSampleBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileSamples"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

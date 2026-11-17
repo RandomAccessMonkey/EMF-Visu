@@ -6,8 +6,9 @@ equations govern it and under what assumptions.
 
 **Status: Phase 1 (Foundation), Phase 2A (point-charge electrostatics), Phase 2B-1
 (divergence and curl), Phase 2B-2 (Gauss's law and the divergence theorem), Phase 3A
-(magnetostatic sources: wires and loops) and Phase 3B (solenoids, toroids, permanent magnets and
-Ampère's law) are implemented.**
+(magnetostatic sources: wires and loops), Phase 3B (solenoids, toroids, permanent magnets and
+Ampère's law) and Phase 4A (magnetoquasistatic induction: Faraday's and Lenz's laws) are
+implemented.**
 What works today:
 
 - Any number of positive and negative ideal point charges in vacuum, and dipoles made of two
@@ -43,14 +44,21 @@ What works today:
   H is integrated numerically along the path and compared with the free current counted
   independently from where currents cross the path's surface; the result is reported as
   verified, not converged, ambiguous, unsupported or a mismatch.
-- Presets 1–4 and 9–14, saved projects, English and Hungarian, beginner and advanced levels.
+- Induction (Phase 4A, magnetoquasistatic): time-dependent source currents (constant,
+  sinusoidal, ramp, piecewise linear) with time controls and deterministic playback; B(t), ∂B/∂t
+  and the induced electric field E_ind = −∂A/∂t (shown separately from the electrostatic E);
+  magnetic flux through stationary measurement surfaces, the EMF ∮E_ind·dl compared with −dΦ/dt
+  (Faraday tab), Lenz's-law signs, and mutual inductance with a reciprocity check. No moving
+  conductors, induced currents or waves.
+- Presets 1–4, 9–16 and 21, saved projects, English and Hungarian, beginner and advanced levels.
 - High-resolution solves as cancellable jobs on a separate worker, with live progress.
 
 Field lines, contours and surfaces are numerical constructions on top of the exact field; the
 Results panel states the method and its limits for each.
 
 Everything else in the product definition (conductors, dielectrics, extended charge
-distributions, nonlinear or field-dependent magnetic materials, induction, FEM, FDTD,
+distributions, nonlinear or field-dependent magnetic materials, motional EMF and induced
+currents, FEM, FDTD,
 circuits, open-surface flux tools) is **not implemented
 yet**. Such features are disabled or refused with a reason; nothing is approximated silently.
 See [docs/architecture.md](docs/architecture.md) for the full status table.
@@ -179,6 +187,10 @@ handle fails the type-check.
   move it; right-drag pans; the wheel zooms.
 - **3D view**: drag to orbit; select an object to move, rotate or scale it with the gizmo.
 - **Probe** (key `P`): click the slice plane to read exact field values.
+- **Time bar** (time-dependent scenes): play, pause, step and set the simulation time; the
+  physics is evaluated at t = start + k·Δt exactly.
+- **Faraday tab**: add a measurement surface; the result compares ∮E_ind·dl with −dΦ/dt and
+  explains the sign (Lenz).
 - **Ampère tab**: add a circular, rectangular or polygonal path, place and orient it
   numerically; the result compares ∮H·dl with the enclosed free current.
 - Keys: `2` / `3` switch views, arrow keys nudge the selection, `Delete` removes it, `Esc`

@@ -4,6 +4,7 @@ import { Badge, Button, NumberField, Row, Section, Select, Slider, Switch } from
 import { useT } from '@/i18n'
 import { ARROW_DENSITIES, HEAT_RESOLUTION, LATTICE_DENSITIES, PLANE_BASIS, type SlicePlane } from '@/sim/request'
 import { useHighAccuracy, type Simulation } from '@/sim/useSimulation'
+import { isTimeDependent } from '@/sim/request'
 import { useSceneStore } from '@/state/sceneStore'
 import { useViewStore, type ViewSettings } from '@/state/viewStore'
 
@@ -66,6 +67,7 @@ export function VisualizationPanel({ sim }: { sim: Simulation }) {
   const objects = useSceneStore((s) => s.scene.objects)
   const currents = objects.filter((o) => o.role === 'current_source' && o.source && o.source.type !== 'point_charge')
   const hasMagnetic = sim.magnetic.active
+  const timeDependent = useSceneStore((st) => isTimeDependent(st.scene))
   const electricOn = v.showArrows || v.showFieldLines || v.showContours
   const magneticOn = v.showBArrows || v.showBLines
   const shown = electricOn && magneticOn ? 'both' : magneticOn ? 'magnetic' : electricOn ? 'electric' : 'both'
@@ -97,6 +99,10 @@ export function VisualizationPanel({ sim }: { sim: Simulation }) {
             <Select label={t('viz.magneticField')} value={v.magneticField} onChange={set('magneticField')} options={[
               { value: 'B', label: t('viz.vectorB') },
               { value: 'H', label: t('viz.vectorH') },
+              ...(timeDependent ? [
+                { value: 'dB_dt' as const, label: t('viz.vectorDBdt') },
+                { value: 'E_ind' as const, label: t('viz.vectorEind') },
+              ] : []),
             ]} />
           </Row>
           <Row label={t('viz.contribution')} hint={t('viz.contributionHint')}>
@@ -197,6 +203,10 @@ export function VisualizationPanel({ sim }: { sim: Simulation }) {
               { value: 'B' as const, label: t('viz.heatB') },
               { value: 'H' as const, label: t('viz.heatH') },
               { value: 'div_B' as const, label: t('viz.heatDivB') },
+              ...(timeDependent ? [
+                { value: 'dB_dt' as const, label: t('viz.heatDBdt') },
+                { value: 'E_ind' as const, label: t('viz.heatEind') },
+              ] : []),
             ] : []),
             { value: 'none', label: t('viz.heatNone') },
           ]} />

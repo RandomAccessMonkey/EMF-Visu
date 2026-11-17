@@ -8,8 +8,10 @@ from fastapi import APIRouter, Depends, Response
 from emf_core import engine
 from emf_core.ampere import AmpereHeader
 from emf_core.gauss_situations import SITUATIONS, GaussSituation
+from emf_core.induction import InductionHeader
 from emf_core.postprocess import differential
 from emf_core.presets import PRESETS, Preset
+from emf_core.scene import profiles
 from emf_core.solvers import SolveRequest, SolverError, UnsupportedSceneError
 from emf_core.solvers.analytical import electrostatics as es
 from emf_core.units import EPS0, QUANTITIES
@@ -23,12 +25,15 @@ from ..schemas import (
     EquationsResponse,
     ErrorBody,
     FluxBody,
+    InductionBody,
     ProbeBody,
     ProbeContribution,
     ProbeDiagnostic,
     ProbeDistributional,
     ProbeResponse,
     ProbeValue,
+    ProfileSampleBody,
+    ProfileSamples,
     SimulationBody,
 )
 
@@ -74,7 +79,7 @@ def probe(body: ProbeBody, orch: Orch) -> ProbeResponse:
     try:
         solver = orch.select(electric_scene, request)
         result = solver.solve(electric_scene, request)
-        magnetic = (magnetic_probe(body.scene, body.point_m, orch)
+        magnetic = (magnetic_probe(body.scene, body.point_m, orch, body.time_s)
                     if "magnetic" in engine.field_kinds(body.scene) else None)
     except UnsupportedSceneError as exc:
         raise api_error(422, "unsupported", "no available solver supports this configuration",
@@ -173,7 +178,8 @@ def _diagnostics(point: np.ndarray, positions: np.ndarray, charges: np.ndarray, 
 @router.post("/equations/evaluate")
 def evaluate_equations(body: EquationsBody, orch: Orch) -> EquationsResponse:
     """Equations with their applicability status for the model that this scene resolves to."""
-    views, reasons, solver_ids = orch.equations(body.scene, body.surfaces, body.paths)
+    views, reasons, solver_ids = orch.equations(body.scene, body.surfaces, body.paths,
+                                                body.flux_surfaces)
     return EquationsResponse(supported=bool(solver_ids),
                              solver_id=solver_ids[0] if solver_ids else None,
                              solver_ids=solver_ids,
@@ -213,6 +219,34 @@ def ampere_law(body: AmpereBody, orch: Orch) -> Response:
                         exc.reasons) from exc
     return Response(blob, media_type="application/json",
                     headers={"X-EMF-Cache": "hit" if hit else "miss"})
+
+
+@router.post("/induction", response_class=Response,
+             responses={**_ERRORS, 200: {"model": InductionHeader}})
+def induction_law(body: InductionBody, orch: Orch) -> Response:
+    """Magnetic flux through stationary surfaces, its time derivative, the induced EMF
+    ∮E_ind·dl and the Faraday comparison at one simulation time, with Lenz's-law signs and
+    mutual inductances (Phase 4A, magnetoquasistatic)."""
+    try:
+        blob, hit = orch.solve_induction(body.scene, body.induction)
+    except UnsupportedSceneError as exc:
+        raise api_error(422, "unsupported", "no available solver supports this configuration",
+                        exc.reasons) from exc
+    return Response(blob, media_type="application/json",
+                    headers={"X-EMF-Cache": "hit" if hit else "miss"})
+
+
+@router.post("/profile/sample")
+def profile_sample(body: ProfileSampleBody) -> ProfileSamples:
+    """I(t) and dI/dt of a current profile on an even time grid, for plotting (Phase 4A)."""
+    if not body.end_s > body.start_s:
+        raise api_error(422, "invalid", "end_s must be later than start_s")
+    ts = np.linspace(body.start_s, body.end_s, body.count)
+    return ProfileSamples(
+        t_s=[float(t) for t in ts],
+        current_A=[profiles.current_at(body.profile, float(t)) for t in ts],
+        dI_dt_A_per_s=[profiles.derivative_at(body.profile, float(t)).right for t in ts],
+        corners_s=[c for c in profiles.corners(body.profile) if body.start_s <= c <= body.end_s])
 
 
 @router.get("/gauss/situations")

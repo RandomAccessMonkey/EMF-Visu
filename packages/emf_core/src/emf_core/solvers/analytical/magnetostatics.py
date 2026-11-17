@@ -37,11 +37,14 @@ this bound is returned per point and reported when it exceeds PRECISION_WARN (Ph
 
 from __future__ import annotations
 
+import hashlib
 import math
 import time
+from collections import OrderedDict
 from dataclasses import dataclass
 from dataclasses import field as dc_field
 from fractions import Fraction
+from typing import Literal
 
 import numpy as np
 from numpy.typing import NDArray
@@ -59,7 +62,9 @@ from ...scene.currents import (
     WireSource,
     current_sources,
 )
-from ...scene.models import GroupPrimitive, MaterialModel, Role, Scene
+from ...scene.models import GroupPrimitive, MaterialModel, Role, Scene, TimeDependentCurrent
+from ...scene.profiles import PiecewiseLinearProfile, RampProfile, SinusoidalProfile
+from ...scene.timedep import TimeState, at_time, rates, time_state
 from ...units import MU0, QUANTITIES
 from ..base import (
     ArrayEntry,
@@ -69,6 +74,7 @@ from ..base import (
     FieldLineInfo,
     FieldLineSet,
     IdealSolenoidInfo,
+    InductionInfo,
     MethodInfo,
     ModelContext,
     ProgressCallback,
@@ -78,6 +84,7 @@ from ..base import (
     SolveRequest,
     SolverKind,
     Support,
+    TimeSourceInfo,
     TurnGeometry,
     quantities_for,
 )
@@ -123,6 +130,31 @@ def _f_over_m(m: Arr) -> Arr:
     """sum_{n>=2} f_n m^(n-1) (in units of pi/2), by Horner's rule."""
     acc = np.zeros_like(m)
     for coef in F_SERIES[:1:-1]:  # f_N ... f_2
+        acc = acc * m + coef
+    return acc * m
+
+
+def _a_series_coefficients(n_terms: int) -> NDArray[np.float64]:
+    """g_n (in units of pi/2) of g(m) = (1 - m/2) K(m) - E(m) = (pi/2) sum g_n m^n (Phase 4A).
+    From the hypergeometric series of K and E: g_n = c_(n-1) (n-1) / (2n), all positive for
+    n >= 2 (no cancellation), g_0 = g_1 = 0."""
+    c = [Fraction(1)]
+    for n in range(1, n_terms + 1):
+        c.append(c[-1] * Fraction(2 * n - 1, 2 * n) ** 2)
+    e = [Fraction(1)] + [-c[n] / (2 * n - 1) for n in range(1, n_terms + 1)]
+    g = [c[n] - (c[n - 1] / 2 if n else 0) - e[n] for n in range(n_terms + 1)]
+    assert g[0] == 0 and g[1] == 0
+    assert all(g[n] == c[n - 1] * (n - 1) / (2 * n) and g[n] > 0 for n in range(2, n_terms + 1))
+    return np.array([float(x) for x in g])
+
+
+G_SERIES = _a_series_coefficients(SERIES_TERMS)
+
+
+def _g_over_m(m: Arr) -> Arr:
+    """sum_{n>=2} g_n m^(n-1) (in units of pi/2), by Horner's rule."""
+    acc = np.zeros_like(m)
+    for coef in G_SERIES[:1:-1]:
         acc = acc * m + coef
     return acc * m
 
@@ -189,6 +221,38 @@ def loop_local(rho: Arr, z: Arr, a: float | Arr, current: float | Arr
     return b_rho, bz, np.sqrt(dm)
 
 
+def loop_vector_potential_local(rho: Arr, z: Arr, a: float | Arr, current: float | Arr
+                                ) -> tuple[Arr, Arr]:
+    """(A_phi, distance to the wire) of a circular loop in its local cylindrical coordinates
+    (Phase 4A), Coulomb gauge: A = mu0 I / (4 pi) ∮ dl' / |r - r'|, which for a circle is
+    azimuthal,
+
+        A_phi = mu0 I sqrt(D+) / (2 pi rho) * g(m),  g(m) = (1 - m/2) K(m) - E(m),
+
+    with the same m = 4 a rho / D+ and q = 1 - m = D- / D+ as ``loop_local`` (parameter m, not
+    the modulus k). K = ellipkm1(q) resolves the logarithmic divergence at the wire. For
+    m <= NEAR_AXIS_M g(m) cancels (g ~ (pi/32) m^2); the exact positive series is used, written
+    as A_phi = 2 mu0 I a / (pi sqrt(D+)) * g(m)/m, which is exact on the axis (A_phi = 0) and
+    reduces to the dipole form mu0 I a^2 rho / (4 r^3) far away. Positive I: A along +phi
+    (counter-clockwise about the loop normal), like the current."""
+    a_arr = np.broadcast_to(np.asarray(a, np.float64), np.shape(rho))
+    dp = (a + rho) ** 2 + z**2
+    dm = (a - rho) ** 2 + z**2
+    m = np.minimum(4.0 * a * rho / dp, 1.0)  # same clamp as loop_local (see there)
+    q = dm / dp
+    near = m <= NEAR_AXIS_M
+    with np.errstate(divide="ignore", invalid="ignore"):
+        k = ellipkm1(q)
+        e = ellipe(m)
+        sq = np.sqrt(dp)
+        a_phi = MU0 * current * sq / (2.0 * np.pi * rho) * ((1.0 - 0.5 * m) * k - e)
+        if np.any(near):
+            c_near = np.broadcast_to(np.asarray(MU0 * current, np.float64), np.shape(rho))[near]
+            a_phi[near] = (2.0 * c_near * a_arr[near] / (np.pi * sq[near])
+                           * (np.pi / 2.0) * _g_over_m(m[near]))
+    return a_phi, np.sqrt(dm)
+
+
 LOOP_BATCH_ELEMENTS = 400_000  # points × loops evaluated per numpy call (bounds memory)
 
 
@@ -202,15 +266,29 @@ def _chunks(n_points: int, n_loops: int) -> list[slice]:
     return [slice(i, i + step) for i in range(0, n_points, step)]
 
 
-def loops_field(loops: list[LoopSource], points: Arr) -> tuple[Arr, Mask, Arr]:
-    """Sum of many circular loops' fields (the turns of solenoids and toroids) by one broadcast
-    evaluation of ``loop_local`` per chunk: identical formulas to ``loop_field``, without a Python
-    loop over turns. Returns (B, singular mask, relative precision bound): a point within the
-    filament tolerance of any turn is singular (B NaN, whatever the other turns give); the
-    precision bound is the largest over the turns."""
+# Unit-current fields per source object (Phase 4A). Every loop object's B and A are linear in
+# its current, so they are computed once per geometry and sample set at 1 A per turn and scaled:
+# B(t) = I(t) B_unit, dB/dt = dI/dt B_unit, E_ind = -dI/dt A_unit. Large sample sets (grids) are
+# cached by a digest of the turn geometry and the points; time and current never enter the key,
+# so moving the simulation time reuses them. Small sets (probes, field-line steps) are not cached.
+UNIT_CACHE_MIN_POINTS = 2000
+UNIT_CACHE_ENTRIES = 48
+_UNIT_CACHE: OrderedDict[tuple[str, str, str], tuple[Arr, Mask, Arr]] = OrderedDict()
+
+
+def _digest(*arrays: Arr) -> str:
+    h = hashlib.blake2b(digest_size=16)
+    for a in arrays:
+        h.update(np.ascontiguousarray(a, np.float64).tobytes())
+        h.update(str(a.shape).encode())
+    return h.hexdigest()
+
+
+def _group_unit(loops: list[LoopSource], points: Arr, which: Literal["B", "A"]
+                ) -> tuple[Arr, Mask, Arr]:
+    """(field at 1 A per turn, singular mask, precision bound) of one object's turns."""
     c, nrm, rad = _loop_arrays(loops)
-    cur = np.array([lp.current_A for lp in loops])
-    b = np.zeros_like(points)
+    out = np.zeros_like(points)
     sing = np.zeros(points.shape[0], bool)
     prec = np.zeros(points.shape[0])
     for sl in _chunks(points.shape[0], len(loops)):
@@ -218,20 +296,81 @@ def loops_field(loops: list[LoopSource], points: Arr) -> tuple[Arr, Mask, Arr]:
         z = np.einsum("plk,lk->pl", d, nrm)
         rvec = d - z[..., None] * nrm[None, :, :]
         rho = np.linalg.norm(rvec, axis=2)
-        br, bz, dist = loop_local(rho, z, rad[None, :] * np.ones_like(rho),
-                                  cur[None, :] * np.ones_like(rho))
+        ones = np.ones_like(rho)
+        # Non-finite values on a filament are replaced by the singular mask below.
         with np.errstate(divide="ignore", invalid="ignore"):
             rhat = np.where(rho[..., None] > 0, rvec / rho[..., None], 0.0)
-        bl = br[..., None] * rhat + bz[..., None] * nrm[None, :, :]
+            if which == "B":
+                br, bz, dist = loop_local(rho, z, rad[None, :] * ones, ones)
+                vec = br[..., None] * rhat + bz[..., None] * nrm[None, :, :]
+            else:
+                a_phi, dist = loop_vector_potential_local(rho, z, rad[None, :] * ones, ones)
+                tangent = np.cross(np.broadcast_to(nrm[None, :, :], rhat.shape), rhat)
+                vec = a_phi[..., None] * tangent  # along the positive current direction
         scale = rad[None, :] + np.linalg.norm(d, axis=2)
         on = dist <= filament_tolerance(scale)
-        bl[on] = 0.0
-        b[sl] = bl.sum(axis=1)
+        vec[on] = 0.0
+        out[sl] = vec.sum(axis=1)
         sing[sl] = on.any(axis=1)
         prec[sl] = np.where(on, 0.0, precision_bound(scale, dist)).max(axis=1)
-    b[sing] = np.nan
+    out[sing] = np.nan
     prec[sing] = 0.0
-    return b, sing, prec
+    return out, sing, prec
+
+
+def _group_unit_cached(loops: list[LoopSource], points: Arr, which: Literal["B", "A"]
+                       ) -> tuple[Arr, Mask, Arr]:
+    if points.shape[0] < UNIT_CACHE_MIN_POINTS:
+        return _group_unit(loops, points, which)
+    c, nrm, rad = _loop_arrays(loops)
+    key = (which, _digest(c, nrm, rad), _digest(points))
+    hit = _UNIT_CACHE.get(key)
+    if hit is not None:
+        _UNIT_CACHE.move_to_end(key)
+        return hit
+    val = _group_unit(loops, points, which)
+    _UNIT_CACHE[key] = val
+    while len(_UNIT_CACHE) > UNIT_CACHE_ENTRIES:
+        _UNIT_CACHE.popitem(last=False)
+    return val
+
+
+def _groups(loops: list[LoopSource]) -> list[tuple[float, list[LoopSource]]]:
+    """Loops grouped by object (all turns of an object carry the same current)."""
+    by: dict[tuple[str, float], list[LoopSource]] = {}
+    for lp in loops:
+        by.setdefault((lp.object_id, lp.current_A), []).append(lp)
+    return [(cur, grp) for (_, cur), grp in by.items()]
+
+
+def _scaled_sum(loops: list[LoopSource], points: Arr, which: Literal["B", "A"]
+                ) -> tuple[Arr, Mask, Arr]:
+    out = np.zeros_like(points)
+    sing = np.zeros(points.shape[0], bool)
+    prec = np.zeros(points.shape[0])
+    for cur, grp in _groups(loops):
+        unit, s_g, p_g = _group_unit_cached(grp, points, which)
+        out += cur * np.nan_to_num(unit)
+        sing |= s_g
+        prec = np.maximum(prec, p_g)
+    out[sing] = np.nan
+    prec[sing] = 0.0
+    return out, sing, prec
+
+
+def loops_field(loops: list[LoopSource], points: Arr) -> tuple[Arr, Mask, Arr]:
+    """Sum of many circular loops' fields (the turns of solenoids and toroids): per object, the
+    unit-current field (one broadcast evaluation of ``loop_local`` over its turns, cached for
+    large sample sets) times its current. Returns (B, singular mask, relative precision bound):
+    a point within the filament tolerance of any turn is singular (B NaN, whatever the other
+    turns give); the precision bound is the largest over the turns."""
+    return _scaled_sum(loops, points, "B")
+
+
+def loops_vector_potential(loops: list[LoopSource], points: Arr) -> tuple[Arr, Mask, Arr]:
+    """Coulomb-gauge vector potential A (T·m) of circular loops, like ``loops_field``
+    (Phase 4A). With currents dI/dt instead of I, -A of the same call is E_ind."""
+    return _scaled_sum(loops, points, "A")
 
 
 def loop_field(points: Arr, lp: LoopSource) -> Arr:
@@ -642,6 +781,88 @@ def source_h(points: Arr, cs: CurrentSources, oid: str, b_i: Arr, tol: float) ->
             h = h - np.where(inside[:, None], mg.m_vector[None, :], 0.0)
             h[end_face] = np.nan
     return h
+
+
+SPEED_OF_LIGHT = 299_792_458.0  # m/s
+QUASISTATIC_WARN = 1e-2  # f L / c above this: retardation across the region is not negligible
+
+
+def _quasistatic_ratio(scene: Scene) -> float:
+    """Largest L / (c tau) over the time-dependent sources, with L the domain diagonal and tau
+    the shortest time scale of the profile (1/f for a sinusoid, the ramp duration, the shortest
+    keyframe interval). The magnetoquasistatic model neglects retardation, which is valid only
+    when this is small."""
+    length = scene.domain.diagonal_m
+    worst = 0.0
+    for o in scene.objects:
+        src = o.source
+        if not isinstance(src, TimeDependentCurrent) or src.profile is None:
+            continue
+        p = src.profile
+        if isinstance(p, SinusoidalProfile):
+            tau = 1.0 / p.frequency_Hz
+        elif isinstance(p, RampProfile):
+            tau = p.t_end_s - p.t_start_s
+        elif isinstance(p, PiecewiseLinearProfile):
+            tau = min(b.t_s - a.t_s for a, b in zip(p.keyframes, p.keyframes[1:], strict=False))
+        else:
+            continue
+        worst = max(worst, length / (SPEED_OF_LIGHT * tau))
+    return worst
+
+
+def _time_assumptions(ts: TimeState) -> list[LocalizedText]:
+    return [
+        L(f"Magnetoquasistatic model at t = {ts.t_s:.6g} s: prescribed currents I(t) in fixed "
+          "geometry; B follows I(t) instantaneously (no retardation, no radiation); the "
+          "displacement current is neglected.",
+          f"Magnetokvázisztatikus modell t = {ts.t_s:.6g} s időpontban: előírt I(t) áramok "
+          "rögzített geometriában; B késleltetés nélkül követi I(t)-t (nincs késleltetés, "
+          "sugárzás); az eltolási áramot elhanyagoljuk."),
+        L("dB/dt = Σ dI_j/dt · B_j per unit current, with dI/dt from the profile analytically. "
+          "E_ind = −∂A/∂t is the induced, nonconservative part of the electric field in the "
+          "Coulomb gauge; it is not the complete electric field (no charges, no scalar "
+          "potential of a time-dependent system).",
+          "dB/dt = Σ dI_j/dt · B_j egységnyi áramra, dI/dt a profilból analitikusan. "
+          "E_ind = −∂A/∂t az elektromos tér indukált, nem konzervatív része Coulomb-mértékben; "
+          "nem a teljes elektromos tér (nincsenek töltések, nincs időfüggő skalárpotenciál)."),
+        L("Induced fields do not act back: no induced currents, no eddy currents, the source "
+          "currents are prescribed.",
+          "Az indukált terek nem hatnak vissza: nincsenek indukált áramok, örvényáramok, a "
+          "forrásáramok előírtak."),
+    ]
+
+
+def _time_warnings(ts: TimeState, ratio: float, request: SolveRequest) -> list[LocalizedText]:
+    out: list[LocalizedText] = []
+    wants = set(request.all_quantities())
+    if ts.unsupported_ids and "E_ind" in wants:
+        ids = ", ".join(ts.unsupported_ids)
+        out.append(L(
+            f"E_ind is not evaluated: the current of {ids} changes at this time, and no vector "
+            "potential is implemented for that source (infinite wire or ideal toroid). A partial "
+            "induced field is not shown.",
+            f"E_ind nincs kiértékelve: {ids} árama ebben az időpontban változik, és ehhez a "
+            "forráshoz (végtelen vezető vagy ideális toroid) nincs vektorpotenciál megvalósítva. "
+            "Részleges indukált teret nem mutatunk."))
+    corner = [st for st in ts.sources if not st.rate.unique]
+    if corner and wants & {"dB_dt", "E_ind"}:
+        parts = "; ".join(f"{st.object_id}: {st.rate.left:.6g} A/s before, {st.rate.right:.6g} "
+                          "A/s after" for st in corner)
+        parts_hu = "; ".join(f"{st.object_id}: előtte {st.rate.left:.6g} A/s, utána "
+                             f"{st.rate.right:.6g} A/s" for st in corner)
+        out.append(L(
+            f"At t = {ts.t_s:.6g} s dI/dt jumps ({parts}); dB/dt and E_ind are shown with the "
+            "right-hand (after) derivative and are not uniquely defined at this instant.",
+            f"t = {ts.t_s:.6g} s-nál dI/dt ugrik ({parts_hu}); dB/dt és E_ind a jobb oldali "
+            "(utána) deriválttal látható, ebben a pillanatban nem egyértelmű."))
+    if ratio > QUASISTATIC_WARN:
+        out.append(L(
+            f"The quasistatic approximation is doubtful here: region size / (c × time scale) = "
+            f"{ratio:.2g} (retardation across the region is neglected).",
+            f"A kvázisztatikus közelítés itt kérdéses: tartományméret / (c × időskála) = "
+            f"{ratio:.2g} (a tartományon belüli késleltetést elhanyagoljuk)."))
+    return out
 
 
 def _status_warnings(counts: NDArray[np.int64], unconverged: int, imprecise: int = 0,
@@ -1107,7 +1328,13 @@ class FilamentMagnetostaticSolver:
               progress: ProgressCallback | None = None,
               cancel: CancelCheck | None = None) -> SimulationResult:
         t0 = time.perf_counter()
-        cs = current_sources(scene)
+        cs0 = current_sources(scene)
+        # Phase 4A: every current at the simulation time (= the stored current at t = 0 and for
+        # constant profiles), and the rates dI/dt for dB/dt and E_ind.
+        ts = time_state(scene, cs0, request.time_s)
+        cs = at_time(cs0, ts)
+        cs_rate = rates(cs0, ts)
+        e_ind_ok = not ts.unsupported_ids
         r_min = COINCIDENCE_FACTOR * scene.domain.diagonal_m
         total = sum(int(np.prod(s.shape)) for s in request.samplings)
         share = 1.0 if request.field_lines is None else 0.5
@@ -1144,12 +1371,34 @@ class FilamentMagnetostaticSolver:
                 if progress is not None:
                     progress(share * done / max(total, 1), s.id)
             counts += np.bincount(status, minlength=5)
+            wants = set(quantities_for(request, s))
+            db_dt = e_ind = None
+            if "dB_dt" in wants:
+                # Linear in each current for fixed geometry: dB/dt = sum_j dI_j/dt B_j,unit,
+                # from the analytical dI/dt (static sources removed).
+                db_dt = np.empty_like(pts)
+                for start in range(0, pts.shape[0], _CHUNK):
+                    sl = slice(start, start + _CHUNK)
+                    db_dt[sl] = evaluate_bh(pts[sl], cs_rate, r_min).b
+                db_dt[status == ST_SINGULAR] = np.nan
+            if "E_ind" in wants:
+                e_ind = np.full_like(pts, np.nan)
+                if e_ind_ok:
+                    # E_ind = -dA/dt = -sum_j dI_j/dt A_j,unit (Coulomb gauge, closed loops).
+                    for start in range(0, pts.shape[0], _CHUNK):
+                        sl = slice(start, start + _CHUNK)
+                        e_ind[sl] = -loops_vector_potential(cs_rate.loops, pts[sl])[0]
+                    e_ind[status == ST_SINGULAR] = np.nan
             # Exact zeros where the field is defined: every source is divergence-free there
             # (Biot–Savart fields of filaments and sheets; the ideal core field is azimuthal and
             # depends on rho only). div H = -div M = 0 inside a uniform magnet.
             div_b = np.where(np.all(np.isfinite(b), axis=1), 0.0, np.nan)
             div_h = np.where(np.all(np.isfinite(h), axis=1), 0.0, np.nan)
             data_by_q = {"B": b, "H": h, "div_B": div_b, "div_H": div_h}
+            if db_dt is not None:
+                data_by_q["dB_dt"] = db_dt
+            if e_ind is not None:
+                data_by_q["E_ind"] = e_ind
             for qty in quantities_for(request, s):
                 info = QUANTITIES[qty]
                 name = f"{s.id}.{qty}"
@@ -1211,7 +1460,12 @@ class FilamentMagnetostaticSolver:
               "perem."),
         ]
         assumptions += _model_assumptions(cs)
+        quasi_ratio = _quasistatic_ratio(scene)
+        if ts.time_dependent:
+            assumptions = [a for a in assumptions if not a.en.startswith("Magnetostatics:")]
+            assumptions += _time_assumptions(ts)
         warnings: list[LocalizedText] = list(cs.warnings)
+        warnings += _time_warnings(ts, quasi_ratio, request)
         if excluded:
             warnings.append(L(
                 f"{len(excluded)} inert geometry object(s) are drawn but are not part of the "
@@ -1261,6 +1515,10 @@ class FilamentMagnetostaticSolver:
         if cs.magnets:
             evaluated += ["loop_field_elliptic", "magnet_sheet_field", "constitutive_b_general",
                           "h_from_b_m", "bound_currents", "magnetic_moment"]
+        evaluated += [f"current_{p}" if p != "piecewise_linear" else "current_piecewise"
+                      for p in {st.profile_type for st in ts.sources}]
+        if ts.time_dependent and e_ind_ok:
+            evaluated += ["vector_potential_coulomb", "e_ind_from_a"]
         classification = ("idealized_model" if cs.ideal_toroids else
                           "numerical_approximation" if cs.magnets else "exact_analytical")
         header = ResultHeader(
@@ -1268,8 +1526,21 @@ class FilamentMagnetostaticSolver:
             classification=classification,
             classification_note=_classification_note(classification),
             assumptions=assumptions, warnings=warnings, excluded_object_ids=excluded,
+            time_sources=[TimeSourceInfo(
+                object_id=st.object_id, kind=st.kind,
+                profile_type=st.profile_type,
+                current_A=st.current_A, dI_dt_A_per_s=st.rate.right,
+                dI_dt_left_A_per_s=st.rate.left, derivative_unique=st.rate.unique,
+                induction_supported=st.induction_supported) for st in ts.sources],
+            induction=InductionInfo(
+                time_s=ts.t_s, time_dependent=ts.time_dependent,
+                derivative_unique=ts.derivative_unique, e_ind_available=e_ind_ok,
+                unsupported_object_ids=ts.unsupported_ids, quasistatic_ratio=quasi_ratio),
             model_context=ModelContext(
-                regime="magnetostatic", dimensionality="3d", medium="vacuum",
+                regime="quasi_static" if ts.time_dependent else "magnetostatic",
+                dimensionality="3d", medium="vacuum", time_varying=ts.time_dependent,
+                profile_types=sorted({st.profile_type for st in ts.sources}),
+                e_ind_available=e_ind_ok,
                 has_free_current=any((o.current_A or 0.0) != 0.0 for o in cs.objects),
                 computes_magnetic_field=True, solver_id=self.id,
                 source_count=len(nonzero), current_source_kinds=kinds,

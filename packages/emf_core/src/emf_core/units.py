@@ -36,6 +36,10 @@ QUANTITIES: dict[str, QuantityInfo] = {
         # Pointwise divergence of B and H (Phase 3A). Units: [B]/m and [H]/m.
         QuantityInfo("div_B", "∇·B", "T/m", 0),
         QuantityInfo("div_H", "∇·H", "A/m^2", 0),
+        # Phase 4A (magnetoquasistatic): time derivative of B, and the induced (nonconservative)
+        # electric field E_ind = -dA/dt in the Coulomb gauge. Never the electrostatic E.
+        QuantityInfo("dB_dt", "∂B/∂t", "T/s", 1),
+        QuantityInfo("E_ind", "E_ind", "V/m", 1),
         QuantityInfo("J", "J", "A/m^2", 1),
         QuantityInfo("S", "S", "W/m^2", 1),
         QuantityInfo("u", "u", "J/m^3", 0),

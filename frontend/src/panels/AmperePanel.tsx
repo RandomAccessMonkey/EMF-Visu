@@ -53,9 +53,21 @@ function VecRows({ label, value, onChange, unit, factor, step }: { label: string
   )
 }
 
-function ShapeEditor({ p }: { p: AmperePath }) {
+/** Store operations a path editor acts through: Ampère paths, or Faraday measurement surfaces
+ *  (Phase 4A), which share the geometry. */
+export interface PathOps {
+  update: (id: string, patch: Partial<AmperePath>) => void
+  setDisplay: (id: string, patch: Partial<NonNullable<AmperePath['display']>>) => void
+}
+
+const AMPERE_OPS: PathOps = {
+  update: (id, patch) => useSceneStore.getState().updatePath(id, patch),
+  setDisplay: (id, patch) => useSceneStore.getState().setPathDisplay(id, patch),
+}
+
+function ShapeEditor({ p, ops }: { p: AmperePath; ops: PathOps }) {
   const { t } = useT()
-  const set = (shape: AmperePath['shape']) => useSceneStore.getState().updatePath(p.id, { shape })
+  const set = (shape: AmperePath['shape']) => ops.update(p.id, { shape })
   const sh = p.shape
   const num = (key: MessageKey, value: number, apply: (v: number) => AmperePath['shape']) => (
     <Row key={key} label={t(key)}>
@@ -103,16 +115,17 @@ function ShapeEditor({ p }: { p: AmperePath }) {
   )
 }
 
-function PathEditor({ p }: { p: AmperePath }) {
+export function PathEditor({ p, ops = AMPERE_OPS, title, crossings = true }: { p: AmperePath; ops?: PathOps; title?: string; crossings?: boolean }) {
   const { t } = useT()
-  const { updatePath, setPathDisplay } = useSceneStore.getState()
+  const updatePath = ops.update
+  const setPathDisplay = ops.setDisplay
   const d = pathDisplayOf(p)
   return (
-    <Section title={t('ampere.edit', { name: p.name || p.id })}>
+    <Section title={title ?? t('ampere.edit', { name: p.name || p.id })}>
       <Row label={t('params.name')}>
         <input aria-label={t('params.name')} value={p.name} onChange={(e) => updatePath(p.id, { name: e.target.value })} className="h-7 w-36 rounded-md border border-border bg-bg px-1.5 text-xs" />
       </Row>
-      <ShapeEditor p={p} />
+      <ShapeEditor p={p} ops={ops} />
       <VecRows label={t('params.position')} value={p.center_m} unit="m" step={0.01} onChange={(v) => updatePath(p.id, { center_m: v })} />
       <VecRows label={t('params.rotation')} value={p.rotation_euler_xyz_rad} unit="°" factor={DEG} step={15} onChange={(v) => updatePath(p.id, { rotation_euler_xyz_rad: v })} />
       <Row label={t('ampere.orientation')} hint={t('ampere.orientationHint')}>
@@ -131,9 +144,11 @@ function PathEditor({ p }: { p: AmperePath }) {
       <Row label={t('ampere.showNormal')}>
         <Switch label={t('ampere.showNormal')} checked={d.show_normal} onChange={(v) => setPathDisplay(p.id, { show_normal: v })} />
       </Row>
-      <Row label={t('ampere.showCrossings')}>
-        <Switch label={t('ampere.showCrossings')} checked={d.show_crossings} onChange={(v) => setPathDisplay(p.id, { show_crossings: v })} />
-      </Row>
+      {crossings && (
+        <Row label={t('ampere.showCrossings')}>
+          <Switch label={t('ampere.showCrossings')} checked={d.show_crossings} onChange={(v) => setPathDisplay(p.id, { show_crossings: v })} />
+        </Row>
+      )}
       <Row label={t('ampere.showSurface')}>
         <Switch label={t('ampere.showSurface')} checked={d.show_surface} onChange={(v) => setPathDisplay(p.id, { show_surface: v })} />
       </Row>

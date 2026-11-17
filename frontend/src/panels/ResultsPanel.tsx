@@ -6,7 +6,7 @@ import type { CurrentSourceInfo, MethodInfo, ProbeMagnetic, ProbeValue, ResultHe
 import { Badge, Button, Section } from '@/components/ui/controls'
 import { useT, type MessageKey } from '@/i18n'
 import { formatNumber, formatSI, formatVector, prettyUnit } from '@/lib/format'
-import { scenePhysics } from '@/sim/request'
+import { isTimeDependent, scenePhysics } from '@/sim/request'
 import type { FluxData } from '@/sim/gauss'
 import type { Simulation } from '@/sim/useSimulation'
 import { AxisProfile } from './AxisProfile'
@@ -80,9 +80,13 @@ function Probe({ sim }: { sim: Simulation }) {
   const tool = useViewStore((s) => s.tool)
   const advanced = useViewStore((s) => s.level === 'advanced')
   const key = useMemo(() => JSON.stringify(scenePhysics(scene)), [scene])
+  // Phase 4A: the probe follows the simulation time of time-dependent scenes (0 otherwise, so
+  // static scenes keep one cache entry).
+  const timeS = useViewStore((s) => s.timeS)
+  const probeTime = isTimeDependent(scene) ? timeS : 0
   const probe = useQuery({
-    queryKey: ['probe', key, point],
-    queryFn: ({ signal }) => api.probe(scene, point!, signal),
+    queryKey: ['probe', key, point, probeTime],
+    queryFn: ({ signal }) => api.probe(scene, point!, signal, probeTime),
     enabled: point !== null && !dragging,
     placeholderData: keepPreviousData,
     retry: false,
@@ -270,6 +274,7 @@ function MagneticProbe({ m }: { m: ProbeMagnetic }) {
           ))}
         </tbody>
       </table>
+      {m.time_dependent && <TimeProbe m={m} />}
       <MaterialInfo m={m} />
       <p className="mt-1 font-mono text-[11px] text-muted">
         {m.constitutive === 'magnetization' ? 'H = B/μ₀ − M' : m.constitutive === 'linear_core' ? 'B = μ₀μᵣH' : 'B = μ₀H'}, μ₀ = {m.mu0_H_per_m.toExponential(10)} H/m
@@ -313,6 +318,53 @@ function MagneticProbe({ m }: { m: ProbeMagnetic }) {
         </>
       )}
       <Comparisons m={m} />
+    </div>
+  )
+}
+
+/** Phase 4A: the simulation time, dB/dt and the induced field E_ind at the probe, and each
+ *  source's current and its rate of change (all from the engine). */
+function TimeProbe({ m }: { m: ProbeMagnetic }) {
+  const { t } = useT()
+  const objects = useSceneStore((s) => s.scene.objects)
+  const names = useMemo(() => Object.fromEntries(objects.map((o) => [o.id, o.name || o.id])), [objects])
+  const eByObject = new Map(m.contributions.map((c) => [c.object_id, c.E_ind_V_per_m]))
+  return (
+    <div className="mt-1 rounded-md border border-[#fb923c]/40 p-2" data-testid="probe-time">
+      <p className="text-[11px] font-semibold text-[#fb923c]">{t('probe.timeTitle', { t: formatNumber(m.time_s, 6) })}</p>
+      <table className="w-full text-xs" aria-label={t('probe.timeValues')}>
+        <tbody>
+          {m.time_values.map((v) => (
+            <ProbeValueRow key={v.quantity} v={v} />
+          ))}
+        </tbody>
+      </table>
+      {!m.e_ind_available && <p className="text-[11px] leading-snug text-warn/90">{t('probe.eIndUnsupported')}</p>}
+      {!m.derivative_unique && <p className="text-[11px] leading-snug text-warn/90">{t('faraday.corner')}</p>}
+      <p className="text-[11px] leading-snug text-muted">{t('probe.eIndNote')}</p>
+      <table className="mt-1 w-full text-[11px]" aria-label={t('probe.timeSources')}>
+        <thead>
+          <tr className="text-left text-muted">
+            <th className="font-normal">{t('probe.source')}</th>
+            <th className="text-right font-normal">I(t)</th>
+            <th className="text-right font-normal">dI/dt</th>
+            <th className="text-right font-normal">|E_ind,i|</th>
+          </tr>
+        </thead>
+        <tbody className="font-mono">
+          {m.time_sources.map((s) => {
+            const e = eByObject.get(s.object_id)
+            return (
+              <tr key={s.object_id} className="border-t border-border/60">
+                <td className="max-w-24 truncate font-sans">{names[s.object_id] ?? s.object_id}</td>
+                <td className="text-right">{formatSI(s.current_A, 'A', 4)}</td>
+                <td className="text-right">{formatSI(s.dI_dt_A_per_s, 'A/s', 4)}{s.derivative_unique ? '' : '*'}</td>
+                <td className="text-right">{e ? formatSI(Math.hypot(...e), 'V/m', 4) : '—'}</td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
     </div>
   )
 }

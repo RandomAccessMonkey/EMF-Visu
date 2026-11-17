@@ -83,16 +83,17 @@ export function EquationsPanel() {
   const scene = useSceneStore((s) => s.scene)
   const surfaces = useSceneStore((s) => s.surfaces)
   const paths = useSceneStore((s) => s.paths)
+  const fluxSurfaces = useSceneStore((s) => s.fluxSurfaces)
   const dragging = useViewStore((s) => s.dragging)
   const beginner = useViewStore((s) => s.level === 'beginner')
   // Statuses depend on the physical model, not on where objects are: key on the physics subset.
   const key = useMemo(
-    () => JSON.stringify({ scene: scenePhysics(scene), surfaces: surfaces.map(surfacePhysics), paths: paths.map(pathPhysics) }),
-    [scene, surfaces, paths],
+    () => JSON.stringify({ scene: scenePhysics(scene), surfaces: surfaces.map(surfacePhysics), paths: paths.map(pathPhysics), flux: fluxSurfaces.map(pathPhysics) }),
+    [scene, surfaces, paths, fluxSurfaces],
   )
   const query = useQuery({
     queryKey: ['equations', key],
-    queryFn: ({ signal }) => api.equations(scene, signal, surfaces.map(surfacePhysics), paths),
+    queryFn: ({ signal }) => api.equations(scene, signal, surfaces.map(surfacePhysics), paths, fluxSurfaces),
     enabled: !dragging,
     placeholderData: keepPreviousData,
     staleTime: Infinity,

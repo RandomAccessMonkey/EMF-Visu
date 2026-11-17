@@ -8,11 +8,12 @@ from threading import Lock
 
 import numpy as np
 
-from emf_core import ampere, engine, wire
+from emf_core import ampere, engine, induction, wire
 from emf_core.ampere import AmperePath, AmpereRequest
 from emf_core.equations import EquationRegistry, EquationView, default_registry
 from emf_core.geometry.surfaces import GaussSurface
 from emf_core.i18n import LocalizedText
+from emf_core.induction import FluxSurface, InductionRequest
 from emf_core.scene.models import Scene
 from emf_core.solvers import (
     SolverCatalog,
@@ -126,8 +127,32 @@ class Orchestrator:
                 self._cache.popitem(last=False)
         return blob, False
 
+    def solve_induction(self, scene: Scene, request: InductionRequest) -> tuple[bytes, bool]:
+        """Flux, Faraday and mutual-induction results at one time (JSON bytes; Phase 4A),
+        cached by magnetic subscene + time + surfaces. The geometry-only unit quantities are
+        cached inside ``induction`` independently of time, so moving the time is cheap."""
+        sub = engine.field_subscene(scene, "magnetic")
+        key = induction.fingerprint(sub, request)
+        with self._lock:
+            hit = self._cache.get(key)
+            if hit is not None:
+                self._cache.move_to_end(key)
+                return hit, True
+        probe = SolveRequest.model_validate({
+            "samplings": [{"kind": "points", "id": "p", "points_m": [[0, 0, 0]]}],
+            "quantities": ["B"]})
+        solver = self.catalog.select(sub, probe)
+        blob = induction.compute(sub, request, solver.id,
+                                 solver.version).model_dump_json().encode()
+        with self._lock:
+            self._cache[key] = blob
+            while len(self._cache) > self._cache_entries:
+                self._cache.popitem(last=False)
+        return blob, False
+
     def equations(self, scene: Scene, surfaces: list[GaussSurface] | None = None,
-                  paths: list[AmperePath] | None = None
+                  paths: list[AmperePath] | None = None,
+                  flux_surfaces: list[FluxSurface] | None = None
                   ) -> tuple[list[EquationView], list[LocalizedText], list[str]]:
         """Equation views for the model(s) that would be used for this scene: the electric
         and/or magnetic sub-model, merged (see EquationRegistry.evaluate_merged). If a needed
@@ -159,6 +184,14 @@ class Orchestrator:
                 ctx = ctx.model_copy(update={
                     "ampere_paths": len(paths),
                     "checked_equation_ids": [*ctx.checked_equation_ids, "ampere_integral"],
+                })
+            if kind == "magnetic" and flux_surfaces:
+                ctx = ctx.model_copy(update={
+                    "flux_surfaces": len(flux_surfaces),
+                    "evaluated_equation_ids": [*ctx.evaluated_equation_ids, "magnetic_flux",
+                                               "flux_derivative", "mutual_inductance"],
+                    "checked_equation_ids": [*ctx.checked_equation_ids, "faraday_integral",
+                                             "mutual_reciprocity"],
                 })
             contexts.append(ctx)
             solver_ids.append(solver.id)

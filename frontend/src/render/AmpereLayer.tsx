@@ -46,13 +46,13 @@ export function outlineNormal(pts: THREE.Vector3[]): THREE.Vector3 {
   return n.lengthSq() > 0 ? n.normalize() : n
 }
 
-function PathNode({ path, result, marker, selected }: { path: AmperePath; result: PathResult | undefined; marker: number; selected: boolean }) {
+export function PathNode({ path, result, marker, selected, baseColor = AMPERE_PATH_COLOR }: { path: AmperePath; result: { status: string } | undefined; marker: number; selected: boolean; baseColor?: string }) {
   const d = pathDisplayOf(path)
   const pts = useMemo(() => localOutline(path), [path])
   const normal = useMemo(() => outlineNormal(pts), [pts])
   const centroid = useMemo(() => pts.reduce((c, p) => c.add(p), new THREE.Vector3()).multiplyScalar(1 / Math.max(1, pts.length)), [pts])
   const invalid = result?.status === 'invalid'
-  const color = invalid ? INVALID_COLOR : AMPERE_PATH_COLOR
+  const color = invalid ? INVALID_COLOR : baseColor
   const line = useMemo(() => new THREE.BufferGeometry().setFromPoints([...pts, pts[0] ?? new THREE.Vector3()]), [pts])
   // Traversal arrows at a few points along the outline.
   const arrows = useMemo(() => {

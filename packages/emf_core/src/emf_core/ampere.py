@@ -45,6 +45,7 @@ from .i18n import L, LocalizedText
 from .numerics.quadrature import adaptive_gk
 from .scene.currents import CurrentSources, current_sources
 from .scene.models import PositiveFloat, Scene, StrictModel, Vec3
+from .scene.timedep import at_time, time_state
 from .scene.transforms import rotation_matrix_xyz
 from .solvers.analytical import magnetostatics as ms
 from .units import MU0
@@ -107,6 +108,8 @@ class AmperePath(StrictModel):
 
 class AmpereRequest(StrictModel):
     paths: list[AmperePath] = Field(min_length=1, max_length=16)
+    # Phase 4A: currents are evaluated at this simulation time (magnetoquasistatic).
+    time_s: float = Field(default=0.0, allow_inf_nan=False)
 
 
 class Crossing(BaseModel):
@@ -663,7 +666,8 @@ def _circulation(geo: _Geo, cs: CurrentSources, r_min: float, i_scale: float,
 
 def compute(scene: Scene, request: AmpereRequest, solver_id: str, solver_version: str
             ) -> AmpereHeader:
-    cs = current_sources(scene)
+    cs0 = current_sources(scene)
+    cs = at_time(cs0, time_state(scene, cs0, request.time_s))
     diag = scene.domain.diagonal_m
     r_min = ms.COINCIDENCE_FACTOR * diag
     tol = ms.IN_PLANE_FACTOR * diag
@@ -746,7 +750,8 @@ def fingerprint(scene: Scene, request: AmpereRequest) -> str:
         o.pop("name", None)
     for m in s["materials"]:
         m.pop("name", None)
-    payload = json.dumps({"scene": s, "paths": [p.physics_dump() for p in request.paths]},
+    payload = json.dumps({"scene": s, "paths": [p.physics_dump() for p in request.paths],
+                          "time": request.time_s},
                          sort_keys=True, separators=(",", ":"))
     return "ampere:" + hashlib.sha256(payload.encode()).hexdigest()
 

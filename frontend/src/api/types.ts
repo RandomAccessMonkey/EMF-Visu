@@ -63,3 +63,12 @@ export type AmpereCrossing = S['Crossing']
 export type OneSidedValue = S['OneSidedValue']
 export type ProbeComparison = S['ProbeComparison']
 export type ViewHint = S['ViewHint']
+// Phase 4A
+export type CurrentProfile = NonNullable<Extract<Source, { type: 'circular_loop' }>['profile']>
+export type InductionHeader = S['InductionHeader']
+export type SurfaceResult = S['SurfaceResult']
+export type SourceFlux = S['SourceFlux']
+export type MutualInfo = S['Mutual']
+export type TimeSourceInfo = S['TimeSourceInfo']
+export type TimeHint = S['TimeHint']
+export type ProfileSamples = S['ProfileSamples']

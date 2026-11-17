@@ -829,6 +829,55 @@ stays bounded.
 from a wire and 1e-8 m from a loop wire (absolute tolerance 1e-8 A when Γ ≈ 0) in the tested
 geometry, report `not_converged` closer, and `intersects_source` at about 1e-15 m.
 
+## 9g. Phase 4A: electromagnetic induction (magnetoquasistatic)
+
+**Model.** Prescribed source currents I_j(t) in fixed geometry; B follows I(t) instantly
+(displacement current neglected, no retardation or radiation); linear, time-independent
+response; no induced currents and no back-reaction; stationary measurement surfaces and paths
+(no motional EMF v × B). The UI labels the time controls "magnetoquasistatic", and the solver
+warns when L/(c·τ) > 0.01 (L: region size; τ: 1/f, ramp duration or shortest keyframe interval).
+
+**Current profiles** (`scene/profiles.py`): constant, sinusoidal I_dc + I_peak sin(2πft + φ),
+ramp (held before and after its interval, never extrapolated) and piecewise-linear (held outside
+the keyframes). dI/dt is analytical. At corners both one-sided values are returned; dB/dt and
+E_ind then use the right-hand value and are reported as not uniquely defined at that instant. A
+profile is an optional, additive field of every current source. When it is present, `current_A`
+is derived from it as I(0) (backward compatible; never a second, independent current).
+
+**Fields at time t** (`scene/timedep.py`, magnetostatic solver). For fixed geometry the field is
+linear in each current: the existing solver is evaluated with every current replaced by I_j(t)
+for B and H, and by dI_j/dt (static sources removed) for ∂B/∂t. Loop fields are computed per
+object at 1 A per turn and cached by geometry and sample points (`_UNIT_CACHE`), so changing t
+only rescales cached unit fields. Scenes without profiles give exactly the earlier results.
+
+**Vector potential** (Coulomb gauge, ∇·A = 0) of a closed circular filament:
+A_φ = μ₀I√D₊/(2πρ) · g(m), g(m) = (1 − m/2)K(m) − E(m), with the same parameter m (not the
+modulus k), the same q = D₋/D₊ (K = `ellipkm1(q)`) and the same clamp as the field. g cancels
+near the axis (g ≈ πm²/32); for m ≤ 0.5 the exact positive series g_n = c_(n−1)(n−1)/(2n) is
+used as A_φ = 2μ₀Ia/(π√D₊)·g(m)/m, exact on the axis. Filament singularity, precision bound and
+caching are shared with the field. Implemented for loops and the turns of solenoids and finite
+toroids only. E_ind = −Σ_j dI_j/dt A_j,unit. If an infinite wire or ideal toroid changes in
+time, E_ind is not evaluated (NaN + reason), never shown partially. E_ind is kept separate from
+the electrostatic E: no "complete" electric field is formed.
+
+**Flux, Faraday and mutual induction** (`induction.py`). A measurement surface is the planar
+region bounded by an Ampère-type path (same geometry and right-hand orientation). Unit quantities
+per current object, cached by geometry (never by time or current): Φ_j = ∫B_j,unit·n dS
+(adaptive 5×5 Gauss–Legendre quadtree over polar sectors or ear-clipped triangles; disks are
+pre-split into rings graded around radii where filaments pass close), and C_j = ∮A_j,unit·dl
+(adaptive Gauss–Kronrod split at closest approaches). At t: Φ = Σ I_jΦ_j + Φ_static,
+dΦ/dt = Σ İ_jΦ_j and EMF = −Σ İ_jC_j. Verified if |EMF + dΦ/dt| ≤ rtol·max(|EMF|, |dΦ/dt|,
+Σ|İ_j|·max(|Φ_j|, |C_j|)) (an absolute floor for near-zero EMFs); integration errors above it give
+the "not converged" states. Lenz: flux trend steady if |dΦ/dt| ≤ 1e-9 of its largest possible
+value. Mutual: M₁₂ = Φ_j; M₂₁ = flux of the boundary's own 1 A field (loop formula, or closed-form
+straight-segment Biot–Savart) through the source's turn disks; reciprocity compared. Not
+evaluated (reported): a filament piercing or lying in the surface (B·n singular inside), a
+boundary through a filament, sources without a vector potential (EMF).
+
+**API.** `SolveRequest.time_s`, quantities `dB_dt` (T/s) and `E_ind` (V/m) in magnetic requests,
+`ResultHeader.time_sources` and `induction`, probe `time_s` with `time_values`, `POST /induction`,
+`POST /profile/sample`, `AmpereRequest.time_s`, project `flux_surfaces`.
+
 ## 10. Implementation status and roadmap
 
 | Area | Phase 1 state |
@@ -840,10 +889,10 @@ geometry, report `not_converged` closer, and `intersects_source` at about 1e-15 
 | Analytical solver | point charges in vacuum |
 | Probe | E, φ, D, ∇·E, ∇×E, ∇·D, ∇×D at a point, per-charge contributions, singular state with the distributional statement, finite-difference check (advanced). Energy density: later milestone |
 | Equation registry | all required equations plus superposition, with computed statuses and usage; derivations are empty |
-| Presets | 1–4 and 9–14 available (10 with three variants, 13 with two, view hints incl. a default probe point, 12–14 with default Ampère paths); the others listed as unavailable |
-| Persistence | projects (scene + view settings + Gaussian surfaces + Ampère paths) in PostgreSQL |
+| Presets | 1–4, 9–16 and 21 available (10 with three variants, 13 with two, view hints incl. a default probe point, 12–14 with default Ampère paths, 15, 16, 21 with measurement surfaces and a time range); 5–8 and 17–20 listed as unavailable |
+| Persistence | projects (scene incl. current profiles + view settings incl. simulation time and range + Gaussian surfaces + Ampère paths + Faraday measurement surfaces) in PostgreSQL |
 | Job queue | analytical worker, progress, cancellation |
-| Waveforms, time dependence, timeline | not started (Phase 4) |
+| Time-dependent currents, timeline | implemented (Phase 4A): constant, sinusoidal, ramp and piecewise-linear profiles with analytical dI/dt, deterministic playback |
 | Field lines, equipotentials | implemented for point charges (Phase 2A) |
 | Divergence and curl display, distributional sources | implemented (Phase 2B-1) |
 | Gaussian surfaces, closed-surface flux, Gauss and Gauss–Ostrogradsky demonstrations, subdivision | implemented (Phase 2B-2) |
@@ -852,7 +901,8 @@ geometry, report `not_converged` closer, and `intersects_source` at about 1e-15 
 | Magnetostatics (Phase 3A) | infinite straight wires and circular loops in vacuum: B, H, superposition and per-source contributions, B field lines with closed-loop detection, ∇·B, probe, equations |
 | Magnetostatics (Phase 3B) | finite discrete-turn solenoids, finite-turn toroids (vacuum) and the ideal continuous-winding toroid (linear core), uniformly magnetized cylindrical permanent magnets (bound sheet current), B and H with material regions, sheet and core boundaries with one-sided limits, idealized comparisons (ideal long solenoid, ideal toroid, dipole far field), axis profile |
 | Magnetostatics (later) | not started: nonlinear or field-dependent materials, demagnetization, magnetic flux through open surfaces, general magnetic materials |
-| Induction | not started (Phase 4) |
+| Induction (Phase 4A, magnetoquasistatic, stationary geometry) | B(t), ∂B/∂t, Coulomb-gauge vector potential of closed circular currents, E_ind = −∂A/∂t, magnetic flux through stationary surfaces, Faraday's law verified independently, Lenz signs, mutual inductance with reciprocity |
+| Induction (Phase 4B and later) | not started: motional EMF (moving conductors or paths), induced currents and circuits, back-reaction, eddy currents, full-wave fields |
 | FEM (DOLFINx, Gmsh), FDTD (Meep) | not started (Phase 5); reported as unavailable |
 | Circuit subsystem (MNA) | not started; reported as unavailable |
 
@@ -873,6 +923,20 @@ Acceptance criteria per phase are unchanged from the approved plan:
 
 ## 11. Known limitations
 
+- Phase 4A induction is magnetoquasistatic and stationary: no motional EMF, no induced currents or
+  circuits, no eddy currents or back-reaction, no retardation or radiation. E_ind is only the
+  induced part of E; the complete electric field of a time-dependent system is not computed.
+- E_ind is available for closed circular currents only; a time-varying infinite wire or ideal
+  toroid makes E_ind and the EMF unavailable (B(t), ∂B/∂t and the flux remain).
+- The flux through a surface that a filament pierces or lies in is not evaluated (finite for a
+  transverse crossing, but the quadrature does not resolve that singularity). Linked coil pairs
+  therefore need a measurement surface that avoids the turns (as in preset 21).
+- The reciprocal M₂₁ is computed for loop-type sources; a measurement loop that passes through a
+  source turn's disk gets M₁₂ only. The Faraday comparison's rtol must be ≥ 1e-10; the near-axis
+  vector-potential reference used in the tests loses accuracy as ε·a/ρ (validated against the
+  analytical axis limit instead).
+- During playback, field lines are not recomputed (they are when paused); the probe, flux and
+  Faraday results follow every time step.
 - Only ideal point charges and ideal current filaments (infinite straight wires, thin circular
   loops) in vacuum are solved. Everything else is refused or disabled.
 - Magnetostatics: wires are infinite and of zero radius, loops are thin; B and H are singular on

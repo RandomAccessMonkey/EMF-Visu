@@ -398,11 +398,17 @@ def _dipole(c: ModelContext) -> Out:
 
 
 def _ampere_integral(c: ModelContext) -> Out:
-    if c.regime not in ("magnetostatic", "electrostatic") or c.time_varying:
+    if c.regime == "full_wave":
         return ("not_applicable", L("Time-varying fields need the Ampère–Maxwell law.",
                                     "Időben változó mezőkhöz az Ampère–Maxwell-törvény kell."))
     if not c.computes_magnetic_field:
         return ("not_evaluated", _NO_B)
+    if c.regime == "quasi_static" and c.ampere_paths > 0:
+        return ("applicable_under_assumptions",
+                L("Magnetoquasistatic: holds at every instant because the displacement current "
+                  "is neglected; checked at the simulation time.",
+                  "Magnetokvázisztatikus: minden pillanatban teljesül, mert az eltolási áramot "
+                  "elhanyagoljuk; a szimulációs időpontban ellenőrizve."))
     if c.ampere_paths == 0:
         return ("applicable_under_assumptions",
                 L("Holds for every closed path; add an Ampère path to check it numerically.",
@@ -504,3 +510,9 @@ RULES: dict[str, Rule] = {
     "poynting": _poynting,
     "energy_density": _energy,
 }
+
+
+# Phase 4A: rules of the induction equations (same registry).
+from .induction import RULES as _INDUCTION_RULES  # noqa: E402
+
+RULES.update(_INDUCTION_RULES)

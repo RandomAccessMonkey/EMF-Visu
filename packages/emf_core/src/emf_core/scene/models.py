@@ -11,17 +11,15 @@ import math
 from enum import StrEnum
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import Field, model_validator
+
+from ._base import FiniteFloat, PositiveFloat, StrictModel
+from .profiles import CurrentProfile, ProfileModel, current_at
 
 SCENE_SCHEMA_VERSION: Literal[1] = 1
 
 Vec3 = tuple[float, float, float]
-PositiveFloat = Annotated[float, Field(gt=0, allow_inf_nan=False)]
-FiniteFloat = Annotated[float, Field(allow_inf_nan=False)]
-
-
-class StrictModel(BaseModel):
-    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+__all__ = ["FiniteFloat", "PositiveFloat", "StrictModel"]  # re-exported for existing imports
 
 
 class Transform(StrictModel):
@@ -172,7 +170,31 @@ class PointChargeSource(StrictModel):
     charge_C: FiniteFloat = 1e-9
 
 
-class InfiniteWireSource(StrictModel):
+class TimeDependentCurrent(StrictModel):
+    """Optional prescribed current profile I(t) (Phase 4A, additive). Without a profile the
+    current is the constant ``current_A`` (all earlier behaviour). With one, the profile alone
+    defines I(t), and ``current_A`` is derived from it as I(0) on validation (kept for
+    compatibility as the t = 0 value; it can never be a second, independent current)."""
+
+    current_A: FiniteFloat = 1.0
+    # Omitted from serialized output when unset, so sources without a profile serialize exactly
+    # as before Phase 4A.
+    profile: CurrentProfile | None = Field(default=None, exclude_if=lambda v: v is None)
+
+    @model_validator(mode="after")
+    def _profile_matches_current(self) -> TimeDependentCurrent:
+        if self.profile is not None:
+            self.current_A = current_at(self.profile, 0.0)
+        return self
+
+    def current_at(self, t: float) -> float:
+        return current_at(self.profile, t) if self.profile is not None else float(self.current_A)
+
+    def profile_model(self) -> ProfileModel | None:
+        return self.profile
+
+
+class InfiniteWireSource(TimeDependentCurrent):
     """Ideal infinitely long straight filament carrying a steady current (Phase 3A).
 
     Carried by a ``line`` primitive with role ``current_source``. A point on the axis is the
@@ -184,7 +206,7 @@ class InfiniteWireSource(StrictModel):
     current_A: FiniteFloat = 10.0
 
 
-class CircularLoopSource(StrictModel):
+class CircularLoopSource(TimeDependentCurrent):
     """Ideal thin circular filament carrying a steady current (Phase 3A).
 
     Carried by a ``ring`` primitive with role ``current_source``: centre = world position,
@@ -196,7 +218,7 @@ class CircularLoopSource(StrictModel):
     current_A: FiniteFloat = 10.0
 
 
-class SolenoidSource(StrictModel):
+class SolenoidSource(TimeDependentCurrent):
     """Finite solenoid (Phase 3B) on a ``coil`` primitive, role ``current_source``: every turn
     carries the signed current I, counter-clockwise about local +z for I > 0."""
 
@@ -204,7 +226,7 @@ class SolenoidSource(StrictModel):
     current_A: FiniteFloat = 1.0
 
 
-class ToroidFiniteSource(StrictModel):
+class ToroidFiniteSource(TimeDependentCurrent):
     """Finite-turn toroid (Phase 3B) on a ``torus`` primitive: N circular turns of radius
     b_winding, each counter-clockwise about its local +e_phi for I > 0. Vacuum: no core."""
 
@@ -212,7 +234,7 @@ class ToroidFiniteSource(StrictModel):
     current_A: FiniteFloat = 1.0
 
 
-class ToroidIdealSource(StrictModel):
+class ToroidIdealSource(TimeDependentCurrent):
     """Ideal continuous-winding toroid (Phase 3B) on a ``torus`` primitive, with a homogeneous
     linear core of relative permeability mu_r and minor radius b_core:
     H = N I / (2 pi rho) e_phi and B = mu0 mu_r H inside the core, zero outside (idealization)."""

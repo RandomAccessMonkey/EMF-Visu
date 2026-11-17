@@ -101,6 +101,7 @@ export function buildRequest(domain: Domain, s: SamplingSettings, quality: Quali
     samplings,
     quantities: ['E', 'phi'],
     quality,
+    time_s: 0,
     field_lines: {
       seeding: s.mode === '2d' ? 'planar' : 'spherical',
       sampling_id: 'heat',
@@ -121,30 +122,53 @@ export function buildRequest(domain: Domain, s: SamplingSettings, quality: Quali
 /** The magnetic request (Phase 3A): B and H on the same slice and vector grid as the electric
  *  request, each source's own B on the vector grid (so showing one contribution is visual-only),
  *  and B field lines. No equipotentials: they belong to the electric field. */
-export function buildMagneticRequest(domain: Domain, s: SamplingSettings, quality: Quality): SolveRequest {
+/** Time of a magnetic request (Phase 4A). Scenes without current profiles do not depend on
+ *  time: their request is exactly the static one (time 0, no time quantities), so caches and
+ *  results are unchanged. While playing, field lines are omitted (they are computed when the
+ *  playback pauses) so that every step stays fast. */
+export interface TimeSettings {
+  timeS: number
+  timeDependent: boolean
+  playing: boolean
+}
+
+const STATIC_TIME: TimeSettings = { timeS: 0, timeDependent: false, playing: false }
+
+export function buildMagneticRequest(domain: Domain, s: SamplingSettings, quality: Quality, time: TimeSettings = STATIC_TIME): SolveRequest {
+  const extra: SolveRequest['quantities'] = time.timeDependent ? ['dB_dt', 'E_ind'] : []
   const samplings: SolveRequest['samplings'] = [
-    { ...sliceGrid('heat', domain, s, HEAT_RESOLUTION[quality]), quantities: ['B', 'H'] },
-    { ...inset(sliceGrid('arrows', domain, s, ARROW_BASE), ARROW_BASE), quantities: MAGNETIC_GRID_QUANTITIES },
+    { ...sliceGrid('heat', domain, s, HEAT_RESOLUTION[quality]), quantities: ['B', 'H', ...extra] },
+    { ...inset(sliceGrid('arrows', domain, s, ARROW_BASE), ARROW_BASE), quantities: [...MAGNETIC_GRID_QUANTITIES, ...extra] },
   ]
-  if (s.mode === '3d') samplings.push({ ...lattice('vol', domain, LATTICE_BASE, 0.5), quantities: ['B', 'H'] })
-  return {
+  if (s.mode === '3d') samplings.push({ ...lattice('vol', domain, LATTICE_BASE, 0.5), quantities: ['B', 'H', ...extra] })
+  const request: SolveRequest = {
     samplings,
     quantities: ['B'],
     quality,
-    field_lines: {
+    source_contributions: ['arrows'],
+    time_s: time.timeDependent ? time.timeS : 0,
+  }
+  if (!(time.timeDependent && time.playing)) {
+    request.field_lines = {
       seeding: s.mode === '2d' ? 'planar' : 'spherical',
       sampling_id: 'heat',
       base_lines: 8,
       levels: FIELD_LINE_LEVELS,
       guard_cells: 0.5,
-    },
-    source_contributions: ['arrows'],
+    }
   }
+  return request
+}
+
+/** Whether any current source has a non-constant profile (Phase 4A). Bookkeeping only: the
+ *  profile itself is evaluated by the engine. */
+export function isTimeDependent(scene: Scene): boolean {
+  return scene.objects.some((o) => o.enabled && o.source != null && 'profile' in o.source && o.source.profile != null && o.source.profile.type !== 'constant')
 }
 
 /** The kind of field a request asks for (requests never mix the two). */
 export function requestKind(request: SolveRequest): FieldKind {
-  return (request.quantities as string[]).some((q) => q === 'B' || q === 'H' || q === 'div_B' || q === 'div_H') ? 'magnetic' : 'electric'
+  return (request.quantities as string[]).some((q) => q === 'B' || q === 'H' || q === 'div_B' || q === 'div_H' || q === 'dB_dt' || q === 'E_ind') ? 'magnetic' : 'electric'
 }
 
 const rigid = (o: SceneObject) => o.transform.scale.every((v) => v === 1)

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from emf_core.ampere import AmperePath
 from emf_core.geometry.surfaces import GaussSurface
+from emf_core.induction import FluxSurface
 from emf_core.scene.models import Scene
 
 from ..db import ProjectRow
@@ -29,21 +30,25 @@ def _get(db: Session, project_id: str) -> ProjectRow:
 
 SURFACES_KEY = "gauss_surfaces"
 PATHS_KEY = "ampere_paths"
+FLUX_KEY = "flux_surfaces"
 
 
 def _out(row: ProjectRow) -> ProjectOut:
     view = dict(row.view or {})
     surfaces = view.pop(SURFACES_KEY, [])
     paths = view.pop(PATHS_KEY, [])
+    flux = view.pop(FLUX_KEY, [])
     return ProjectOut(id=row.id, name=row.name, created_at=row.created_at,
                       updated_at=row.updated_at, scene=Scene.model_validate(row.scene), view=view,
                       surfaces=[GaussSurface.model_validate(s) for s in surfaces],
-                      paths=[AmperePath.model_validate(p) for p in paths])
+                      paths=[AmperePath.model_validate(p) for p in paths],
+                      flux_surfaces=[FluxSurface.model_validate(f) for f in flux])
 
 
 def _view(body: ProjectIn) -> dict[str, object]:
     return {**body.view, SURFACES_KEY: [s.model_dump(mode="json") for s in body.surfaces],
-            PATHS_KEY: [p.model_dump(mode="json") for p in body.paths]}
+            PATHS_KEY: [p.model_dump(mode="json") for p in body.paths],
+            FLUX_KEY: [f.model_dump(mode="json") for f in body.flux_surfaces]}
 
 
 @router.get("", responses=_ERR)

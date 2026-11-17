@@ -6,8 +6,12 @@ export type Lang = 'en' | 'hu'
 
 /** Scalar colour maps. 'E' is |E|; 'curl_E' and 'curl_D' are the curl magnitudes; 'B' and 'H'
  *  are |B| and |H| (magnetic result); 'div_B' is the divergence of B. */
-export const SCALAR_MAPS = ['phi', 'E', 'div_E', 'curl_E', 'div_D', 'curl_D', 'B', 'H', 'div_B', 'none'] as const
-export const MAGNETIC_MAPS: readonly ScalarMap[] = ['B', 'H', 'div_B']
+export const SCALAR_MAPS = ['phi', 'E', 'div_E', 'curl_E', 'div_D', 'curl_D', 'B', 'H', 'div_B', 'dB_dt', 'E_ind', 'none'] as const
+export const MAGNETIC_MAPS: readonly ScalarMap[] = ['B', 'H', 'div_B', 'dB_dt', 'E_ind']
+/** Magnetic vector layers: B, H, and (Phase 4A, time-dependent scenes) dB/dt and the induced
+ *  electric field E_ind (never the electrostatic E). */
+export const MAGNETIC_VECTORS = ['B', 'H', 'dB_dt', 'E_ind'] as const
+export type MagneticVector = (typeof MAGNETIC_VECTORS)[number]
 export type ScalarMap = (typeof SCALAR_MAPS)[number]
 
 /** Settings that are saved with a project. */
@@ -31,7 +35,7 @@ export interface ViewSettings {
   showGrid: boolean
   /** Magnetic layers (Phase 3A). */
   showBArrows: boolean
-  magneticField: 'B' | 'H'
+  magneticField: MagneticVector
   showBLines: boolean
   showCurrents: boolean
   showCurrentDirection: boolean
@@ -43,6 +47,12 @@ export interface ViewSettings {
   arrowLength: 'uniform' | 'log'
   snap: boolean
   snapStep: number
+  /** Simulation time and playback range (Phase 4A, s). Wall-clock time never enters the physics. */
+  timeS: number
+  timeStart: number
+  timeEnd: number
+  timeStep: number
+  playbackSpeed: number
 }
 
 export const DEFAULT_VIEW: ViewSettings = {
@@ -75,6 +85,11 @@ export const DEFAULT_VIEW: ViewSettings = {
   arrowLength: 'uniform',
   snap: true,
   snapStep: 0.1,
+  timeS: 0,
+  timeStart: 0,
+  timeEnd: 1,
+  timeStep: 0.01,
+  playbackSpeed: 1,
 }
 
 interface ViewState extends ViewSettings {
@@ -88,6 +103,8 @@ interface ViewState extends ViewSettings {
   selectedCell: number | null
   probePoint: Vec3 | null
   cameraResetToken: number
+  /** Playback state (not saved). */
+  playing: boolean
   set: (patch: Partial<ViewState>) => void
   settings: () => ViewSettings
 }
@@ -113,6 +130,7 @@ export const useViewStore = create<ViewState>((set, get) => ({
   selectedCell: null,
   probePoint: null,
   cameraResetToken: 0,
+  playing: false,
   set: (patch) => {
     if (patch.lang) {
       try {
@@ -143,7 +161,12 @@ export function sanitizeView(raw: Record<string, unknown>): Partial<ViewSettings
   if (typeof out.lineDensity === 'number') out.lineDensity = Math.min(2, Math.max(0, Math.round(out.lineDensity)))
   if (out.vectorField !== undefined && out.vectorField !== 'E' && out.vectorField !== 'D') delete out.vectorField
   if (out.curlField !== undefined && out.curlField !== 'E' && out.curlField !== 'D') delete out.curlField
-  if (out.magneticField !== undefined && out.magneticField !== 'B' && out.magneticField !== 'H') delete out.magneticField
+  if (out.magneticField !== undefined && !(MAGNETIC_VECTORS as readonly string[]).includes(out.magneticField as string)) delete out.magneticField
+  if (typeof out.timeStep === 'number' && !(out.timeStep > 0)) delete out.timeStep
+  if (typeof out.timeEnd === 'number' && typeof out.timeStart === 'number' && !(out.timeEnd > out.timeStart)) {
+    delete out.timeEnd
+    delete out.timeStart
+  }
   if (out.heatmap !== undefined && !(SCALAR_MAPS as readonly string[]).includes(out.heatmap as string)) delete out.heatmap
   return out as Partial<ViewSettings>
 }

@@ -34,7 +34,7 @@ export function AxisProfile({ info }: { info: CurrentSourceInfo }) {
   const dragging = useViewStore((s) => s.dragging)
   const { s, points, half } = useMemo(() => axisSamples(info), [info])
   const request: SolveRequest = useMemo(
-    () => ({ samplings: [{ kind: 'points', id: 'axis', points_m: points }], quantities: ['B'], quality: 'normal', source_contributions: [] }),
+    () => ({ samplings: [{ kind: 'points', id: 'axis', points_m: points }], quantities: ['B'], quality: 'normal', source_contributions: [], time_s: 0 }),
     [points],
   )
   const sub = useMemo(() => fieldScene(scene, 'magnetic'), [scene])

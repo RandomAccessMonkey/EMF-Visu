@@ -25,8 +25,10 @@ from emf_core.scene.currents import (
     toroid_turn_angles,
 )
 from emf_core.scene.models import Scene, TorusPrimitive
+from emf_core.scene.timedep import at_time, rates, time_state
 from emf_core.solvers import SolveRequest
 from emf_core.solvers.analytical import magnetostatics as ms
+from emf_core.solvers.base import TimeSourceInfo
 from emf_core.units import MU0
 
 from .orchestrator import Orchestrator
@@ -58,6 +60,19 @@ def _values(b: Arr, h: Arr) -> list[ProbeValue]:
         out.append(ProbeValue(quantity=q, symbol=sym, unit=unit, value=0.0 if ok else None,
                               status="defined" if ok else "not_evaluated"))
     return out
+
+
+def _vector_value(q: str, sym: str, unit: str, vec: Arr | None, singular: bool,
+                  unsupported: bool) -> ProbeValue:
+    """A vector probe value; undefined values are explicit (never shown as zero)."""
+    if unsupported or vec is None:
+        return ProbeValue(quantity=q, symbol=sym, unit=unit, value=None, kind="vector",
+                          status="not_evaluated")
+    if singular or not bool(np.all(np.isfinite(vec))):
+        return ProbeValue(quantity=q, symbol=sym, unit=unit, value=None, kind="vector",
+                          status="singular")
+    return ProbeValue(quantity=q, symbol=sym, unit=unit, value=[float(x) for x in vec],
+                      magnitude=float(np.linalg.norm(vec)), kind="vector")
 
 
 def _single(cs: CurrentSources, obj_id: str) -> CurrentSources:
@@ -175,13 +190,16 @@ def _comparisons(scene: Scene, cs: CurrentSources, p: Arr, r_min: float
 
 
 def magnetic_probe(scene: Scene, point_m: tuple[float, float, float],
-                   orch: Orchestrator) -> ProbeMagnetic:
+                   orch: Orchestrator, time_s: float = 0.0) -> ProbeMagnetic:
     sub = engine.field_subscene(scene, "magnetic")
     request = SolveRequest.model_validate({
         "samplings": [{"kind": "points", "id": "probe", "points_m": [point_m]}],
         "quantities": ["B"]})
     solver = orch.select(sub, request)  # refuses unsupported scenes with reasons
-    cs = current_sources(sub)
+    cs0 = current_sources(sub)
+    ts = time_state(sub, cs0, time_s)
+    cs = at_time(cs0, ts)  # every current at the simulation time (Phase 4A)
+    cs_rate = rates(cs0, ts)
     r_min = ms.COINCIDENCE_FACTOR * sub.domain.diagonal_m
     tol = ms.sheet_tolerance(cs, r_min)
     p = np.asarray(point_m, np.float64)
@@ -212,7 +230,18 @@ def magnetic_probe(scene: Scene, point_m: tuple[float, float, float],
         # indistinguishable from one of its filaments (source-scaled tolerance, Phase 3B.1).
         if not ok and obj.kind in FILAMENT_KINDS and singular_id is None:
             singular_id, singular_kind = obj.object_id, obj.kind
+        rate_one = _single(cs_rate, obj.object_id)
+        db_i = e_i = None
+        st = next((x for x in ts.sources if x.object_id == obj.object_id), None)
+        if st is not None:
+            dbv = ms.evaluate_bh(p[None, :], rate_one, r_min, RTOL).b[0]
+            db_i = [float(x) for x in dbv] if bool(np.all(np.isfinite(dbv))) else None
+            if st.induction_supported or not st.varying:
+                ev_ = -ms.loops_vector_potential(rate_one.loops, p[None, :])[0][0]
+                e_i = [float(x) for x in ev_] if bool(np.all(np.isfinite(ev_))) else None
         contributions.append(MagneticContribution(
+            dI_dt_A_per_s=st.rate.value if st is not None else None, dB_dt_T_per_s=db_i,
+            E_ind_V_per_m=e_i,
             object_id=obj.object_id, name=names.get(obj.object_id, obj.object_id), kind=obj.kind,
             current_A=float(obj.current_A or 0.0), turns=obj.turns,
             magnetization_A_per_m=obj.magnetization_A_per_m, distance_m=dist,
@@ -239,6 +268,13 @@ def magnetic_probe(scene: Scene, point_m: tuple[float, float, float],
                 side=side, offset_m=delta,
                 B_T=[float(x) for x in e2.b[0]] if np.all(np.isfinite(e2.b[0])) else None,
                 H_A_per_m=[float(x) for x in e2.h[0]] if np.all(np.isfinite(e2.h[0])) else None))
+    # Time-dependent quantities (Phase 4A).
+    db = ms.evaluate_bh(p[None, :], cs_rate, r_min, RTOL).b[0]
+    e_ok = not ts.unsupported_ids
+    e_ind = -ms.loops_vector_potential(cs_rate.loops, p[None, :])[0][0] if e_ok else None
+    time_values = [
+        _vector_value("dB_dt", "∂B/∂t", "T/s", db, status == "singular", False),
+        _vector_value("E_ind", "E_ind", "V/m", e_ind, status == "singular", not e_ok)]
     fil_d, fil_scale = ms.nearest_filament(p[None, :], cs)
     sing_tol = (float(ms.filament_tolerance(fil_scale)[0]) if math.isfinite(float(fil_d[0]))
                 else r_min)
@@ -260,7 +296,14 @@ def magnetic_probe(scene: Scene, point_m: tuple[float, float, float],
         M_A_per_m=[float(x) for x in m] if material == "magnet" else None,
         relative_permeability=rel, nearest_magnet_id=bnd_id,
         nearest_magnet_boundary_m=bnd_d, one_sided=one_sided,
-        comparisons=_comparisons(sub, cs, p, r_min), quadrature_converged=ev.unconverged == 0)
+        comparisons=_comparisons(sub, cs, p, r_min), quadrature_converged=ev.unconverged == 0,
+        time_s=ts.t_s, time_dependent=ts.time_dependent, e_ind_available=e_ok,
+        derivative_unique=ts.derivative_unique, time_values=time_values,
+        time_sources=[TimeSourceInfo(
+            object_id=x.object_id, kind=x.kind, profile_type=x.profile_type,
+            current_A=x.current_A, dI_dt_A_per_s=x.rate.right, dI_dt_left_A_per_s=x.rate.left,
+            derivative_unique=x.rate.unique, induction_supported=x.induction_supported)
+            for x in ts.sources])
 
 
 def _boundary_normal(p: Arr, cs: CurrentSources, status: str) -> tuple[Arr, float]:

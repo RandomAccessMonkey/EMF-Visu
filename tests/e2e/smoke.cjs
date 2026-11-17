@@ -81,8 +81,9 @@ async function main() {
   step('preset loads and the engine field is displayed')
 
   // Unavailable presets are disabled, not fake.
-  // (Phase 3B made the solenoid preset available; a still-planned preset is checked instead.)
-  assert.ok(await page.getByRole('button', { name: /Faraday induction demonstration/ }).isDisabled())
+  // (Phase 3B made the solenoid preset and Phase 4A the Faraday preset available; a
+  // still-planned preset is checked instead.)
+  assert.ok(await page.getByRole('button', { name: /Dielectric material inside a capacitor/ }).isDisabled())
   step('unimplemented presets are disabled')
 
   // Derived products are present and labelled separately from the exact field.
@@ -808,6 +809,117 @@ async function main() {
   await page.getByText('Ampère-féle gerjesztési törvény').waitFor()
   await page.getByRole('radio', { name: 'EN' }).click()
   step('Ampère panel in Hungarian')
+
+  // ------------------------------------------------------- Phase 4A: induction (Faraday, Lenz)
+  const faradayVerified = async () => {
+    await page.getByRole('tab', { name: 'Faraday' }).click()
+    await page.getByTestId('faraday-result').getByText('verified', { exact: true }).waitFor({ timeout: 20000 })
+  }
+  await page.getByRole('button', { name: /^15\s*Sinusoidally driven circular loop/ }).click()
+  await settled()
+  await page.getByTestId('time-bar').waitFor()
+  await faradayVerified()
+  const lenz = page.getByTestId('lenz-explanation')
+  assert.ok(await lenz.getByText(/is increasing/).isVisible())
+  assert.ok(await lenz.getByText(/against the boundary's traversal/).isVisible())
+  await shot('25-faraday-loop')
+  step('preset 15: time bar shown; ∮E_ind·dl = −dΦ/dt verified at t = 0; Lenz: increasing flux, E_ind against the traversal')
+
+  // E_ind arrows and the |E_ind| map are display choices over the cached result.
+  await page.getByRole('tab', { name: 'Display' }).click()
+  await quiet('E_ind arrows', () => page.getByRole('combobox', { name: 'Magnetic vector field' }).selectOption('E_ind'))
+  await quiet('|E_ind| colour map', () => page.getByRole('combobox', { name: 'Colour map' }).selectOption('E_ind'))
+  await shot('26-e-ind')
+  await quiet('dB/dt arrows', () => page.getByRole('combobox', { name: 'Magnetic vector field' }).selectOption('dB_dt'))
+  await page.getByRole('combobox', { name: 'Magnetic vector field' }).selectOption('B')
+  step('E_ind and dB/dt arrows and maps are visual-only (no new solve)')
+
+  // Time is physics: a new instant re-solves; at the current's peak the flux is steady.
+  const tField = page.getByRole('spinbutton', { name: 'Time', exact: true })
+  await solved('time 0.25 s', async () => { await tField.fill('0.25'); await tField.press('Enter') })
+  await faradayVerified()
+  await page.getByTestId('lenz-explanation').getByText(/momentarily not changing/).waitFor({ timeout: 10000 })
+  await solved('step forward', () => page.getByRole('button', { name: 'Step forward' }).click())
+  await valueIs(tField, '0.26') // 0.25 is between grid points; the next one is 13·0.02
+  step('changing the time re-solves; at the current peak (t = 0.25 s) the flux is steady; stepping uses the exact grid')
+
+  // Deterministic playback: every displayed time is on the grid t = k·Δt.
+  await page.getByRole('button', { name: 'Play' }).click()
+  await page.waitForTimeout(1500)
+  await page.getByRole('button', { name: 'Pause' }).click()
+  await page.waitForTimeout(300)
+  const played = Number(await tField.inputValue())
+  assert.ok(played > 0.26, `playback did not advance (${played})`)
+  assert.ok(Math.abs(played / 0.02 - Math.round(played / 0.02)) < 1e-6, `off-grid time ${played}`)
+  step('playback advances on the deterministic time grid and pauses')
+
+  // Probe at the simulation time: dB/dt and E_ind with the source current and its rate.
+  await page.getByRole('tab', { name: 'Results' }).click()
+  const ptime = page.getByTestId('probe-time')
+  await ptime.waitFor({ timeout: 10000 })
+  assert.ok(await ptime.getByRole('table', { name: 'Time-dependent field values' }).getByText(/V\/m/).first().isVisible())
+  assert.ok(await ptime.getByRole('table', { name: 'Time-dependent field values' }).getByText(/T\/s/).first().isVisible())
+  assert.ok(await ptime.getByText(/not the electrostatic field/).isVisible())
+  step('probe shows t, ∂B/∂t, E_ind (labelled as the induced part) and I(t), dI/dt')
+
+  // Preset 16: ramp; at the ramp start dI/dt jumps and both one-sided values are reported.
+  await page.getByRole('button', { name: /^16\s*Ramping finite solenoid/ }).click()
+  await settled()
+  await faradayVerified()
+  assert.ok(await page.getByTestId('lenz-explanation').getByText(/against the boundary's traversal/).isVisible())
+  await solved('ramp start', async () => { await tField.fill('0'); await tField.press('Enter') })
+  await page.getByText(/dI\/dt jumps at this instant/).first().waitFor({ timeout: 10000 })
+  await shot('27-ramp-solenoid')
+  step('preset 16: ramped solenoid verified; the corner at t = 0 is reported')
+
+  // Preset 21: toroid and passive measurement loop: mutual inductance and reciprocity.
+  await page.getByRole('button', { name: /^21\s*Finite-turn toroid and mutual induction/ }).click()
+  await settled()
+  await faradayVerified()
+  await page.getByTestId('mutual').getByText(/reciprocity M₁₂ = M₂₁ verified/).waitFor({ timeout: 20000 })
+  await shot('28-toroid-mutual')
+  step('preset 21: toroid and measurement loop verified; M12 = M21 (reciprocity)')
+
+  // Persistence: profiles, measurement surfaces and the time survive a reload.
+  await solved('time 0.003', async () => { await tField.fill('0.003'); await tField.press('Enter') })
+  const iname = `e2e 4A ${Date.now()}`
+  await page.getByRole('button', { name: 'Projects' }).click()
+  await page.getByLabel('Project name').fill(iname)
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await page.getByText(iname).first().waitFor()
+  await page.reload()
+  await page.getByRole('button', { name: 'Projects' }).click()
+  await page.locator('li', { hasText: iname }).getByRole('button', { name: 'Load' }).click()
+  await rowCount(1)
+  await valueIs(page.getByRole('spinbutton', { name: 'Time', exact: true }), '0.003')
+  await faradayVerified()
+  assert.equal(await page.getByRole('list', { name: 'Measurement surfaces' }).locator('li').count(), 1)
+  await page.getByRole('button', { name: 'Projects' }).click()
+  await page.locator('li', { hasText: iname }).getByRole('button', { name: 'Delete' }).click()
+  await page.keyboard.press('Escape')
+  step('a toroid project with its profile, measurement surface and time is saved and restored')
+
+  // Profile editor: a new loop becomes time-dependent with a sinusoidal profile, and back.
+  await page.getByRole('button', { name: /^11\s*Circular current loop/ }).click()
+  await settled()
+  await page.getByRole('radio', { name: /Select/ }).click()
+  await rows().first().click()
+  await page.getByRole('tab', { name: 'Parameters' }).click()
+  await solved('sinusoidal profile', () => page.getByRole('combobox', { name: 'Current profile' }).selectOption('sinusoidal'))
+  await page.getByTestId('time-bar').waitFor()
+  await page.getByTestId('profile-editor').getByRole('img').waitFor({ timeout: 10000 })
+  await solved('constant again', () => page.getByRole('combobox', { name: 'Current profile' }).selectOption('none'))
+  // No longer time-dependent: the waveform is gone. (The time bar stays while measurement
+  // surfaces exist; preset 21's surface is kept, like Gaussian surfaces and Ampère paths.)
+  assert.equal(await page.getByTestId('profile-editor').getByRole('img').count(), 0)
+  step('profile editor: sinusoidal profile makes the scene time-dependent (waveform from the engine); constant restores it')
+
+  // Hungarian Faraday labels.
+  await page.getByRole('radio', { name: 'HU' }).click()
+  await page.getByRole('tab', { name: 'Faraday' }).click()
+  await page.getByText('Faraday-törvény és mágneses fluxus').waitFor()
+  await page.getByRole('radio', { name: 'EN' }).click()
+  step('Faraday panel in Hungarian')
 
   assert.deepEqual(errors, [], 'browser console errors')
   step('no browser console errors')

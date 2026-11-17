@@ -9,10 +9,12 @@ from emf_core.ampere import AmperePath, AmpereRequest
 from emf_core.equations import EquationView
 from emf_core.geometry.surfaces import GaussSurface
 from emf_core.i18n import LocalizedText
+from emf_core.induction import FluxSurface, InductionRequest
 from emf_core.scene.models import Scene, Vec3
+from emf_core.scene.profiles import CurrentProfile
 from emf_core.solvers import SolverDescriptor, SolveRequest
 from emf_core.solvers.analytical.gauss import FluxRequest
-from emf_core.solvers.base import Classification
+from emf_core.solvers.base import Classification, TimeSourceInfo
 
 
 class SimulationBody(BaseModel):
@@ -30,6 +32,8 @@ class ErrorBody(BaseModel):
 class ProbeBody(BaseModel):
     scene: Scene
     point_m: Vec3
+    # Phase 4A: simulation time for time-dependent source currents (magnetoquasistatic).
+    time_s: float = Field(default=0.0, allow_inf_nan=False)
 
 
 class ProbeValue(BaseModel):
@@ -102,6 +106,11 @@ class MagneticContribution(BaseModel):
     B_magnitude_T: float | None
     H_A_per_m: list[float] | None
     H_magnitude_A_per_m: float | None
+    # Phase 4A: this source's current derivative and its dB/dt and E_ind at the point (None
+    # where undefined or, for E_ind, where the source has no vector potential).
+    dI_dt_A_per_s: float | None = None
+    dB_dt_T_per_s: list[float] | None = None
+    E_ind_V_per_m: list[float] | None = None
 
 
 class OneSidedValue(BaseModel):
@@ -158,6 +167,15 @@ class ProbeMagnetic(BaseModel):
     # Phase 3B.1: relative accuracy bound 8 eps S / d set by float64 near an ideal filament
     # (None when no filament limits it). The value is the true field, never capped.
     relative_precision_bound: float | None = None
+    # Phase 4A (magnetoquasistatic): the time, each source's I(t) and dI/dt, and dB/dt and the
+    # induced field E_ind = -dA/dt (Coulomb gauge) at the point. E_ind is the induced part only,
+    # never the electrostatic or complete electric field.
+    time_s: float = 0.0
+    time_dependent: bool = False
+    time_sources: list[TimeSourceInfo] = []
+    time_values: list[ProbeValue] = []
+    e_ind_available: bool = True
+    derivative_unique: bool = True
 
 
 class ProbeResponse(BaseModel):
@@ -183,6 +201,29 @@ class EquationsBody(BaseModel):
     surfaces: list[GaussSurface] = Field(default=[], max_length=16)
     # Ampère paths (Phase 3B), for the statuses of the integral Ampère law.
     paths: list[AmperePath] = Field(default=[], max_length=16)
+    # Faraday measurement surfaces (Phase 4A), for the statuses of the induction equations.
+    flux_surfaces: list[FluxSurface] = Field(default=[], max_length=8)
+
+
+class ProfileSampleBody(BaseModel):
+    """Sample a current profile for display (Phase 4A); evaluated by the engine."""
+
+    profile: CurrentProfile
+    start_s: float = Field(allow_inf_nan=False)
+    end_s: float = Field(allow_inf_nan=False)
+    count: int = Field(default=201, ge=2, le=2001)
+
+
+class ProfileSamples(BaseModel):
+    t_s: list[float]
+    current_A: list[float]
+    dI_dt_A_per_s: list[float]  # right-hand derivative
+    corners_s: list[float]  # times where dI/dt jumps
+
+
+class InductionBody(BaseModel):
+    scene: Scene
+    induction: InductionRequest
 
 
 class AmpereBody(BaseModel):
@@ -235,6 +276,8 @@ class ProjectIn(BaseModel):
     surfaces: list[GaussSurface] = Field(default=[], max_length=16)
     # Ampère paths (Phase 3B), stored the same way under "ampere_paths".
     paths: list[AmperePath] = Field(default=[], max_length=16)
+    # Faraday measurement surfaces (Phase 4A), stored under "flux_surfaces".
+    flux_surfaces: list[FluxSurface] = Field(default=[], max_length=8)
 
 
 class ProjectSummary(BaseModel):
@@ -249,3 +292,4 @@ class ProjectOut(ProjectSummary):
     view: dict[str, Any]
     surfaces: list[GaussSurface] = []
     paths: list[AmperePath] = []
+    flux_surfaces: list[FluxSurface] = []

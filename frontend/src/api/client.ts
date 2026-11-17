@@ -2,6 +2,9 @@ import { decodeContainer, type SimulationResult } from './container'
 import type {
   AmpereHeader,
   AmperePath,
+  CurrentProfile,
+  InductionHeader,
+  ProfileSamples,
   EquationsResponse,
   GaussSituation,
   GaussSurface,
@@ -93,13 +96,13 @@ export const api = {
     return { ...result, cache, roundTripMs: performance.now() - t0 }
   },
 
-  async probe(scene: Scene, point: Vec3, signal?: AbortSignal): Promise<ProbeResponse> {
-    const res = await request('/probe', json({ scene, point_m: point }, 'POST', signal))
+  async probe(scene: Scene, point: Vec3, signal?: AbortSignal, timeS = 0): Promise<ProbeResponse> {
+    const res = await request('/probe', json({ scene, point_m: point, time_s: timeS }, 'POST', signal))
     return (await res.json()) as ProbeResponse
   },
 
-  async equations(scene: Scene, signal?: AbortSignal, surfaces: GaussSurface[] = [], paths: AmperePath[] = []): Promise<EquationsResponse> {
-    const res = await request('/equations/evaluate', json({ scene, surfaces, paths }, 'POST', signal))
+  async equations(scene: Scene, signal?: AbortSignal, surfaces: GaussSurface[] = [], paths: AmperePath[] = [], fluxSurfaces: AmperePath[] = []): Promise<EquationsResponse> {
+    const res = await request('/equations/evaluate', json({ scene, surfaces, paths, flux_surfaces: fluxSurfaces }, 'POST', signal))
     return (await res.json()) as EquationsResponse
   },
 
@@ -109,10 +112,21 @@ export const api = {
     return decodeContainer(await res.arrayBuffer())
   },
   /** Ampère's law on closed planar paths (JSON). */
-  async ampere(scene: Scene, paths: AmperePath[], signal?: AbortSignal): Promise<AmpereHeader & { cache: 'hit' | 'miss' }> {
-    const res = await request('/ampere', json({ scene, ampere: { paths } }, 'POST', signal))
+  async ampere(scene: Scene, paths: AmperePath[], signal?: AbortSignal, timeS = 0): Promise<AmpereHeader & { cache: 'hit' | 'miss' }> {
+    const res = await request('/ampere', json({ scene, ampere: { paths, time_s: timeS } }, 'POST', signal))
     const body = (await res.json()) as AmpereHeader
     return { ...body, cache: res.headers.get('X-EMF-Cache') === 'hit' ? 'hit' : 'miss' }
+  },
+  /** Flux, Faraday's law, Lenz signs and mutual inductance at one time (Phase 4A). */
+  async induction(scene: Scene, surfaces: AmperePath[], timeS: number, signal?: AbortSignal): Promise<InductionHeader & { cache: 'hit' | 'miss' }> {
+    const res = await request('/induction', json({ scene, induction: { surfaces, time_s: timeS, mutual: true } }, 'POST', signal))
+    const body = (await res.json()) as InductionHeader
+    return { ...body, cache: res.headers.get('X-EMF-Cache') === 'hit' ? 'hit' : 'miss' }
+  },
+  /** I(t) and dI/dt of a profile on an even grid, evaluated by the engine (for plotting). */
+  async profileSample(profile: CurrentProfile, startS: number, endS: number, signal?: AbortSignal): Promise<ProfileSamples> {
+    const res = await request('/profile/sample', json({ profile, start_s: startS, end_s: endS, count: 241 }, 'POST', signal))
+    return (await res.json()) as ProfileSamples
   },
   gaussSituations: () => get<GaussSituation[]>('/gauss/situations'),
 
@@ -162,8 +176,9 @@ export const api = {
     id?: string,
     surfaces: GaussSurface[] = [],
     paths: AmperePath[] = [],
+    fluxSurfaces: AmperePath[] = [],
   ): Promise<ProjectOut> {
-    const init = json({ name, scene, view, surfaces, paths }, id ? 'PUT' : 'POST')
+    const init = json({ name, scene, view, surfaces, paths, flux_surfaces: fluxSurfaces }, id ? 'PUT' : 'POST')
     return (await (await request(id ? `/projects/${id}` : '/projects', init)).json()) as ProjectOut
   },
   async deleteProject(id: string): Promise<void> {

@@ -5,7 +5,7 @@ import { api, ApiError, type SimulationResponse } from '@/api/client'
 import type { FieldKind, JobStatus, Scene, SolveRequest } from '@/api/types'
 import { useSceneStore } from '@/state/sceneStore'
 import { useViewStore } from '@/state/viewStore'
-import { buildMagneticRequest, buildRequest, fieldKinds, physicsKey, type Quality } from './request'
+import { buildMagneticRequest, buildRequest, fieldKinds, isTimeDependent, physicsKey, type Quality } from './request'
 
 function useDebounced<T>(value: T, delayMs: number): T {
   const [v, setV] = useState(value)
@@ -28,11 +28,14 @@ function useBundle(kind: FieldKind, quality: Quality): Bundle {
   const plane = useViewStore((s) => s.plane)
   const offset = useViewStore((s) => s.offset)
   const mode = useViewStore((s) => s.mode)
+  const timeS = useViewStore((s) => s.timeS)
+  const playing = useViewStore((s) => s.playing)
   return useMemo(() => {
     const settings = { plane, offset, mode }
-    const request = kind === 'electric' ? buildRequest(scene.domain, settings, quality) : buildMagneticRequest(scene.domain, settings, quality)
+    const time = { timeS, timeDependent: isTimeDependent(scene), playing }
+    const request = kind === 'electric' ? buildRequest(scene.domain, settings, quality) : buildMagneticRequest(scene.domain, settings, quality, time)
     return { kind, key: physicsKey(scene, request), scene, request }
-  }, [kind, scene, plane, offset, mode, quality])
+  }, [kind, scene, plane, offset, mode, quality, timeS, playing])
 }
 
 // --- High-accuracy solves run as cancellable jobs on the solver's worker service -------------

@@ -1228,3 +1228,11 @@ EQUATIONS: list[Equation] = [
         assumptions=[L("Linear, nondispersive media.", "Lineáris, nem diszperzív közeg.")],
     ),
 ]
+
+
+# Phase 4A: induction equations live in their own module, in this same registry.
+from .induction import EQUATIONS as _INDUCTION_EQUATIONS  # noqa: E402
+from .induction import SYMBOLS as _INDUCTION_SYMBOLS  # noqa: E402
+
+SYMBOLS.update(_INDUCTION_SYMBOLS)
+EQUATIONS += _INDUCTION_EQUATIONS

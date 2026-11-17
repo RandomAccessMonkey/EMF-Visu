@@ -10,7 +10,7 @@ import { useSceneStore } from '@/state/sceneStore'
 import { SOURCE_COLORS, ZERO_VECTOR_COLOR } from '@/render/CalculusLayers'
 import { ZERO_CSS } from '@/render/fieldImages'
 import { FIELD_LINE_COLOR, isNumericalBEnd, isNumericalEnd, LEVEL_COLORS, NUMERICAL_LINE_COLOR } from '@/render/FieldProducts'
-import { AMPERE_PATH_COLOR, CORE_COLOR, MAGNETIC_LINE_COLOR, MAGNETIC_NUMERICAL_LINE_COLOR, MAGNETIC_SOURCE_COLOR, MAGNET_COLOR, MAGNET_SOUTH_COLOR } from '@/render/magneticColors'
+import { AMPERE_PATH_COLOR, CORE_COLOR, FLUX_SURFACE_COLOR, INDUCED_E_COLOR, MAGNETIC_LINE_COLOR, MAGNETIC_NUMERICAL_LINE_COLOR, MAGNETIC_SOURCE_COLOR, MAGNET_COLOR, MAGNET_SOUTH_COLOR } from '@/render/magneticColors'
 import { contributionColor, effectiveContribution } from '@/render/MagneticLayers'
 import { PLANE_BASIS } from '@/sim/request'
 import { useViewStore } from '@/state/viewStore'
@@ -54,6 +54,8 @@ const Swatch = ({ color, dashed }: { color: string; dashed?: boolean }) => (
 )
 
 /** Separate legend for magnetic quantities: own palette, own units, never shared with E. */
+const MAGNETIC_VECTOR_SYMBOL = { B: 'B', H: 'H', dB_dt: '∂B/∂t', E_ind: 'E_ind' } as const
+
 function MagneticLegend({ result, arrows }: { result: SimulationResult; arrows: LogScale | null }) {
   const { t } = useT()
   const v = useViewStore()
@@ -64,10 +66,11 @@ function MagneticLegend({ result, arrows }: { result: SimulationResult; arrows: 
   const closed = shown.filter((l) => l.end_reason === 'closed_loop').length
   const truncated = shown.filter((l) => !isNumericalBEnd(l) && l.end_reason !== 'closed_loop').length
   const numerical = shown.filter(isNumericalBEnd).length
-  const unit = v.magneticField === 'B' ? 'T' : 'A/m'
+  const unit = { B: 'T', H: 'A/m', dB_dt: 'T/s', E_ind: 'V/m' }[v.magneticField]
   const ids = result.header.current_sources.map((c) => c.object_id)
   const kinds = new Set(result.header.current_sources.map((c) => c.kind))
   const paths = useSceneStore((s) => s.paths)
+  const fluxCount = useSceneStore((s) => s.fluxSurfaces.length)
   const contribution = effectiveContribution(v.contribution, ids)
   const which = contribution === 'total' ? t('legend.mTotal') : contribution === 'all' ? t('legend.mAll') : t('legend.mSingle', { name: names[contribution] ?? contribution })
   return (
@@ -75,7 +78,7 @@ function MagneticLegend({ result, arrows }: { result: SimulationResult; arrows: 
       <p className="text-[11px] font-semibold" style={{ color: MAGNETIC_SOURCE_COLOR }}>{t('legend.magneticTitle')}</p>
       {arrows && v.showBArrows && (
         <Bar
-          title={`${t('legend.arrows')} |${v.magneticField}| [${prettyUnit(unit)}] · ${which}`}
+          title={`${t('legend.arrows')} |${MAGNETIC_VECTOR_SYMBOL[v.magneticField]}| [${prettyUnit(unit)}] · ${v.magneticField === 'B' || v.magneticField === 'H' ? which : t('legend.mTotal')}`}
           kind="magnetic"
           note={t('legend.log')}
           ticks={[formatSI(arrows.min, prettyUnit(unit)), formatSI(arrows.max, prettyUnit(unit))]}
@@ -113,6 +116,18 @@ function MagneticLegend({ result, arrows }: { result: SimulationResult; arrows: 
         <p className="max-w-56 text-[10px] leading-snug text-muted">
           <Swatch color={CORE_COLOR} />
           {t('legend.core')}
+        </p>
+      )}
+      {v.showBArrows && v.magneticField === 'E_ind' && (
+        <p className="max-w-56 text-[10px] leading-snug text-muted">
+          <Swatch color={INDUCED_E_COLOR} />
+          {t('legend.eInd')}
+        </p>
+      )}
+      {fluxCount > 0 && (
+        <p className="max-w-56 text-[10px] leading-snug text-muted">
+          <Swatch color={FLUX_SURFACE_COLOR} />
+          {t('legend.fluxSurface')}
         </p>
       )}
       {paths.length > 0 && (
