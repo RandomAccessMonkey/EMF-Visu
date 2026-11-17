@@ -1570,6 +1570,8 @@ export interface components {
             tolerance_A?: number | null;
             /** Bound Current From B A */
             bound_current_from_B_A?: number | null;
+            /** Precision Floor A */
+            precision_floor_A?: number | null;
         };
         /**
          * PermanentMagnetSource
@@ -1982,6 +1984,8 @@ export interface components {
              * @default true
              */
             quadrature_converged: boolean;
+            /** Relative Precision Bound */
+            relative_precision_bound?: number | null;
         };
         /** ProbeResponse */
         ProbeResponse: {

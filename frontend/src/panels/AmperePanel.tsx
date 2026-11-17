@@ -232,6 +232,11 @@ export function PathResultView({ r, stale }: { r: PathResult; stale: boolean }) 
         <p key={i} className="text-[11px] leading-snug text-warn/90">{loc(n)}</p>
       ))}
       {r.near_singular && <p className="text-[11px] leading-snug text-warn/90">{t('ampere.nearSingular', { d: formatSI(r.min_distance_to_filament_m ?? 0, 'm') })}</p>}
+      {r.precision_floor_A != null && r.tolerance_A != null && r.precision_floor_A > r.tolerance_A && (
+        <p className="text-[11px] leading-snug text-warn/90" data-testid="ampere-precision">
+          {t('ampere.precisionFloor', { floor: formatSI(r.precision_floor_A, 'A', 2), tol: formatSI(r.tolerance_A, 'A', 2) })}
+        </p>
+      )}
       {r.crosses_material && <p className="text-[11px] leading-snug text-muted">{t('ampere.crossesMaterial')}</p>}
       <p className="text-[11px] leading-snug text-muted">{t(`ampere.explain.${r.status}` as MessageKey)}</p>
     </div>

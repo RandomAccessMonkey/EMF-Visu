@@ -3864,6 +3864,17 @@
               }
             ],
             "title": "Bound Current From B A"
+          },
+          "precision_floor_A": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precision Floor A"
           }
         },
         "type": "object",
@@ -4896,6 +4907,17 @@
             "type": "boolean",
             "title": "Quadrature Converged",
             "default": true
+          },
+          "relative_precision_bound": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relative Precision Bound"
           }
         },
         "type": "object",

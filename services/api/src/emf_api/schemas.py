@@ -155,6 +155,9 @@ class ProbeMagnetic(BaseModel):
     one_sided: list[OneSidedValue] = []
     comparisons: list[ProbeComparison] = []
     quadrature_converged: bool = True
+    # Phase 3B.1: relative accuracy bound 8 eps S / d set by float64 near an ideal filament
+    # (None when no filament limits it). The value is the true field, never capped.
+    relative_precision_bound: float | None = None
 
 
 class ProbeResponse(BaseModel):

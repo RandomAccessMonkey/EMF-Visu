@@ -433,3 +433,47 @@ formatter is now used (also for the Gaussian-surface area, a Phase 2B-2 display 
 | End-to-end without a worker (`EMF_E2E_NO_WORKER=1`) | not run in this phase |
 | Docker images | not rebuilt or run in this phase |
 | Windows | not executed (no Windows machine); the native workflow was run on Linux |
+
+## Verification record for Phase 3B.1 (near-filament numerical audit)
+
+Question: does the clamp m ≤ 1 in the circular-loop solution prevent NaNs without hiding the
+singularity or capping near-wire values? Method and conclusions are in
+[architecture.md §9f](architecture.md). Independent reference:
+`emf_core.verification.biot_savart.loop_local_reference`, a cancellation-free Biot–Savart
+integral in local coordinates (QUADPACK on geometrically graded sub-intervals, certified to
+2e-14·|B|, no elliptic integrals). World-coordinate cases use the point's local coordinates
+computed exactly with 60-digit decimal arithmetic.
+
+**Before the change** (measured): relative error up to ε·a/d, peaking at 5e-9 for d = 1e-8·a
+(cancellation in a² − ρ² − z²); the clamp itself contributed < 1e-14.
+
+**After** (`tests/physics/test_near_filament.py`, 44 tests):
+
+| Check | Reference | Tolerance | Result |
+|---|---|---|---|
+| Exactly on the filament (3 radii, two points each) | | status singular, B and H NaN, no precision claimed | pass |
+| Near the filament, d/a = 1e-1 … 1e-13, 12 directions, exact local inputs | independent Biot–Savart | 3e-14 relative | pass (measured ≤ 2.5e-15) |
+| Growth toward the wire, no plateau; d·\|B\| → μ₀I/(2π) | straight-wire limit | (d/a)·ln(8a/d) | pass, down to 3e-14 m |
+| Right-hand rule next to the wire; exact sign flip on reversal | | bitwise | pass |
+| Clamp inactive for d ≥ 1e-7·a; finite just above m = 1 | | | pass |
+| Axis exact (B_ρ = 0, closed-form B_z) and near axis ρ = 1e-1 … 1e-12·a | closed form; reference | 1e-15; 3e-14 | pass |
+| World coordinates: 3 loops (origin; translated and tilted; a = 2.5 m), d/a = 1e-1 … 1e-13 | reference on exact local coordinates | error ≤ reported bound 8·ε·S/d | pass (error/bound ≤ 0.056) |
+| Singular detection after rotation and translation; 1e-12·a away is finite and unclipped | | | pass |
+| Tolerance independent of the domain (0.01 m and 1000 m domains) | | bitwise | pass |
+| One singular turn: only that point undefined; other points and the other source's contribution kept | | 1e-14 | pass |
+| Probe on and 1e-6 / 1e-11 m from a solenoid turn, a finite-toroid turn, a loop | μ₀I/(2πd) | 5 % (nearby turns) | pass; singular source identified; precision note only at 1e-11 m |
+| Magnet near the side wall, δ/a = 1e-1 … 1e-6 | jump μ₀M, continuous normal B | 5·δ/a; first-order convergence | pass, quadrature always converged |
+| Ampère circle 1e-2 … 1e-12 m from a wire | I_enc = 1 A | path tolerance | verified |
+| Ampère 1e-13, 1e-14 m; 0 and 1e-16 m | | | not_converged (float64 floor); intersects_source |
+| Ampère rectangle 1e-2 … 1e-8 m from a loop wire; closer; on it | Γ = 0 | 1e-8 A | verified; not_converged; intersects_source |
+| Field line driven straight into a filament | | ends inside the guard radius, never at d = 0, < 200 steps | pass |
+| Line seeded inside the guard radius of a real loop | | ends immediately | pass |
+| Solve warning on near-filament precision only when the bound exceeds 1e-8 | | | pass |
+
+| Item | Result |
+|---|---|
+| Python tests | 411 passed, 0 skipped (367 earlier, unchanged; 44 new), incl. 5 integration tests against PostgreSQL and Redis |
+| ruff, mypy (strict) | clean |
+| Frontend type-check, lint, unit tests, production build | clean; 63 passed |
+| End-to-end, native stack (`scripts/native.py`) with Redis and worker | 53 of 53 checks |
+| Windows, Docker | not executed in this phase |

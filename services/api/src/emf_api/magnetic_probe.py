@@ -40,6 +40,7 @@ from .schemas import (
 
 Arr = NDArray[np.float64]
 RTOL = ms.MAGNET_RTOL["probe"]
+FILAMENT_KINDS = ("infinite_wire", "circular_loop", "solenoid", "toroid_finite")
 ONE_SIDED_REL = 1e-6  # one-sided limits are evaluated at ± this × the object's size
 
 
@@ -207,7 +208,9 @@ def magnetic_probe(scene: Scene, point_m: tuple[float, float, float],
             nearest_d, nearest_id = dist, obj.object_id
         hi = ms.source_h(p[None, :], cs, obj.object_id, bi, tol)
         ok = bool(np.all(np.isfinite(bi[0])))
-        if not ok and d_fil <= r_min and singular_id is None:
+        # A filament source's field is undefined only where the engine found the point
+        # indistinguishable from one of its filaments (source-scaled tolerance, Phase 3B.1).
+        if not ok and obj.kind in FILAMENT_KINDS and singular_id is None:
             singular_id, singular_kind = obj.object_id, obj.kind
         contributions.append(MagneticContribution(
             object_id=obj.object_id, name=names.get(obj.object_id, obj.object_id), kind=obj.kind,
@@ -236,13 +239,18 @@ def magnetic_probe(scene: Scene, point_m: tuple[float, float, float],
                 side=side, offset_m=delta,
                 B_T=[float(x) for x in e2.b[0]] if np.all(np.isfinite(e2.b[0])) else None,
                 H_A_per_m=[float(x) for x in e2.h[0]] if np.all(np.isfinite(e2.h[0])) else None))
+    fil_d, fil_scale = ms.nearest_filament(p[None, :], cs)
+    sing_tol = (float(ms.filament_tolerance(fil_scale)[0]) if math.isfinite(float(fil_d[0]))
+                else r_min)
+    prec = float(ev.precision[0])
     rel = (next(t.relative_permeability for t in cs.ideal_toroids) if material == "core"
            else None)
     return ProbeMagnetic(
         solver_id=solver.id, solver_version=solver.version,
         classification=("idealized_model" if cs.ideal_toroids else "numerical_approximation"
                         if cs.magnets else "exact_analytical"),
-        defined=status == "defined", status=status, singular_tolerance_m=r_min,
+        defined=status == "defined", status=status, singular_tolerance_m=sing_tol,
+        relative_precision_bound=prec if prec > 0 else None,
         boundary_tolerance_m=tol, singular_object_id=singular_id, singular_kind=singular_kind,
         values=_values(b, h), nearest_source_id=nearest_id,
         nearest_source_distance_m=nearest_d if nearest_id is not None else None,

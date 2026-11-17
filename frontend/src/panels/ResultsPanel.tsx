@@ -35,6 +35,9 @@ export function SimulationError({ error }: { error: Error }) {
   )
 }
 
+/** Same threshold as the engine's PRECISION_WARN: below it the float64 limit is not worth a note. */
+const PRECISION_WARN = 1e-8
+
 const isCalculus = (q: string) => q.startsWith('div_') || q.startsWith('curl_')
 
 function ProbeValueRow({ v }: { v: ProbeValue }) {
@@ -252,6 +255,11 @@ function MagneticProbe({ m }: { m: ProbeMagnetic }) {
       )}
       {m.status !== 'defined' && m.status !== 'singular' && <BoundaryNote m={m} />}
       {!m.quadrature_converged && <p className="mb-1 text-[11px] text-warn">{t('probe.mNotConverged')}</p>}
+      {m.relative_precision_bound != null && m.relative_precision_bound > PRECISION_WARN && (
+        <p className="mb-1 text-[11px] leading-snug text-warn" data-testid="probe-precision">
+          {t('probe.mPrecision', { bound: m.relative_precision_bound.toExponential(1) })}
+        </p>
+      )}
       <table className="w-full text-xs" aria-label={t('probe.magneticFields')}>
         <tbody>
           {vectors.map((v) => (

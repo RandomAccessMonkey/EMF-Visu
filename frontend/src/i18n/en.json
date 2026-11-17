@@ -501,7 +501,7 @@
   "probe.mSingularTitle": "On an ideal current filament",
   "probe.mSingularWire": "The probe lies on the axis of wire {name} ({i}).",
   "probe.mSingularLoop": "The probe lies on a current filament of {name} ({i} per turn).",
-  "probe.mSingularExplain": "An ideal filament has zero thickness, so B and H grow like 1/distance and have no pointwise value on it. A real wire has a finite radius and a finite field inside, which is outside this model.",
+  "probe.mSingularExplain": "An ideal filament has zero thickness, so B and H grow like 1/distance and have no pointwise value on it. A point counts as on the filament only when float64 cannot tell it apart from it (the tolerance scales with the source, about 1e-14 of its size); every other point, however close, gets its true field. A real wire has a finite radius and a finite field inside, which is outside this model.",
   "probe.mDivNote": "∇·B and ∇·H are exactly zero here (analytical identity), although B is not zero.",
   "probe.mDivSingularNote": "On the filament only the distributional statement ∇·B = 0 holds; there is no pointwise value.",
   "probe.nearestSource": "Nearest current source: {name}, at {d}",
@@ -660,5 +660,7 @@
   "legend.core": "ideal toroid core (linear, μᵣ); field exactly zero outside it",
   "legend.amperePath": "Ampère path with its normal; rings: free currents through it (green along n̂, red against, amber undetermined)",
   "legend.bhMagnet": "B and H are different quantities. Outside magnets B = μ₀H; inside a magnet H = B/μ₀ − M, so H can point against B.",
-  "legend.bhCore": "B and H are different quantities. In the ideal core B = μ₀μᵣH; outside it both are zero."
+  "legend.bhCore": "B and H are different quantities. In the ideal core B = μ₀μᵣH; outside it both are zero.",
+  "probe.mPrecision": "Very close to an ideal filament: float64 arithmetic limits the relative accuracy of B and H here to about {bound}. The value is the true near-filament field, not capped.",
+  "ampere.precisionFloor": "The path passes so close to a filament that float64 limits the circulation to about ±{floor}, more than the tolerance {tol}: it is therefore not reported as verified."
 }

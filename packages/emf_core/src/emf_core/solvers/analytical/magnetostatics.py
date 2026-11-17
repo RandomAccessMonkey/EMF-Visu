@@ -25,8 +25,14 @@ axis, where B_rho = 0 and B_z = mu0 I a^2 / (2 (a^2 + z^2)^(3/2)).
 H = B / mu0 (vacuum). The total field is the sum over sources (superposition). Pointwise
 divergence of B and H is exactly zero wherever B is defined (the Biot–Savart field of a closed
 or infinite filament is solenoidal off the filament); it is returned as exact 0, and NaN where
-B is undefined. B is undefined (singular) within the position tolerance
-COINCIDENCE_FACTOR × domain diagonal of a filament; any other point gets its analytical value.
+B is undefined. B is undefined (singular) only where a point is numerically indistinguishable
+from an ideal filament: d ≤ FILAMENT_EPS_FACTOR · ε · S, with ε the float64 machine epsilon and S
+the size of the local coordinates from which d is computed (loop: a + |p − c|; wire: |p − p0|).
+The computed d carries an absolute rounding error of at most a few ε·S, so within this
+tolerance d cannot be told apart from 0; any other point gets its analytical value, however
+large. Close to a filament the computed field is the exact field at a point displaced by about
+ε·S (backward stable), so its relative accuracy is bounded by PRECISION_EPS_FACTOR · ε · S / d;
+this bound is returned per point and reported when it exceeds PRECISION_WARN (Phase 3B.1).
 """
 
 from __future__ import annotations
@@ -34,6 +40,7 @@ from __future__ import annotations
 import math
 import time
 from dataclasses import dataclass
+from dataclasses import field as dc_field
 from fractions import Fraction
 
 import numpy as np
@@ -77,7 +84,12 @@ from ..base import (
 
 Arr = NDArray[np.float64]
 Mask = NDArray[np.bool_]
-COINCIDENCE_FACTOR = 1e-12
+COINCIDENCE_FACTOR = 1e-12  # domain-scaled position tolerance (probe display, sheet tolerance)
+# Phase 3B.1: filament singularity and near-filament precision, scaled by the source geometry.
+EPS = float(np.finfo(np.float64).eps)
+FILAMENT_EPS_FACTOR = 64.0  # singular iff d <= 64 eps S (>= 10x the rounding error of d)
+PRECISION_EPS_FACTOR = 8.0  # relative accuracy bound 8 eps S / d (measured <= 0.8 eps a / d)
+PRECISION_WARN = 1e-8  # report points whose bound exceeds this
 IN_PLANE_FACTOR = 1e-9
 NEAR_AXIS_M = 0.5
 SERIES_TERMS = 80
@@ -115,15 +127,33 @@ def _f_over_m(m: Arr) -> Arr:
     return acc * m
 
 
-def wire_field(points: Arr, w: WireSource, r_min: float) -> Arr:
+def filament_tolerance(scale: Arr) -> Arr:
+    """Distance below which a point cannot be told apart from an ideal filament, for distances
+    computed from local coordinates of size ``scale`` (see the module docstring)."""
+    out: Arr = FILAMENT_EPS_FACTOR * EPS * scale
+    return out
+
+
+def precision_bound(scale: Arr, dist: Arr) -> Arr:
+    """Relative accuracy bound PRECISION_EPS_FACTOR · ε · S / d of a filament's field."""
+    with np.errstate(divide="ignore", invalid="ignore"):  # masked where singular (d = 0)
+        out: Arr = PRECISION_EPS_FACTOR * EPS * scale / dist
+    return out
+
+
+def wire_field(points: Arr, w: WireSource) -> tuple[Arr, Mask, Arr]:
+    """(B, singular mask, relative precision bound) of an infinite wire."""
     r = points - w.point_m
     rp = r - (r @ w.direction)[:, None] * w.direction
     s2 = np.einsum("ij,ij->i", rp, rp)
-    near = np.sqrt(s2) <= r_min
+    scale = np.linalg.norm(r, axis=1)
+    dist = np.sqrt(s2)
+    near = dist <= filament_tolerance(scale)
     s2 = np.where(near, 1.0, s2)
     b = (MU0 * w.current_A / (2.0 * np.pi) / s2)[:, None] * np.cross(w.direction, rp)
     b[near] = np.nan
-    return b
+    prec = np.where(near, 0.0, precision_bound(scale, dist))
+    return b, near, prec
 
 
 def loop_local(rho: Arr, z: Arr, a: float | Arr, current: float | Arr
@@ -134,15 +164,20 @@ def loop_local(rho: Arr, z: Arr, a: float | Arr, current: float | Arr
     c = MU0 * current / (2.0 * np.pi)
     dp = (a + rho) ** 2 + z**2
     dm = (a - rho) ** 2 + z**2
-    # m <= 1 always; within ~1e-8 of the wire 4a rho/D+ can round to just above 1, where
-    # ellipe is undefined, so it is clamped (1 - m is formed separately, without cancellation).
+    # m <= 1 always. Within about 4e-8 a of the wire the exact m = 1 - q has q < ~4e-16, and
+    # 4a rho / D+ can round to just above 1, where ellipe returns NaN; it is clamped to 1. This
+    # changes E by |E(1 - q) - E(1)| <= (q/4)(ln(16/q) + 1) < 1e-14 (E is continuous at m = 1,
+    # E(1) = 1), i.e. below rounding. K never uses m: it is ellipkm1(q) with q = D-^2 / D+^2
+    # formed geometrically, so its logarithmic divergence near the wire is resolved exactly.
     m = np.minimum(4.0 * a * rho / dp, 1.0)
     p1 = dm / dp  # 1 - m, formed without cancellation
     with np.errstate(divide="ignore", invalid="ignore"):
         k = ellipkm1(p1)
         e = ellipe(m)
         sq = np.sqrt(dp)
-        bz = c / sq * (k + (a * a - rho * rho - z * z) / dm * e)
+        # a^2 - rho^2 - z^2 factored: near the wire (rho ~ a) a^2 - rho^2 would cancel and lose
+        # eps a / d of relative accuracy; (a - rho)(a + rho) keeps a - rho exact (Sterbenz).
+        bz = c / sq * (k + ((a - rho) * (a + rho) - z * z) / dm * e)
         b_rho = c * z / (rho * sq) * (-k + (a * a + rho * rho + z * z) / dm * e)
         # Near-axis series, evaluated only where it is used (m <= NEAR_AXIS_M).
         near = m <= NEAR_AXIS_M
@@ -167,14 +202,17 @@ def _chunks(n_points: int, n_loops: int) -> list[slice]:
     return [slice(i, i + step) for i in range(0, n_points, step)]
 
 
-def loops_field(loops: list[LoopSource], points: Arr, r_min: float) -> tuple[Arr, Mask]:
+def loops_field(loops: list[LoopSource], points: Arr) -> tuple[Arr, Mask, Arr]:
     """Sum of many circular loops' fields (the turns of solenoids and toroids) by one broadcast
     evaluation of ``loop_local`` per chunk: identical formulas to ``loop_field``, without a Python
-    loop over turns. Returns (B, singular mask)."""
+    loop over turns. Returns (B, singular mask, relative precision bound): a point within the
+    filament tolerance of any turn is singular (B NaN, whatever the other turns give); the
+    precision bound is the largest over the turns."""
     c, nrm, rad = _loop_arrays(loops)
     cur = np.array([lp.current_A for lp in loops])
     b = np.zeros_like(points)
     sing = np.zeros(points.shape[0], bool)
+    prec = np.zeros(points.shape[0])
     for sl in _chunks(points.shape[0], len(loops)):
         d = points[sl, None, :] - c[None, :, :]  # (P, L, 3)
         z = np.einsum("plk,lk->pl", d, nrm)
@@ -185,15 +223,18 @@ def loops_field(loops: list[LoopSource], points: Arr, r_min: float) -> tuple[Arr
         with np.errstate(divide="ignore", invalid="ignore"):
             rhat = np.where(rho[..., None] > 0, rvec / rho[..., None], 0.0)
         bl = br[..., None] * rhat + bz[..., None] * nrm[None, :, :]
-        on = dist <= r_min
+        scale = rad[None, :] + np.linalg.norm(d, axis=2)
+        on = dist <= filament_tolerance(scale)
         bl[on] = 0.0
         b[sl] = bl.sum(axis=1)
         sing[sl] = on.any(axis=1)
+        prec[sl] = np.where(on, 0.0, precision_bound(scale, dist)).max(axis=1)
     b[sing] = np.nan
-    return b, sing
+    prec[sing] = 0.0
+    return b, sing, prec
 
 
-def loop_field(points: Arr, lp: LoopSource, r_min: float) -> Arr:
+def loop_field(points: Arr, lp: LoopSource) -> Arr:
     d = points - lp.center_m
     z = d @ lp.normal
     rvec = d - z[:, None] * lp.normal
@@ -202,7 +243,7 @@ def loop_field(points: Arr, lp: LoopSource, r_min: float) -> Arr:
     with np.errstate(divide="ignore", invalid="ignore"):
         rhat = np.where(rho[:, None] > 0, rvec / rho[:, None], 0.0)
     b = b_rho[:, None] * rhat + b_z[:, None] * lp.normal
-    b[dist <= r_min] = np.nan
+    b[dist <= filament_tolerance(lp.radius_m + np.linalg.norm(d, axis=1))] = np.nan
     return b
 
 
@@ -325,10 +366,10 @@ def source_fields(points: Arr, cs: CurrentSources, r_min: float,
     toroid are summed into their object)."""
     by_id: dict[str, Arr] = {oid: np.zeros_like(points) for oid in cs.ids}
     for w in cs.wires:
-        by_id[w.object_id] += wire_field(points, w, r_min)
+        by_id[w.object_id] += wire_field(points, w)[0]
     owners = sorted({lp.object_id for lp in cs.loops})
     for oid in owners:
-        b_obj, _ = loops_field([lp for lp in cs.loops if lp.object_id == oid], points, r_min)
+        b_obj, _, _ = loops_field([lp for lp in cs.loops if lp.object_id == oid], points)
         by_id[oid] += b_obj
     tol = sheet_tolerance(cs, r_min)
     for mg in cs.magnets:
@@ -352,6 +393,8 @@ class FieldEval:
     status: NDArray[np.int64]  # ST_* per point
     unconverged: int  # points whose magnet quadrature did not converge
     material: NDArray[np.int64]  # 0 vacuum, 1 inside a magnet, 2 inside an ideal core
+    # Relative accuracy bound from the nearest filament (8 eps S / d), 0 where not applicable.
+    precision: Arr = dc_field(default_factory=lambda: np.zeros(0))
 
 
 def evaluate_bh(points: Arr, cs: CurrentSources, r_min: float,
@@ -362,14 +405,17 @@ def evaluate_bh(points: Arr, cs: CurrentSources, r_min: float,
     n = points.shape[0]
     b = np.zeros((n, 3))
     status = np.zeros(n, np.int64)
+    precision = np.zeros(n)
     for w in cs.wires:
-        bi = wire_field(points, w, r_min)
-        status[np.isnan(bi[:, 0])] = ST_SINGULAR
+        bi, wsing, wprec = wire_field(points, w)
+        status[wsing] = ST_SINGULAR
         b += bi
+        precision = np.maximum(precision, wprec)
     if cs.loops:
-        bl, sing = loops_field(cs.loops, points, r_min)
+        bl, sing, lprec = loops_field(cs.loops, points)
         status[sing] = ST_SINGULAR
         b += bl
+        precision = np.maximum(precision, lprec)
     tol = sheet_tolerance(cs, r_min)
     m = np.zeros((n, 3))
     material = np.zeros(n, np.int64)
@@ -395,8 +441,9 @@ def evaluate_bh(points: Arr, cs: CurrentSources, r_min: float,
     h_undef = b_undef | (status == ST_END_FACE)
     b[b_undef] = np.nan
     h[h_undef] = np.nan
+    precision[status == ST_SINGULAR] = 0.0
     return FieldEval(b=b, h=h, m=m, status=status, unconverged=int(np.count_nonzero(unconverged)),
-                     material=material)
+                     material=material, precision=precision)
 
 
 def evaluate(points: Arr, cs: CurrentSources, r_min: float,
@@ -444,6 +491,34 @@ def distance_to_magnet_surface(points: Arr, mg: MagnetSource) -> Arr:
     end = np.hypot(np.maximum(rho - a, 0.0), np.abs(z) - half)
     out: Arr = np.minimum(side, end)
     return out
+
+
+def nearest_filament(points: Arr, cs: CurrentSources) -> tuple[Arr, Arr]:
+    """(distance, coordinate scale S) of the nearest filament per point, with the same
+    distance formulas and scales as the field evaluation (inf, nan where there is none)."""
+    dist = np.full(points.shape[0], np.inf)
+    scale = np.full(points.shape[0], np.nan)
+    for w in cs.wires:
+        r = points - w.point_m
+        rp = r - (r @ w.direction)[:, None] * w.direction
+        d = np.linalg.norm(rp, axis=1)
+        closer = d < dist
+        dist[closer], scale[closer] = d[closer], np.linalg.norm(r, axis=1)[closer]
+    if cs.loops:
+        c, nrm, rad = _loop_arrays(cs.loops)
+        for sl in _chunks(points.shape[0], len(cs.loops)):
+            dv = points[sl, None, :] - c[None, :, :]
+            z = np.einsum("plk,lk->pl", dv, nrm)
+            rho = np.linalg.norm(dv - z[..., None] * nrm[None, :, :], axis=2)
+            d = np.sqrt((rad[None, :] - rho) ** 2 + z**2)
+            j = d.argmin(axis=1)
+            idx = np.arange(d.shape[0])
+            dj = d[idx, j]
+            sj = rad[j] + np.linalg.norm(dv[idx, j], axis=1)
+            closer = dj < dist[sl]
+            dist[sl] = np.where(closer, dj, dist[sl])
+            scale[sl] = np.where(closer, sj, scale[sl])
+    return dist, scale
 
 
 def distance_to_sources(points: Arr, cs: CurrentSources) -> Arr:
@@ -569,8 +644,19 @@ def source_h(points: Arr, cs: CurrentSources, oid: str, b_i: Arr, tol: float) ->
     return h
 
 
-def _status_warnings(counts: NDArray[np.int64], unconverged: int) -> list[LocalizedText]:
+def _status_warnings(counts: NDArray[np.int64], unconverged: int, imprecise: int = 0,
+                     worst: float = 0.0) -> list[LocalizedText]:
     out: list[LocalizedText] = []
+    if imprecise:
+        out.append(L(
+            f"{imprecise} sample point(s) lie so close to an ideal current filament that float64 "
+            f"arithmetic limits the relative accuracy of B and H there (worst bound {worst:.1e}, "
+            f"reported above {PRECISION_WARN:.0e}). The values are the near-filament field itself, "
+            "not capped, accurate to that relative bound.",
+            f"{imprecise} mintavételi pont olyan közel van egy ideális áramszálhoz, hogy a float64 "
+            "aritmetika korlátozza ott B és H relatív pontosságát (legrosszabb korlát "
+            f"{worst:.1e}, {PRECISION_WARN:.0e} felett jelezve). Az értékek maguk a szál közeli "
+            "tér értékei, nem levágva, e relatív korláton belül pontosak."))
     if counts[ST_SINGULAR]:
         out.append(L(
             f"{counts[ST_SINGULAR]} sample point(s) lie on an ideal current filament, where B "
@@ -1034,6 +1120,8 @@ class FilamentMagnetostaticSolver:
         entries: list[ArrayEntry] = []
         counts = np.zeros(5, np.int64)
         unconverged = 0
+        imprecise = 0
+        worst_precision = 0.0
         done = 0
         contrib_ok = cs.count <= MAX_CONTRIBUTION_SOURCES
         tol = sheet_tolerance(cs, r_min)
@@ -1048,6 +1136,10 @@ class FilamentMagnetostaticSolver:
                 ev = evaluate_bh(pts[sl], cs, r_min)
                 b[sl], h[sl], status[sl] = ev.b, ev.h, ev.status
                 unconverged += ev.unconverged
+                rough = ev.precision > PRECISION_WARN
+                imprecise += int(np.count_nonzero(rough))
+                if rough.any():
+                    worst_precision = max(worst_precision, float(ev.precision.max()))
                 done += pts[sl].shape[0]
                 if progress is not None:
                     progress(share * done / max(total, 1), s.id)
@@ -1126,7 +1218,7 @@ class FilamentMagnetostaticSolver:
                 "physical model.",
                 f"{len(excluded)} inert geometriai objektum látható, de nem része a fizikai "
                 "modellnek."))
-        warnings += _status_warnings(counts, unconverged)
+        warnings += _status_warnings(counts, unconverged, imprecise, worst_precision)
         if request.source_contributions and not contrib_ok:
             warnings.append(L(
                 f"Individual source contributions are returned for at most "

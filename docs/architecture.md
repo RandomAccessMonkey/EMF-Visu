@@ -591,7 +591,7 @@ decoupled, and the system keeps them in separate solves:
 - Wire: B = μ₀I/(2π|r⊥|²) d̂ × r⊥, with r⊥ = (r − p) − ((r − p)·d̂)d̂.
 - Loop, in local cylindrical coordinates (ρ, z) with m = 4aρ/D₊, D± = (a ± ρ)² + z²,
   1 − m = D₋/D₊ computed directly (no cancellation):
-  B_z = μ₀I/(2π√D₊) [K + (a² − ρ² − z²)/D₋ · E],
+  B_z = μ₀I/(2π√D₊) [K + ((a − ρ)(a + ρ) − z²)/D₋ · E] (factored since Phase 3B.1, see 9f),
   B_ρ = μ₀I z/(2πρ√D₊) · f(m)/(2(1 − m)), f(m) = (2 − m)E − 2(1 − m)K.
   K is evaluated with `scipy.special.ellipkm1(1 − m)` (accurate as m → 1, near the wire),
   E with `ellipe(m)`.
@@ -607,8 +607,8 @@ decoupled, and the system keeps them in separate solves:
   exact axis limit are tested.
 - H = B/μ₀ in vacuum; superposition B = Σ Bᵢ. ∇·B and ∇·H are returned as exact 0 wherever B is
   defined (analytical identity for the Biot–Savart field of a closed or infinite filament), NaN
-  where undefined. Singular set: distance to a wire axis or to the loop wire (√D₋) at most
-  1e-12 × domain diagonal (the same position tolerance as for point charges).
+  where undefined. Singular set: since Phase 3B.1 a source-scaled float64 tolerance (see 9f);
+  originally 1e-12 × domain diagonal.
 - Validation reference (tests only, never used by the solver): direct numerical Biot–Savart
   integration over the loop with the periodic trapezoidal rule (exponentially convergent for a
   smooth periodic integrand), refined until converged; for the wire, quadrature over a long
@@ -776,6 +776,59 @@ loops (each turn is one loop evaluation) plus about 30–200 loop evaluations pe
 turns + 60 × magnets)) and answers 413 above 4e7, asking for a queued job, rather than silently
 reducing anything. Field lines with magnets use a looser inner quadrature (1e-7).
 
+## 9f. Phase 3B.1: numerical audit of the near-filament field
+
+**Question.** The loop solution clamps m = 4aρ/D₊ to ≤ 1. Does that hide the singularity or cap
+near-wire values?
+
+**Findings.**
+
+- The NaN came from `ellipe(m)` for m rounded just above 1: within about 4e-8·a of the wire
+  the exact m = 1 − q has q < 4e-16, and 4aρ/D₊ can round above 1. The clamp sets m = 1 there.
+  E is continuous at m = 1 (E(1) = 1) and |E(1 − q) − 1| ≤ (q/4)(ln(16/q) + 1) < 1e-14, below
+  rounding. K never uses m: it is `ellipkm1(q)` with q = D₋/D₊ formed geometrically, so its
+  logarithmic divergence is resolved exactly. **The clamp is mathematically safe and caps
+  nothing.**
+- A separate, real precision loss was found: the B_z bracket formed a² − ρ² − z², a difference of
+  nearly equal squares near ρ = a, losing about ε·a/d relative (5e-9 at d = 1e-8·a, measured
+  against an independent reference). It is now (a − ρ)(a + ρ) − z² (a − ρ exact by Sterbenz's
+  lemma): with exact local inputs the solution agrees with the reference to ≤ 2.5e-15 relative
+  from d = 0.1·a down to d = 1e-15·a.
+- From world coordinates, the remaining error is the float64 floor: the solver is backward
+  stable, its result is the exact field at a point displaced by about ε·S, where S is the size
+  of the local coordinates (loop: a + |p − c|; wire: |p − p₀|). The relative error is therefore
+  about ε·S/d; measured 0.4–0.8·ε·a/d for loops at the origin, translated and tilted, and of
+  radius 2.5 m.
+- The singular tolerance `1e-12 × domain diagonal` did not scale with the source: in a domain
+  much larger than a loop, valid points about 1e-10·a from the wire were declared singular; in a
+  domain much smaller than a loop, points about 1e-14·a away got values with about 10 % error
+  presented as ordinary.
+
+**Method now.**
+
+| Quantity | Rule | Justification |
+|---|---|---|
+| Singular (B, H undefined) | d ≤ 64·ε·S | the computed d carries ≤ ~6·ε·S rounding error: within 64·ε·S (≥ 10× margin) the point cannot be told apart from the filament |
+| Precision bound per point | 8·ε·S/d (`FieldEval.precision`, probe `relative_precision_bound`) | measured error ≤ 0.056 × bound everywhere tested |
+| Reported | bound > 1e-8: solve warning (count, worst bound), probe note | values are never capped or replaced |
+| Magnet sheet | unchanged: 1e-9 × domain diagonal | B is bounded at a sheet; the one-sided limits differ from the value at distance δ by O(δ/a) |
+| Ampère crossing "on the path" | 64·ε·S (filaments) | as above; the domain tolerance stays for planarity and coplanar loops |
+| Ampère quadrature near a filament | pieces split at refined closest approaches with breakpoints d·4ʲ | the integrand varies on the scale d; each sub-interval is smooth |
+| Ampère float64 floor | ε·S_path/d_min·I_scale > tolerance → not verified | path points carry ≤ ε·S_path rounding; the near stretch contributes ≤ I/2 |
+
+**Consumers.** Solenoids and finite toroids reuse `loops_field` (same per-turn rule; one
+singular turn makes only that point singular, other points and the other sources' contributions
+are unaffected). The magnet's surface-current quadrature calls `loop_local` directly and benefits
+from the factored bracket; near the side wall it converges at every tested distance and the
+tangential jump tends to μ₀M linearly in δ. Field lines stop as `source_singularity` within a
+display-scale guard radius with steps ≤ d/2, so they cannot cross a filament and the step count
+stays bounded.
+
+**Usable range** (float64, relative accuracy of |B|): about ε·S/d, i.e. 1e-8 at d ≈ 2e-8·S,
+1e-4 at d ≈ 2e-12·S; singular below 64·ε·S ≈ 1.4e-14·S. Ampère paths verify down to 1e-12 m
+from a wire and 1e-8 m from a loop wire (absolute tolerance 1e-8 A when Γ ≈ 0) in the tested
+geometry, report `not_converged` closer, and `intersects_source` at about 1e-15 m.
+
 ## 10. Implementation status and roadmap
 
 | Area | Phase 1 state |
@@ -850,7 +903,12 @@ Acceptance criteria per phase are unchanged from the approved plan:
   seed radii around a single wire enclose equal flux per unit length). In a 2D slice, lines are
   only seeded by sources that cross the slice; a wire lying in the slice seeds none (its B is
   perpendicular to the slice), and the result says so.
-- Elliptic integrals: K is evaluated as `ellipkm1(1 − m)` with 1 − m formed directly; far out on
+- Near-filament accuracy (Phase 3B.1, see 9f): float64 limits the relative accuracy of B and H
+  to about 8·ε·S/d at distance d from an ideal filament (S: size of the source's local
+  coordinates); this is reported above 1e-8, never hidden or capped. Points within 64·ε·S are
+  singular. Wires keep their own scale (|p − p₀|), so a wire's singular tolerance grows with
+  the distance along the wire from its reference point.
+- Elliptic integrals: K is evaluated as `ellipkm1(q)` with q = D₋/D₊ formed geometrically; far out on
   the axis (z ≫ a) the B_z bracket loses about (z/a)² ε of relative accuracy; near the axis the
   B_ρ series is used (see 9d).
 - The individual-contribution colour map uses the coarser vector grid.

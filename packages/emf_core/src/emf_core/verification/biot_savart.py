@@ -132,3 +132,49 @@ def finite_sheet_axis_bz(current_per_m: float, a: float, length: float, z: float
     (mu0 K / 2) [ (z + L/2)/sqrt(a^2 + (z + L/2)^2) - (z - L/2)/sqrt(a^2 + (z - L/2)^2) ]."""
     p, q = z + length / 2, z - length / 2
     return float(MU0 * current_per_m / 2 * (p / math.hypot(a, p) - q / math.hypot(a, q)))
+
+
+def loop_local_reference(u: float, rho: float, z: float, a: float, current: float,
+                         epsrel: float = 2e-14) -> tuple[float, float]:
+    """(B_rho, B_z) of a circular loop in its local cylindrical coordinates, by direct
+    Biot–Savart integration over the filament, independent of elliptic integrals (Phase 3B.1).
+
+    ``u = rho - a`` is passed separately so that a point extremely close to the filament keeps
+    its exact offset. The integrand is written without cancellation:
+    |r - r'|^2 = u^2 + z^2 + 4 a rho sin^2(phi/2) and a - rho cos(phi) = -u + 2 rho sin^2(phi/2),
+    so its peak of width d = sqrt(u^2 + z^2) at phi = 0 is resolved exactly. QUADPACK (scipy
+    ``quad``) integrates [0, pi] (the field is symmetric) split at geometrically graded
+    breakpoints d/a · 4^j, to ``epsrel`` of |B| for the vector. Valid for any d > 0."""
+    from scipy.integrate import quad  # local import: validation-only dependency path
+
+    dm = u * u + z * z
+
+    def r3(p: float) -> float:
+        return float((dm + 4.0 * a * rho * math.sin(p / 2) ** 2) ** 1.5)
+
+    def f_rho(p: float) -> float:
+        return math.cos(p) * z / r3(p)
+
+    def f_z(p: float) -> float:
+        return (-u + 2.0 * rho * math.sin(p / 2) ** 2) / r3(p)
+
+    edges = [0.0]
+    w = math.sqrt(dm) / a
+    while w < math.pi:
+        edges.append(w)
+        w *= 4.0
+    edges.append(math.pi)
+    pairs = list(zip(edges[:-1], edges[1:], strict=True))
+    # The tolerance applies to the field vector: a coarse pass estimates |B|, then each
+    # component of each sub-interval is integrated to epsrel·|B| / (number of pieces). A purely
+    # relative tolerance per component cannot be met where a component nearly cancels (B_rho
+    # near the axis), and the comparisons are made on the vector anyway.
+    coarse = [sum(quad(f, lo, hi, epsabs=0.0, epsrel=1e-8, limit=400)[0] for lo, hi in pairs)
+              for f in (f_rho, f_z)]
+    atol = epsrel * math.hypot(*coarse) / (2 * len(pairs))
+    tot = [0.0, 0.0]
+    for lo, hi in pairs:
+        for i, f in enumerate((f_rho, f_z)):
+            tot[i] += quad(f, lo, hi, epsabs=atol, epsrel=epsrel, limit=400)[0]
+    k = MU0 * current * a / (2.0 * math.pi)  # 2 × MU0 I a / (4 pi): both halves of the loop
+    return k * tot[0], k * tot[1]

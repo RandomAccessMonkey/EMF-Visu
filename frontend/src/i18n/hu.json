@@ -501,7 +501,7 @@
   "probe.mSingularTitle": "Ideális áramszálon",
   "probe.mSingularWire": "A szonda a(z) {name} vezető ({i}) tengelyén van.",
   "probe.mSingularLoop": "A szonda {name} egyik áramszálán van (menetenként {i}).",
-  "probe.mSingularExplain": "Az ideális áramszál vastagsága nulla, ezért B és H a távolság reciprokával nő, és rajta nincs pontbeli értékük. Egy valódi vezető véges sugarú, belsejében véges a tér, ez azonban kívül esik ezen a modellen.",
+  "probe.mSingularExplain": "Az ideális áramszál vastagsága nulla, ezért B és H a távolsággal fordítottan arányosan nő, és rajta nincs pontbeli értékük. Egy pont csak akkor számít a szálon lévőnek, ha a float64 nem tudja megkülönböztetni tőle (a tűrés a forrással skálázódik, méretének kb. 1e-14-szerese); minden más pont, bármilyen közeli, a valódi teret kapja. A valódi vezetőnek véges sugara és belül véges tere van, ez kívül esik a modellen.",
   "probe.mDivNote": "∇·B és ∇·H itt pontosan nulla (analitikus azonosság), bár B nem nulla.",
   "probe.mDivSingularNote": "A szálon csak a ∇·B = 0 disztribúciós állítás érvényes; pontbeli érték nincs.",
   "probe.nearestSource": "Legközelebbi áramforrás: {name}, {d} távolságra",
@@ -660,5 +660,7 @@
   "legend.core": "ideális toroid mag (lineáris, μᵣ); kívüle a tér pontosan nulla",
   "legend.amperePath": "Ampère-görbe a normálisával; gyűrűk: az átmenő szabad áramok (zöld n̂ irányú, piros ellentétes, borostyán meghatározatlan)",
   "legend.bhMagnet": "B és H különböző mennyiségek. A mágneseken kívül B = μ₀H; a mágnesben H = B/μ₀ − M, így H B-vel ellentétes is lehet.",
-  "legend.bhCore": "B és H különböző mennyiségek. Az ideális magban B = μ₀μᵣH; kívüle mindkettő nulla."
+  "legend.bhCore": "B és H különböző mennyiségek. Az ideális magban B = μ₀μᵣH; kívüle mindkettő nulla.",
+  "probe.mPrecision": "Nagyon közel egy ideális áramszálhoz: a float64 aritmetika itt B és H relatív pontosságát kb. {bound} értékre korlátozza. Az érték a valódi, szál közeli tér, nincs levágva.",
+  "ampere.precisionFloor": "A görbe olyan közel halad egy áramszálhoz, hogy a float64 a cirkulációt kb. ±{floor} pontosságra korlátozza, ami több a {tol} tűrésnél: ezért nem igazoltként jelenik meg."
 }

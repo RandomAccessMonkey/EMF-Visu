@@ -53,6 +53,11 @@ Arr = NDArray[np.float64]
 ATOL_A = 1e-8  # absolute tolerance of the circulation, amperes
 SCALE_RTOL = 1e-8  # relative to I_scale, for cancellation cases
 REFERENCE_SCALE_A = 1.0  # I_scale used when the scene has no free current at all
+# Path points carry rounding <= eps S_path (S_path = |centre| + size); within distance d of a
+# filament that perturbs H by <= eps S_path / d relatively, over a stretch contributing at most
+# about I_scale / 2 to the circulation. With a factor 2 of safety the float64 floor of Γ_H is
+# eps S_path / d_min I_scale (measured errors are 10-100x below it).
+AMPERE_FLOOR_FACTOR = 1.0
 NEAR_FACTOR = 0.02  # a filament closer than this × path size triggers a "near-singular" warning
 CIRCLE_ARCS = 8
 
@@ -147,6 +152,9 @@ class PathResult(BaseModel):
     relative_error: float | None = None
     tolerance_A: float | None = None
     bound_current_from_B_A: float | None = None  # Γ_B/μ0 − I_free (explanatory, magnets)
+    # Phase 3B.1: float64 floor of Γ_H from path points rounded near a filament,
+    # ε S_path / d_min · I_scale. If it exceeds tolerance_A the path is not verified.
+    precision_floor_A: float | None = None
 
 
 class AmpereHeader(BaseModel):
@@ -374,7 +382,11 @@ def enclosed_current(geo: _Geo, cs: CurrentSources) -> Enclosure:
     def classify(oid: str, kind: str, point: Arr, tangent: Arr, current: float) -> None:
         nonlocal status
         xy = geo.to_local(point)[:, :2]
-        on_path = float(geo.boundary_distance(xy)[0]) <= tol
+        # A filament crossing is "on the path" only when float64 cannot tell it apart from the
+        # path: the source-scaled filament tolerance (Phase 3B.1), not the domain tolerance.
+        scale = float(np.linalg.norm(point - geo.c)) + geo.size()
+        on_path = float(geo.boundary_distance(xy)[0]) <= float(
+            ms.filament_tolerance(np.asarray(scale)))
         if on_path:
             crossings.append(Crossing(object_id=oid, kind=kind, point_m=list(map(float, point)),
                                       sign=0, current_A=current, contribution_A=0.0,
@@ -536,7 +548,62 @@ def _breakpoints(geo: _Geo, piece: int, cs: CurrentSources) -> list[float]:
     return out
 
 
-def _circulation(geo: _Geo, cs: CurrentSources, r_min: float, i_scale: float
+FILAMENT_SAMPLES = 2049  # samples per piece to locate closest approaches to filaments
+FILAMENT_NEAR = 0.05  # closest approaches nearer than this × path size are pre-split
+
+
+def _filament_approaches(geo: _Geo, piece: int, cs: CurrentSources
+                         ) -> list[tuple[float, float, float]]:
+    """Closest approaches of a piece to the filaments: (t*, distance, coordinate scale) for every
+    local minimum of the distance nearer than FILAMENT_NEAR × path size, refined by 80
+    golden-section steps (to about 1e-17 of the piece)."""
+    if not cs.wires and not cs.loops:
+        return []
+    t = np.linspace(0.0, 1.0, FILAMENT_SAMPLES)
+    d, _ = ms.nearest_filament(geo.param(piece, t)[0], cs)
+    near = FILAMENT_NEAR * geo.size()
+    out: list[tuple[float, float, float]] = []
+
+    def dist(x: float) -> tuple[float, float]:
+        dd, sc = ms.nearest_filament(geo.param(piece, np.array([x]))[0], cs)
+        return float(dd[0]), float(sc[0])
+
+    g = (math.sqrt(5.0) - 1.0) / 2.0
+    for i in range(len(t)):
+        left = d[i - 1] if i > 0 else np.inf
+        right = d[i + 1] if i + 1 < len(t) else np.inf
+        if not (d[i] <= left and d[i] <= right and d[i] < near):
+            continue
+        lo, hi = float(t[max(i - 1, 0)]), float(t[min(i + 1, len(t) - 1)])
+        x1, x2 = hi - g * (hi - lo), lo + g * (hi - lo)
+        f1, f2 = dist(x1)[0], dist(x2)[0]
+        for _ in range(80):
+            if f1 <= f2:
+                hi, x2, f2 = x2, x1, f1
+                x1 = hi - g * (hi - lo)
+                f1 = dist(x1)[0]
+            else:
+                lo, x1, f1 = x1, x2, f2
+                x2 = lo + g * (hi - lo)
+                f2 = dist(x2)[0]
+        cands = [(float(t[i]), *dist(float(t[i]))), (0.5 * (lo + hi), *dist(0.5 * (lo + hi)))]
+        out.append(min(cands, key=lambda c: c[1]))
+    return out
+
+
+def _graded(t_star: float, d: float, speed: float, lo: float, hi: float) -> list[float]:
+    """Breakpoints t* ± (d/speed)·4^j inside (lo, hi): the integrand near a filament at distance
+    d varies on the scale d, so every sub-interval is smooth on its own length."""
+    out = [t_star] if lo < t_star < hi else []
+    step = d / max(speed, 1e-300)
+    while step < (hi - lo):
+        out += [x for x in (t_star - step, t_star + step) if lo < x < hi]
+        step *= 4.0
+    return out
+
+
+def _circulation(geo: _Geo, cs: CurrentSources, r_min: float, i_scale: float,
+                 approaches: dict[int, list[tuple[float, float, float]]] | None = None
                  ) -> tuple[float, float, float, bool, int, int, bool]:
     """(Γ_H, error, Γ_B, converged, subintervals, evaluations, crosses material)."""
     item_piece: list[int] = []
@@ -548,7 +615,13 @@ def _circulation(geo: _Geo, cs: CurrentSources, r_min: float, i_scale: float
         # Through material: crossing a boundary, or lying wholly inside a magnet or the core.
         material |= bool(bps) or bool(
             np.any(ms.region_code(geo.param(piece, np.array([0.5]))[0], cs)))
-        edges = [0.0, *bps, 1.0]
+        fil: list[float] = []
+        found = (approaches[piece] if approaches is not None
+                 else _filament_approaches(geo, piece, cs))
+        for t_star, d, _ in found:
+            speed = float(np.linalg.norm(geo.param(piece, np.array([t_star]))[1][0]))
+            fil += _graded(t_star, d, speed, 0.0, 1.0)
+        edges = sorted({0.0, *bps, *fil, 1.0})
         for a, b in zip(edges[:-1], edges[1:], strict=True):
             item_piece.append(piece)
             lo.append(a)
@@ -611,22 +684,34 @@ def compute(scene: Scene, request: AmpereRequest, solver_id: str, solver_version
         dense = geo.polyline(4096) if geo.circle_r is not None else np.vstack([
             geo.param(k, np.linspace(0, 1, 513))[0] for k, _ in enumerate(geo.pieces())])
         dmin = float(ms.distance_to_sources(dense, cs).min()) if cs.loops or cs.wires else None
+        # Closest approaches to filaments, refined beyond the sampling (Phase 3B.1); the path
+        # intersects a filament only if one is closer than float64 can resolve there.
+        approaches = {k: _filament_approaches(geo, k, cs) for k, _ in enumerate(geo.pieces())}
+        touches = False
+        for found in approaches.values():
+            for _, d_star, scale in found:
+                dmin = d_star if dmin is None else min(dmin, d_star)
+                touches |= d_star <= float(ms.filament_tolerance(np.asarray(scale)))
         enc = enclosed_current(geo, cs)
         base = {"path_id": path.id, "valid": True, "normal": list(map(float, geo.normal)),
                 "center_m": list(map(float, geo.c)), "perimeter_m": geo.perimeter(),
                 "area_m2": geo.area(), "polyline_m": [list(map(float, p)) for p in poly],
                 "min_distance_to_filament_m": dmin, "enclosure": enc}
-        if enc.status == "on_path" or (dmin is not None and dmin <= r_min):
+        base["min_distance_to_filament_m"] = dmin
+        if enc.status == "on_path" or touches:
             results.append(PathResult(**base, status="intersects_source"))
             continue
-        gh, err, gb, conv, nint, nev, mat = _circulation(geo, cs, r_min, i_scale)
+        gh, err, gb, conv, nint, nev, mat = _circulation(geo, cs, r_min, i_scale, approaches)
         near = dmin is not None and dmin < NEAR_FACTOR * size
         tol_a = max(path.rtol * max(abs(gh), abs(enc.value_A or 0.0)), ATOL_A,
                     SCALE_RTOL * i_scale)
         diff = None if enc.value_A is None else gh - enc.value_A
         rel = (abs(diff) / abs(enc.value_A) if diff is not None and enc.value_A
                else None)
-        if not conv:
+        floor_a = (AMPERE_FLOOR_FACTOR * ms.EPS
+                   * (float(np.linalg.norm(geo.c)) + geo.size()) / dmin * i_scale
+                   if dmin is not None and dmin > 0 else None)
+        if not conv or (floor_a is not None and floor_a > tol_a):
             status = "not_converged"
         elif enc.status == "unsupported":
             status = "unsupported"
@@ -642,7 +727,7 @@ def compute(scene: Scene, request: AmpereRequest, solver_id: str, solver_version
             **base, status=status, circulation_H_A=gh, circulation_error_A=err,
             circulation_B_T_m=gb, converged=conv, subintervals=nint, evaluations=nev,
             near_singular=near, crosses_material=mat, difference_A=diff, relative_error=rel,
-            tolerance_A=tol_a, bound_current_from_B_A=bound))
+            tolerance_A=tol_a, bound_current_from_B_A=bound, precision_floor_A=floor_a))
     return AmpereHeader(
         solver_id=solver_id, solver_version=solver_version, current_scale_A=i_scale,
         method=L("Γ_H = ∮H·dl by adaptive Gauss–Kronrod (G7/K15) quadrature of H from the "
