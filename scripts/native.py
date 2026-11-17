@@ -439,7 +439,8 @@ def ensure_frontend_deps(node: str) -> None:
     pnpm = shutil.which("pnpm")
     if not pnpm:
         raise Failure("The frontend packages are not installed and pnpm was not found.", [
-            "Run:  corepack enable   (or: npm install -g pnpm@10)",
+            "Run:  npm.cmd install -g pnpm@10   (Windows; elsewhere: npm install -g pnpm@10)",
+            "then open a NEW terminal window,",
             "then run this command again.",
         ])
     say("  Installing frontend packages (pnpm install) ...")

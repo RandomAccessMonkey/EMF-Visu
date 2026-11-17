@@ -32,10 +32,13 @@ are only needed if an installer asks for them. Run one command at a time:
 **Close PowerShell and open a new window** so that the new programs are found. Then:
 
 ```powershell
-npm install -g pnpm@10
+npm.cmd install -g pnpm@10
 ```
 
-pnpm installs the web application's packages on the first start.
+Write `npm.cmd`, not `npm`. PowerShell blocks plain `npm` with "running scripts is disabled on
+this system". Avoid `corepack enable` too: it writes into `C:\Program Files` and fails without
+administrator rights. Afterwards, open a new PowerShell window. pnpm installs the web
+application's packages on the first start.
 
 Check that everything is found. Each command should print a version:
 
@@ -219,6 +222,8 @@ by them. The Docker version reads the same `.env` file and ignores the `EMF_PG_*
 | Message or symptom | Cause and fix |
 |---|---|
 | "running scripts is disabled on this system" | Use the exact command with `-ExecutionPolicy Bypass` shown above. |
+| `npm : File ... npm.ps1 cannot be loaded because running scripts is disabled` | Use `npm.cmd` in place of `npm`, e.g. `npm.cmd install -g pnpm@10`. |
+| `corepack enable` fails with `EPERM: operation not permitted` | It needs administrator rights. Use `npm.cmd install -g pnpm@10` instead. |
 | "uv was not found" (or node, pnpm) right after installing | Open a new PowerShell window; installers change `PATH` only for new windows. |
 | "PostgreSQL was not found." | Install it (section 1) or set `EMF_PG_BIN` in `.env` to the folder containing `pg_ctl.exe`. |
 | "Port 8080 (or 8000, 5433) is already in use" | Another program uses it, for example the Docker version (`docker compose down`). Stop it, or choose another port in `.env`. |
