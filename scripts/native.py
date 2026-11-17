@@ -207,8 +207,12 @@ def spawn(name: str, args: list[str], marker: str, cwd: Path, env: dict[str, str
     kwargs: dict[str, Any] = {"cwd": cwd, "env": env, "stdout": log, "stderr": subprocess.STDOUT,
                               "stdin": subprocess.DEVNULL}
     if WINDOWS:
+        # A hidden console of its own (not DETACHED_PROCESS): the venv's python.exe is a launcher
+        # that starts the real interpreter, and a child of a console-less process would open a
+        # new visible console window. With a hidden console, children inherit it and stay
+        # hidden, and closing the PowerShell window does not stop them.
         kwargs["creationflags"] = (subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
-                                   | subprocess.DETACHED_PROCESS)  # type: ignore[attr-defined]
+                                   | subprocess.CREATE_NO_WINDOW)  # type: ignore[attr-defined]
     else:
         kwargs["start_new_session"] = True
     proc = subprocess.Popen(args, **kwargs)  # noqa: S603 - fixed argument lists
