@@ -1,6 +1,6 @@
 # Running EMF-Visu on your computer
 
-This runs the complete application (Phases 1, 2A, 2B-1 and 2B-2) in Docker. It needs no Python,
+This runs the complete application (Phases 1, 2A, 2B-1, 2B-2 and 3A) in Docker. It needs no Python,
 Node or database installed on your computer.
 
 **Address once started: <http://localhost:8080>**
@@ -168,6 +168,9 @@ Each step uses the panels on the right.
 | Enclosed charge classification | *Results* → *Charges and their contributions* (inside / outside / on the surface); rings around the charges in the view. Situation 8 puts a charge exactly on the surface. |
 | Surface vs volume integral | *Results* → *Volume integral ∫ ∇·E dV* and *Difference* next to Φ_E. |
 | Subdivision and shared-face cancellation | Situation 5, then *Gauss* → *Subdivide into cells*, switch to **3D**. Try 4 × 3 × 3 cells: *Largest \|Φ_A + Φ_B\|* is 0 and Σ Φ_cell = Φ_outer. With 4 × 4 × 4 the charge lies on an internal plane and the cell-wise sum is marked ambiguous. |
+| Magnetic field of a wire (Phase 3A) | Presets → *Straight current-carrying wire*. **Wire** / **Loop** (left) add current sources; *Parameters* edits the current (A), its direction and the orientation. *Display* → *Magnetic field* shows B or H, field lines, ⊙/⊗ markers. |
+| Superposition of currents | Preset 10, variants *Same direction*, *Opposite directions*, *Unequal currents*; *Display* → *Source contribution* → *Each source separately*. *Probe* shows each Bᵢ and the total. |
+| Circular loop | Preset 11 opens on the xz cross-section through the axis; switch to **3D** for the full field lines. |
 
 *Advanced* (top right) adds solver details, finite-difference checks and the high-resolution
 solve. *HU* switches the interface to Hungarian.

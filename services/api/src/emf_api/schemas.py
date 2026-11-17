@@ -82,6 +82,38 @@ class ProbeContribution(BaseModel):
     phi_V: float | None
 
 
+class MagneticContribution(BaseModel):
+    """Field of one current source at the probe point (Phase 3A)."""
+
+    object_id: str
+    name: str
+    kind: Literal["infinite_wire", "circular_loop"]
+    current_A: float
+    distance_m: float  # to the wire axis, or to the loop wire
+    B_T: list[float] | None
+    B_magnitude_T: float | None
+    H_A_per_m: list[float] | None
+    H_magnitude_A_per_m: float | None
+
+
+class ProbeMagnetic(BaseModel):
+    """Magnetic part of the probe (Phase 3A); present when the scene has current sources."""
+
+    solver_id: str
+    solver_version: str
+    classification: Classification
+    defined: bool
+    singular_tolerance_m: float
+    # On an ideal filament: which source makes B and H singular there, and its kind.
+    singular_object_id: str | None = None
+    singular_kind: Literal["infinite_wire", "circular_loop"] | None = None
+    values: list[ProbeValue]  # B, H, div_B, div_H
+    nearest_source_id: str | None
+    nearest_source_distance_m: float | None
+    contributions: list[MagneticContribution]
+    mu0_H_per_m: float  # the constant of B = mu0 H used
+
+
 class ProbeResponse(BaseModel):
     point_m: Vec3
     solver_id: str
@@ -96,6 +128,7 @@ class ProbeResponse(BaseModel):
     distributional: ProbeDistributional | None = None
     diagnostics: list[ProbeDiagnostic] = []
     diagnostics_method: str | None = None
+    magnetic: ProbeMagnetic | None = None
 
 
 class EquationsBody(BaseModel):
@@ -111,7 +144,8 @@ class FluxBody(BaseModel):
 
 class EquationsResponse(BaseModel):
     supported: bool
-    solver_id: str | None
+    solver_id: str | None  # the first solver (electric if present); see solver_ids
+    solver_ids: list[str] = []  # every sub-model that was resolved (Phase 3A)
     unsupported_reasons: list[LocalizedText]
     equations: list[EquationView]
 

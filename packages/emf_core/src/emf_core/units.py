@@ -33,6 +33,9 @@ QUANTITIES: dict[str, QuantityInfo] = {
         QuantityInfo("curl_D", "∇×D", "C/m^3", 1),
         QuantityInfo("B", "B", "T", 1),
         QuantityInfo("H", "H", "A/m", 1),
+        # Pointwise divergence of B and H (Phase 3A). Units: [B]/m and [H]/m.
+        QuantityInfo("div_B", "∇·B", "T/m", 0),
+        QuantityInfo("div_H", "∇·H", "A/m^2", 0),
         QuantityInfo("J", "J", "A/m^2", 1),
         QuantityInfo("S", "S", "W/m^2", 1),
         QuantityInfo("u", "u", "J/m^3", 0),

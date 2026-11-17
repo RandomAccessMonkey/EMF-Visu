@@ -1,6 +1,6 @@
 // Builds the sampling request sent to the physics engine. This file decides *where* fields are
 // sampled (geometry of the view); it contains no physics.
-import type { Domain, LatticeSampling, PlaneGridSampling, Scene, SolveRequest, Vec3 } from '@/api/types'
+import type { Domain, FieldKind, LatticeSampling, PlaneGridSampling, Scene, SceneObject, SolveRequest, Vec3 } from '@/api/types'
 
 export type SlicePlane = 'xy' | 'xz' | 'yz'
 
@@ -42,6 +42,8 @@ export const LATTICE_BASE = 13
 export const LATTICE_DENSITIES = [3, 4, 5, 7, 13] as const
 export const FIELD_LINE_LEVELS = 3
 export const CALCULUS_QUANTITIES: SolveRequest['quantities'] = ['E', 'D', 'div_E', 'curl_E', 'div_D', 'curl_D']
+/** Magnetic quantities on the vector grid (B, H and their exact divergence). */
+export const MAGNETIC_GRID_QUANTITIES: SolveRequest['quantities'] = ['B', 'H', 'div_B', 'div_H']
 
 export const nearest = (allowed: readonly number[], value: number): number =>
   allowed.reduce((best, a) => (Math.abs(a - value) < Math.abs(best - value) ? a : best), allowed[0]!)
@@ -107,6 +109,7 @@ export function buildRequest(domain: Domain, s: SamplingSettings, quality: Quali
       guard_cells: 0.5,
     },
     equipotentials: { sampling_id: 'heat' },
+    source_contributions: [],
   }
   if (s.mode === '3d') {
     samplings.push({ ...lattice('vol', domain, LATTICE_BASE, 0.5), quantities: ['phi', ...CALCULUS_QUANTITIES] })
@@ -115,10 +118,78 @@ export function buildRequest(domain: Domain, s: SamplingSettings, quality: Quali
   return request
 }
 
-/** Everything that can change a physical result. Display-only attributes are excluded, so
- *  renaming an object or changing a colour map never triggers a new solve. */
+/** The magnetic request (Phase 3A): B and H on the same slice and vector grid as the electric
+ *  request, each source's own B on the vector grid (so showing one contribution is visual-only),
+ *  and B field lines. No equipotentials: they belong to the electric field. */
+export function buildMagneticRequest(domain: Domain, s: SamplingSettings, quality: Quality): SolveRequest {
+  const samplings: SolveRequest['samplings'] = [
+    { ...sliceGrid('heat', domain, s, HEAT_RESOLUTION[quality]), quantities: ['B', 'H'] },
+    { ...inset(sliceGrid('arrows', domain, s, ARROW_BASE), ARROW_BASE), quantities: MAGNETIC_GRID_QUANTITIES },
+  ]
+  if (s.mode === '3d') samplings.push({ ...lattice('vol', domain, LATTICE_BASE, 0.5), quantities: ['B', 'H'] })
+  return {
+    samplings,
+    quantities: ['B'],
+    quality,
+    field_lines: {
+      seeding: s.mode === '2d' ? 'planar' : 'spherical',
+      sampling_id: 'heat',
+      base_lines: 8,
+      levels: FIELD_LINE_LEVELS,
+      guard_cells: 0.5,
+    },
+    source_contributions: ['arrows'],
+  }
+}
+
+/** The kind of field a request asks for (requests never mix the two). */
+export function requestKind(request: SolveRequest): FieldKind {
+  return (request.quantities as string[]).some((q) => q === 'B' || q === 'H' || q === 'div_B' || q === 'div_H') ? 'magnetic' : 'electric'
+}
+
+const isWellFormedCurrent = (o: SceneObject) =>
+  (o.source?.type === 'infinite_wire' && o.primitive.type === 'line') || (o.source?.type === 'circular_loop' && o.primitive.type === 'ring')
+
+/** Mirror of the engine's `field_subscene` (bookkeeping, not physics): the objects that can
+ *  affect a field of one kind. Used for cache keys, so moving a wire never re-solves the
+ *  electric field and moving a charge never re-solves the magnetic field. */
+export function fieldScene(scene: Scene, kind: FieldKind): Scene {
+  const drop = new Set(
+    scene.objects
+      .filter((o) => (kind === 'electric' ? o.role === 'current_source' && (isWellFormedCurrent(o) || !o.enabled) : o.role === 'charge_source' && o.source?.type === 'point_charge'))
+      .map((o) => o.id),
+  )
+  for (;;) {
+    const kept = scene.objects.filter((o) => !drop.has(o.id))
+    const parents = new Set(kept.map((o) => o.parent_id).filter((x): x is string => !!x))
+    for (const id of parents) drop.delete(id)
+    const empty = kind === 'magnetic'
+      ? kept.filter((o) => o.primitive.type === 'group' && !parents.has(o.id) && scene.objects.some((x) => x.parent_id === o.id) && !drop.has(o.id))
+      : []
+    if (empty.length === 0) break
+    for (const o of empty) drop.add(o.id)
+  }
+  return { ...scene, objects: scene.objects.filter((o) => !drop.has(o.id)) }
+}
+
+/** Which solves a scene needs: magnetic with current sources; electric with charges or when
+ *  there are no current sources (so scenes without currents behave as before). Mirrors
+ *  `engine.field_kinds`. */
+export function fieldKinds(scene: Scene): FieldKind[] {
+  const live = scene.objects.filter((o) => o.enabled)
+  const currents = live.some((o) => o.role === 'current_source')
+  const charges = live.some((o) => o.role === 'charge_source')
+  const out: FieldKind[] = []
+  if (charges || !currents) out.push('electric')
+  if (currents) out.push('magnetic')
+  return out
+}
+
+/** Everything that can change a physical result: the request and the part of the scene that
+ *  affects its kind of field. Display-only attributes are excluded, so renaming an object or
+ *  changing a colour map never triggers a new solve. */
 export function physicsKey(scene: Scene, request: SolveRequest): string {
-  return JSON.stringify({ scene: scenePhysics(scene), request })
+  return JSON.stringify({ scene: scenePhysics(fieldScene(scene, requestKind(request))), request })
 }
 
 export function scenePhysics(scene: Scene): unknown {

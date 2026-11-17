@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useT } from '@/i18n'
 import { formatSI, prettyUnit } from '@/lib/format'
 import { cssGradient, type LogScale } from '@/render/colormaps'
@@ -8,11 +9,13 @@ import type { FluxData } from '@/sim/gauss'
 import { useSceneStore } from '@/state/sceneStore'
 import { SOURCE_COLORS, ZERO_VECTOR_COLOR } from '@/render/CalculusLayers'
 import { ZERO_CSS } from '@/render/fieldImages'
-import { FIELD_LINE_COLOR, isNumericalEnd, LEVEL_COLORS, NUMERICAL_LINE_COLOR } from '@/render/FieldProducts'
+import { FIELD_LINE_COLOR, isNumericalBEnd, isNumericalEnd, LEVEL_COLORS, NUMERICAL_LINE_COLOR } from '@/render/FieldProducts'
+import { MAGNETIC_LINE_COLOR, MAGNETIC_NUMERICAL_LINE_COLOR, MAGNETIC_SOURCE_COLOR } from '@/render/magneticColors'
+import { contributionColor, effectiveContribution } from '@/render/MagneticLayers'
 import { PLANE_BASIS } from '@/sim/request'
 import { useViewStore } from '@/state/viewStore'
 
-function Bar({ title, kind, ticks, note }: { title: string; kind: 'sequential' | 'diverging'; ticks: string[]; note: string }) {
+function Bar({ title, kind, ticks, note }: { title: string; kind: 'sequential' | 'diverging' | 'magnetic'; ticks: string[]; note: string }) {
   return (
     <div className="w-56">
       <div className="mb-0.5 flex justify-between text-[11px]">
@@ -50,7 +53,61 @@ const Swatch = ({ color, dashed }: { color: string; dashed?: boolean }) => (
   <span className="mr-1 inline-block w-4 align-middle" style={{ borderTop: `2px ${dashed ? 'dashed' : 'solid'} ${color}` }} />
 )
 
-export function Legend({ heat, arrows, result, flux }: { heat: LegendData | null; arrows: LogScale | null; result: SimulationResult | undefined; flux?: FluxData }) {
+/** Separate legend for magnetic quantities: own palette, own units, never shared with E. */
+function MagneticLegend({ result, arrows }: { result: SimulationResult; arrows: LogScale | null }) {
+  const { t } = useT()
+  const v = useViewStore()
+  const objects = useSceneStore((s) => s.scene.objects)
+  const names = useMemo(() => Object.fromEntries(objects.map((o) => [o.id, o.name || o.id])), [objects])
+  const lines = result.header.field_lines
+  const shown = lines?.lines.filter((l) => l.level === Math.min(v.lineDensity, (lines?.levels ?? 1) - 1)) ?? []
+  const closed = shown.filter((l) => l.end_reason === 'closed_loop').length
+  const truncated = shown.filter((l) => !isNumericalBEnd(l) && l.end_reason !== 'closed_loop').length
+  const numerical = shown.filter(isNumericalBEnd).length
+  const unit = v.magneticField === 'B' ? 'T' : 'A/m'
+  const ids = result.header.current_sources.map((c) => c.object_id)
+  const contribution = effectiveContribution(v.contribution, ids)
+  const which = contribution === 'total' ? t('legend.mTotal') : contribution === 'all' ? t('legend.mAll') : t('legend.mSingle', { name: names[contribution] ?? contribution })
+  return (
+    <div className="flex flex-col gap-1.5 border-l-2 pl-2" style={{ borderColor: MAGNETIC_SOURCE_COLOR }} data-testid="magnetic-legend">
+      <p className="text-[11px] font-semibold" style={{ color: MAGNETIC_SOURCE_COLOR }}>{t('legend.magneticTitle')}</p>
+      {arrows && v.showBArrows && (
+        <Bar
+          title={`${t('legend.arrows')} |${v.magneticField}| [${prettyUnit(unit)}] · ${which}`}
+          kind="magnetic"
+          note={t('legend.log')}
+          ticks={[formatSI(arrows.min, prettyUnit(unit)), formatSI(arrows.max, prettyUnit(unit))]}
+        />
+      )}
+      {v.showBArrows && contribution === 'all' && (
+        <p className="max-w-56 text-[10px] leading-snug text-muted">
+          {ids.map((id) => (
+            <span key={id} className="mr-2 whitespace-nowrap"><Swatch color={contributionColor(ids, id)} />{names[id] ?? id}</span>
+          ))}
+          <br />
+          {t('legend.mAllNote')}
+        </p>
+      )}
+      {v.showBLines && lines && (
+        <p className="max-w-56 text-[10px] leading-snug text-muted">
+          <Swatch color={MAGNETIC_LINE_COLOR} />
+          {t('legend.bLines', { closed, truncated })}
+          {numerical > 0 && (
+            <>
+              <br />
+              <Swatch color={MAGNETIC_NUMERICAL_LINE_COLOR} dashed />
+              {t('legend.bNumerical', { n: numerical })}
+            </>
+          )}
+        </p>
+      )}
+      {v.mode === '2d' && v.showCurrentDirection && <p className="max-w-56 text-[10px] leading-snug text-muted">{t('legend.currentSymbols')}</p>}
+      <p className="max-w-56 text-[10px] leading-snug text-muted">{t('legend.bh')}</p>
+    </div>
+  )
+}
+
+export function Legend({ heat, arrows, result, flux, magnetic, magneticArrows }: { heat: LegendData | null; arrows: LogScale | null; result: SimulationResult | undefined; flux?: FluxData; magnetic?: SimulationResult | undefined; magneticArrows?: LogScale | null }) {
   const surfaces = useSceneStore((s) => s.surfaces)
   const { t } = useT()
   const v = useViewStore()
@@ -83,10 +140,10 @@ export function Legend({ heat, arrows, result, flux }: { heat: LegendData | null
               {heat.zeroAware.nonzero > 0 && <> · {t('legend.nonzero', { n: heat.zeroAware.nonzero })}</>}
               {heat.zeroAware.undefined > 0 && <> · {t('legend.undefinedSamples', { n: heat.zeroAware.undefined })}</>}
             </p>
-            <p className="mt-0.5 text-[10px] leading-snug text-muted">{t(heat.symbol.startsWith('∇·') ? 'legend.divNote' : 'legend.curlNote')}</p>
+            <p className="mt-0.5 text-[10px] leading-snug text-muted">{t(heat.symbol === '∇·B' ? 'legend.divBNote' : heat.symbol.startsWith('∇·') ? 'legend.divNote' : 'legend.curlNote')}</p>
           </div>
         )}
-        {arrows && (v.showArrows || (v.mode === '3d' && v.showLattice)) && (
+        {arrows && result && (v.showArrows || (v.mode === '3d' && v.showLattice)) && (
           <Bar
             title={`${t('legend.arrows')} |${v.vectorField}| [${unit}]`}
             kind="sequential"
@@ -154,6 +211,7 @@ export function Legend({ heat, arrows, result, flux }: { heat: LegendData | null
             })}
           </div>
         )}
+        {magnetic && <MagneticLegend result={magnetic} arrows={magneticArrows ?? null} />}
         <p className="flex items-center gap-3 text-[10px] text-muted">
           <span><span className="mr-1 inline-block h-2 w-2 rounded-full bg-positive" />q &gt; 0</span>
           <span><span className="mr-1 inline-block h-2 w-2 rounded-full bg-negative" />q &lt; 0</span>

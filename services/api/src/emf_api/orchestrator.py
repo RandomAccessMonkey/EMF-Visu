@@ -84,26 +84,33 @@ class Orchestrator:
         return blob, False
 
     def equations(self, scene: Scene, surfaces: list[GaussSurface] | None = None
-                  ) -> tuple[list[EquationView], list[LocalizedText], str | None]:
-        """Equation views for the model that would be used for this scene. If no solver
-        supports the scene, return no equations plus the reasons."""
-        probe = SolveRequest.model_validate({
-            "samplings": [{"kind": "points", "id": "p", "points_m": [[0, 0, 0]]}],
-            "quantities": ["phi"],
-        })
-        try:
-            solver = self.catalog.select(scene, probe)
-        except UnsupportedSceneError as exc:
-            return [], exc.reasons, None
-        ctx: ModelContext = solver.solve(scene, probe).header.model_context
-        if surfaces:
-            count, ambiguous, invalid = gauss.surface_context(scene, surfaces)
-            ctx = ctx.model_copy(update={
-                "gauss_surfaces": count, "gauss_boundary_ambiguous": ambiguous,
-                "gauss_invalid": invalid,
-                "evaluated_equation_ids": [*ctx.evaluated_equation_ids, "electric_flux",
-                                           "displacement_flux"],
-                "checked_equation_ids": ["gauss_integral_E", "gauss_integral_D",
-                                         "divergence_theorem_E", "divergence_theorem_D"],
+                  ) -> tuple[list[EquationView], list[LocalizedText], list[str]]:
+        """Equation views for the model(s) that would be used for this scene: the electric
+        and/or magnetic sub-model, merged (see EquationRegistry.evaluate_merged). If a needed
+        solver does not support the scene, return no equations plus the reasons."""
+        contexts: list[ModelContext] = []
+        solver_ids: list[str] = []
+        for kind in engine.field_kinds(scene):
+            sub = engine.field_subscene(scene, kind)
+            probe = SolveRequest.model_validate({
+                "samplings": [{"kind": "points", "id": "p", "points_m": [[0, 0, 0]]}],
+                "quantities": ["phi"] if kind == "electric" else ["B"],
             })
-        return self.registry.evaluate(ctx), [], solver.id
+            try:
+                solver = self.catalog.select(sub, probe)
+            except UnsupportedSceneError as exc:
+                return [], exc.reasons, []
+            ctx: ModelContext = solver.solve(sub, probe).header.model_context
+            if kind == "electric" and surfaces:
+                count, ambiguous, invalid = gauss.surface_context(sub, surfaces)
+                ctx = ctx.model_copy(update={
+                    "gauss_surfaces": count, "gauss_boundary_ambiguous": ambiguous,
+                    "gauss_invalid": invalid,
+                    "evaluated_equation_ids": [*ctx.evaluated_equation_ids, "electric_flux",
+                                               "displacement_flux"],
+                    "checked_equation_ids": ["gauss_integral_E", "gauss_integral_D",
+                                             "divergence_theorem_E", "divergence_theorem_D"],
+                })
+            contexts.append(ctx)
+            solver_ids.append(solver.id)
+        return self.registry.evaluate_merged(contexts), [], solver_ids

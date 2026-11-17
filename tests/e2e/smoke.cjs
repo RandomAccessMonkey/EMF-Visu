@@ -20,6 +20,17 @@ async function main() {
   page.on('console', (m) => m.type() === 'error' && errors.push(m.text()))
   page.on('pageerror', (e) => errors.push(String(e)))
   page.on('request', (r) => r.url().endsWith('/api/v1/simulations') && solves++)
+  // Electric and magnetic solves are counted separately (Phase 3A: independent requests).
+  let eSolves = 0
+  let mSolves = 0
+  page.on('request', (r) => {
+    if (!r.url().endsWith('/api/v1/simulations')) return
+    try {
+      const q = JSON.parse(r.postData()).request.quantities
+      if (q.includes('B')) mSolves++
+      else eSolves++
+    } catch { /* ignore */ }
+  })
   let fluxes = 0
   const fluxQualities = []
   page.on('request', (r) => {
@@ -536,6 +547,146 @@ async function main() {
   await shot('14-gauss-hungarian')
   await page.getByRole('radio', { name: 'EN' }).click()
   step('Gauss results in Hungarian')
+
+  // ---------------------------------------------------------------- Phase 3A: magnetostatics
+  await page.getByRole('radio', { name: 'Advanced' }).click()
+  await page.getByRole('button', { name: /Straight current-carrying wire/ }).click()
+  await settled()
+  await page.getByTestId('magnetic-legend').waitFor()
+  assert.ok(await page.getByText(/B field lines: \d+ closed, 0 truncated/).isVisible())
+  await page.getByRole('tab', { name: 'Results' }).click()
+  assert.ok(await page.getByText('Magnetic field model').isVisible())
+  assert.ok(await page.getByText(/closed-form Biot–Savart solutions/).isVisible())
+  await shot('15-wire')
+  step('preset 9: B of an infinite wire, closed field lines, separate magnetic legend and model')
+
+  // Visual-only magnetic changes reuse the cached result.
+  await page.getByRole('tab', { name: 'Display' }).click()
+  const toggle = (name) => page.getByRole('switch', { name }).click()
+  await quiet('B arrows', () => toggle('Magnetic vectors'))
+  await quiet('B arrows back', () => toggle('Magnetic vectors'))
+  await quiet('B lines', () => toggle('Magnetic field lines'))
+  await quiet('B lines back', () => toggle('Magnetic field lines'))
+  await quiet('H instead of B', () => page.getByRole('combobox', { name: 'Magnetic vector field' }).selectOption('H'))
+  await quiet('|B| colour map', () => page.getByRole('combobox', { name: 'Colour map' }).selectOption('B'))
+  await quiet('current direction', () => toggle('Current direction'))
+  await quiet('current direction back', () => toggle('Current direction'))
+  await quiet('fields shown: magnetic only', () => page.getByRole('combobox', { name: 'Fields shown' }).selectOption('magnetic'))
+  await quiet('fields shown: both', () => page.getByRole('combobox', { name: 'Fields shown' }).selectOption('both'))
+  await page.getByRole('combobox', { name: 'Magnetic vector field' }).selectOption('B')
+  step('ten magnetic visual-only changes reuse the cached result (no physics request)')
+
+  // Preset 10: variants, superposition and individual contributions.
+  await page.getByRole('button', { name: /Two parallel current-carrying wires/ }).click()
+  await settled()
+  await page.getByRole('button', { name: 'Opposite directions' }).click()
+  await settled()
+  await quiet('each source separately', () => page.getByRole('combobox', { name: 'Source contribution' }).selectOption('all'))
+  assert.ok(await page.getByText(/Each source's own field in its colour/).isVisible())
+  await quiet('one source only', () => page.getByRole('combobox', { name: 'Source contribution' }).selectOption({ label: 'Only I₁' }))
+  await quiet('total field', () => page.getByRole('combobox', { name: 'Source contribution' }).selectOption('total'))
+  await shot('16-two-wires-opposite')
+  step('preset 10 variants; individual and total contributions are visual-only')
+
+  // Probe: total equals the sum of the two contributions (shown separately), B = mu0 H.
+  await page.getByRole('radio', { name: /Probe/ }).click()
+  await page.mouse.click(cx, cy - 0.7 * zoom)
+  await page.getByRole('tab', { name: 'Results' }).click()
+  const mprobe = page.getByTestId('magnetic-probe')
+  await mprobe.waitFor({ timeout: 10000 })
+  assert.ok(await mprobe.getByText(/B = μ₀H, μ₀ = 1\.2566370621/).isVisible())
+  assert.ok(await mprobe.getByText('Magnetic superposition terms').isVisible())
+  assert.equal(await mprobe.getByRole('table', { name: 'Magnetic superposition terms' }).locator('tbody tr').count(), 2)
+  assert.ok(await mprobe.getByText(/∇·B and ∇·H are exactly zero here/).isVisible())
+  assert.ok(await mprobe.getByText(/Nearest current source: I₁|Nearest current source: I₂/).isVisible())
+  step('probe: B, H, B = μ₀H, ∇·B = 0 and both contributions')
+
+  // Physical changes: reversing a current triggers a magnetic solve only.
+  await page.getByRole('radio', { name: /Select/ }).click()
+  await rows().filter({ hasText: 'I₂' }).click()
+  await page.getByRole('tab', { name: 'Parameters' }).click()
+  const eBefore = eSolves
+  // A new magnitude first: reversing −10 A would give the already-solved "same direction"
+  // configuration, which the client cache serves without a request (as it should).
+  await solved('current magnitude', async () => {
+    await page.getByRole('spinbutton', { name: 'Current' }).fill('-7')
+    await page.getByRole('spinbutton', { name: 'Current' }).press('Enter')
+  })
+  await solved('reverse current', () => page.getByRole('button', { name: 'Reverse current' }).click())
+  await valueIs(page.getByRole('spinbutton', { name: 'Current' }), '7')
+  assert.equal(eSolves, eBefore, 'a magnetic change re-solved the electric field')
+  step('changing and reversing a current re-solves the magnetic field only')
+
+  // Mixed scene: a charge and a wire; moving the charge re-solves only E, the wire only B.
+  await page.getByRole('button', { name: /Single positive point charge/ }).click()
+  await settled()
+  await page.getByRole('button', { name: /^Wire$/ }).click()
+  await settled()
+  await page.getByRole('spinbutton', { name: 'Position x' }).fill('0.8')
+  await page.getByRole('spinbutton', { name: 'Position x' }).press('Enter')
+  await settled()
+  await rows().filter({ hasText: 'q₁' }).click()
+  const mBefore = mSolves
+  await solved('move the charge', async () => {
+    await page.getByRole('spinbutton', { name: 'Position y' }).fill('0.3')
+    await page.getByRole('spinbutton', { name: 'Position y' }).press('Enter')
+  })
+  assert.equal(mSolves, mBefore, 'moving a charge re-solved the magnetic field')
+  await page.getByRole('radio', { name: /Probe/ }).click()
+  await page.mouse.click(cx - 0.5 * zoom, cy + 0.5 * zoom)
+  await page.getByRole('tab', { name: 'Results' }).click()
+  await page.getByTestId('magnetic-probe').waitFor({ timeout: 10000 })
+  assert.ok(await page.getByRole('table', { name: 'Field values' }).getByText('V/m').first().isVisible())
+  assert.ok(await page.getByRole('table', { name: 'Magnetic field values at the probe' }).getByText(/T$/).first().isVisible())
+  assert.ok(await page.getByText('Electric field', { exact: true }).isVisible())
+  await shot('17-mixed-probe')
+  step('a charge and a wire: E and B solved, cached and probed separately, with their own units')
+
+  if (!NO_WORKER) {
+    // One high-resolution job per field: both layers are replaced by the job results.
+    await page.getByRole('tab', { name: 'Display' }).click()
+    assert.ok(await page.getByText(/queues one job for the electric and one for the magnetic field/).isVisible())
+    await page.getByRole('button', { name: 'Run high-resolution solve' }).click()
+    await page.getByText('High resolution', { exact: true }).waitFor({ timeout: 90000 })
+    await settled()
+    await page.getByRole('tab', { name: 'Results' }).click()
+    step('high-resolution solve of a charge and a wire: one job per field, both shown')
+  }
+
+  // Probe on the wire: singular, the source is identified.
+  await page.getByRole('radio', { name: /Select/ }).click()
+  await rows().filter({ hasText: 'Wire' }).click()
+  await page.getByRole('tab', { name: 'Results' }).click()
+  await page.getByRole('button', { name: 'Place probe on the selected wire or loop' }).click()
+  await page.getByText('On an ideal current filament').waitFor({ timeout: 10000 })
+  assert.ok(await page.getByText(/The probe lies on the axis of wire/).isVisible())
+  step('probe on an ideal wire: B and H singular, source identified, explanation shown')
+
+  // Equations: the magnetostatic equations and their statuses follow the scene.
+  await page.getByRole('tab', { name: 'Equations' }).click()
+  await page.getByRole('button', { name: /Field of an infinite straight wire/ }).first().waitFor({ timeout: 10000 })
+  assert.ok(await page.getByRole('button', { name: /Biot–Savart law \(integral form\)/ }).first().isVisible())
+  assert.ok(await page.getByRole('button', { name: /Magnetic flux density in vacuum/ }).first().isVisible())
+  step('equation registry lists the magnetostatic equations for this scene')
+
+  // Preset 11: the loop opens on the xz cross-section; 3D shows its closed field lines.
+  await page.getByRole('button', { name: /Circular current loop/ }).click()
+  await settled()
+  assert.ok(await page.getByText(/Plane y = 0\.00 m/).isVisible())
+  assert.ok(await page.getByText(/B field lines: \d+ closed, \d+ truncated/).isVisible())
+  await shot('18-loop-xz')
+  await page.getByRole('radio', { name: '3D' }).click()
+  await settled()
+  await page.waitForTimeout(500)
+  await shot('19-loop-3d')
+  await page.getByRole('radio', { name: '2D' }).click()
+  step('preset 11 opens on the cross-section through the loop axis; 3D view solved')
+
+  // Hungarian magnetic labels.
+  await page.getByRole('radio', { name: 'HU' }).click()
+  await page.getByText('Mágneses mező (külön skála)').waitFor()
+  await page.getByRole('radio', { name: 'EN' }).click()
+  step('magnetic legend in Hungarian')
 
   assert.deepEqual(errors, [], 'browser console errors')
   step('no browser console errors')

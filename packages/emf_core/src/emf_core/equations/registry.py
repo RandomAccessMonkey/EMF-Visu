@@ -48,6 +48,8 @@ class EquationRegistry:
                 usage, note = "evaluated", L(
                     "Evaluated directly by the active solver to produce the displayed fields.",
                     "Az aktív megoldó közvetlenül kiértékeli a megjelenített mezők előállításához.")
+            elif status in ("applicable", "applicable_under_assumptions") and e.satisfied_note:
+                usage, note = "satisfied", e.satisfied_note
             elif status in ("applicable", "applicable_under_assumptions"):
                 usage, note = "satisfied", L(
                     "A law or relation that the computed field satisfies. The active solver does "
@@ -60,12 +62,29 @@ class EquationRegistry:
                 usage, note = "not_used", L(
                     "Not used by the active model.", "Az aktív modell nem használja.")
             views.append(EquationView(
-                **e.model_dump(exclude={"symbols"}),
+                **e.model_dump(exclude={"symbols", "satisfied_note"}),
                 symbols=[self._symbols[s] for s in e.symbols],
                 status=status, status_reason=reason,
                 evaluated_by_solver=evaluated, usage=usage, usage_note=note,
             ))
         return views
+
+    def evaluate_merged(self, contexts: list[ModelContext]) -> list[EquationView]:
+        """Equations for a configuration made of several decoupled static sub-models (Phase 3A:
+        point charges and steady currents). Per equation the most applicable resolution wins
+        (applicable > under assumptions > not evaluated > not applicable, then checked >
+        evaluated > satisfied > not used), with that resolution's reason and usage note. Valid
+        because the electrostatic and magnetostatic sub-models do not influence each other."""
+        if len(contexts) == 1:
+            return self.evaluate(contexts[0])
+        status_rank = {"applicable": 0, "applicable_under_assumptions": 1, "not_evaluated": 2,
+                       "not_applicable": 3}
+        usage_rank = {"checked": 0, "evaluated": 1, "satisfied": 2, "not_used": 3}
+        per_ctx = [self.evaluate(c) for c in contexts]
+        out: list[EquationView] = []
+        for views in zip(*per_ctx, strict=True):
+            out.append(min(views, key=lambda v: (status_rank[v.status], usage_rank[v.usage])))
+        return out
 
     def statuses(self, ctx: ModelContext) -> list[EquationStatusEntry]:
         return [EquationStatusEntry(equation_id=v.id, status=v.status, reason=v.status_reason)

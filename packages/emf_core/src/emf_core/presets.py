@@ -4,18 +4,41 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel
 
 from .i18n import L, LocalizedText
 from .scene.models import (
+    CircularLoopSource,
     GroupPrimitive,
+    InfiniteWireSource,
+    LinePrimitive,
     PointChargeSource,
     PointPrimitive,
+    RingPrimitive,
     Role,
     Scene,
     SceneObject,
     Transform,
 )
+
+
+class PresetVariant(BaseModel):
+    """An alternative configuration of the same preset (Phase 3A: preset 10)."""
+
+    id: str
+    name: LocalizedText
+    description: LocalizedText
+    expected_behavior: LocalizedText
+    scene: Scene
+
+
+class ViewHint(BaseModel):
+    """View the preset opens with (display only; never part of the physics)."""
+
+    mode: Literal["2d", "3d"] | None = None
+    plane: Literal["xy", "xz", "yz"] | None = None
 
 
 class Preset(BaseModel):
@@ -28,6 +51,8 @@ class Preset(BaseModel):
     expected_behavior: LocalizedText | None = None
     equation_ids: list[str] = []
     scene: Scene | None = None
+    variants: list[PresetVariant] = []  # the first variant, if any, is the default scene
+    view_hint: ViewHint | None = None
 
 
 def _charge(oid: str, name: str, q: float, pos: tuple[float, float, float],
@@ -104,15 +129,113 @@ _AVAILABLE = [
     ),
 ]
 
+def _wire(oid: str, name: str, current: float, x: float, y: float = 0.0) -> SceneObject:
+    """Infinite wire along +z through (x, y, 0); the line length (4 m) is display-only."""
+    return SceneObject(id=oid, name=name, primitive=LinePrimitive(length_m=4.0),
+                       role=Role.CURRENT_SOURCE, source=InfiniteWireSource(current_A=current),
+                       transform=Transform(position_m=(x, y, 0.0)))
+
+
+def _loop(oid: str, name: str, current: float, radius: float) -> SceneObject:
+    return SceneObject(id=oid, name=name, primitive=RingPrimitive(radius_m=radius),
+                       role=Role.CURRENT_SOURCE, source=CircularLoopSource(current_A=current))
+
+
+_EQ_WIRE = ["biot_savart", "biot_savart_integral", "infinite_wire_field", "b_mu0_h", "h_from_b",
+            "gauss_magnetic", "div_B_filaments", "ampere_static"]
+_EQ_WIRES = [*_EQ_WIRE, "superposition_magnetic"]
+_EQ_LOOP = ["biot_savart", "biot_savart_integral", "loop_axis_field", "loop_field_elliptic",
+            "b_mu0_h", "h_from_b", "gauss_magnetic", "div_B_filaments", "ampere_static"]
+
+
+def _two_wires(i1: float, i2: float) -> Scene:
+    return Scene(objects=[_wire("w1", "I₁", i1, -0.5), _wire("w2", "I₂", i2, 0.5)])
+
+
+_VARIANTS_10 = [
+    PresetVariant(
+        id="same", name=L("Same direction", "Azonos irány"),
+        description=L("Two infinite wires along z at x = ±0.5 m, both carrying +10 A (out of the "
+                      "xy cross-section, ⊙).",
+                      "Két végtelen vezető a z tengellyel párhuzamosan, x = ±0,5 m-nél, mindkettőben "
+                      "+10 A (az xy metszetből kifelé, ⊙)."),
+        expected_behavior=L("Between the wires the two contributions oppose each other and B = 0 "
+                            "exactly midway; far away the lines encircle both wires like one "
+                            "wire carrying 20 A.",
+                            "A vezetők között a két járulék ellentétes, és pontosan félúton "
+                            "B = 0; távolabb a vonalak mindkét vezetőt körülölelik, mintha egy "
+                            "20 A-es vezető lenne."),
+        scene=_two_wires(10.0, 10.0)),
+    PresetVariant(
+        id="opposite", name=L("Opposite directions", "Ellentétes irány"),
+        description=L("+10 A at x = −0.5 m (⊙) and −10 A at x = +0.5 m (⊗).",
+                      "+10 A x = −0,5 m-nél (⊙) és −10 A x = +0,5 m-nél (⊗)."),
+        expected_behavior=L("Between the wires the contributions reinforce each other; the "
+                            "field lines are circles around each wire, shifted apart, and far "
+                            "away the field falls off faster (as 1/r²).",
+                            "A vezetők között a járulékok erősítik egymást; az erővonalak "
+                            "egymástól eltolt körök az egyes vezetők körül, és nagy távolságban a "
+                            "tér gyorsabban (1/r² szerint) csökken."),
+        scene=_two_wires(10.0, -10.0)),
+    PresetVariant(
+        id="unequal", name=L("Unequal currents", "Különböző áramok"),
+        description=L("Same direction, 10 A at x = −0.5 m and 4 A at x = +0.5 m.",
+                      "Azonos irány, 10 A x = −0,5 m-nél és 4 A x = +0,5 m-nél."),
+        expected_behavior=L("The zero of B moves towards the weaker wire, to x = 3/14 m ≈ "
+                            "0.214 m, where 10 A/(0.714 m) = 4 A/(0.286 m).",
+                            "B nullhelye a gyengébb vezető felé tolódik, x = 3/14 m ≈ 0,214 m-re, "
+                            "ahol 10 A/(0,714 m) = 4 A/(0,286 m)."),
+        scene=_two_wires(10.0, 4.0)),
+]
+
+_MAGNETIC = [
+    Preset(
+        id="straight_wire", number=9, available=True, equation_ids=_EQ_WIRE,
+        name=L("Straight current-carrying wire", "Egyenes áramvezető"),
+        description=L("An infinitely long straight wire along z through the origin carrying "
+                      "I = 10 A (out of the xy cross-section). The drawn segment is only a "
+                      "picture of the infinite wire.",
+                      "Végtelen hosszú egyenes vezető a z tengely mentén, az origón át, "
+                      "I = 10 A árammal (az xy metszetből kifelé). A megjelenített szakasz csak "
+                      "a végtelen vezető ábrázolása."),
+        expected_behavior=L("B circles the wire counter-clockwise seen from +z (right-hand "
+                            "rule) and |B| = μ₀I/(2πr): 2 µT at 1 m.",
+                            "B a vezetőt +z felől nézve az óramutatóval ellentétesen kerüli meg "
+                            "(jobbkéz-szabály), és |B| = μ₀I/(2πr): 1 m-en 2 µT."),
+        scene=Scene(objects=[_wire("w1", "I", 10.0, 0.0)]),
+    ),
+    Preset(
+        id="two_parallel_wires", number=10, available=True, equation_ids=_EQ_WIRES,
+        name=L("Two parallel current-carrying wires", "Két párhuzamos áramvezető"),
+        description=_VARIANTS_10[0].description,
+        expected_behavior=_VARIANTS_10[0].expected_behavior,
+        scene=_VARIANTS_10[0].scene, variants=_VARIANTS_10,
+    ),
+    Preset(
+        id="circular_loop", number=11, available=True, equation_ids=_EQ_LOOP,
+        name=L("Circular current loop", "Köráram"),
+        description=L("A thin circular loop of radius a = 0.5 m in the xy plane carrying "
+                      "I = 10 A counter-clockwise seen from +z. The 2D view opens on the xz "
+                      "cross-section through the loop axis.",
+                      "Vékony körvezető a = 0,5 m sugárral az xy síkban, I = 10 A árammal, +z "
+                      "felől nézve az óramutatóval ellentétes irányban. A 2D nézet a körvezető "
+                      "tengelyén átmenő xz metszeten nyílik meg."),
+        expected_behavior=L("On the axis B points along +z with B = μ₀Ia²/(2(a² + z²)^{3/2}), "
+                            "12.6 µT at the centre; the field lines close around the wire "
+                            "(⊙ on one side of the cross-section, ⊗ on the other).",
+                            "A tengelyen B a +z irányba mutat, B = μ₀Ia²/(2(a² + z²)^{3/2}), a "
+                            "középpontban 12,6 µT; az erővonalak a vezető körül záródnak (a "
+                            "metszet egyik oldalán ⊙, a másikon ⊗)."),
+        scene=Scene(objects=[_loop("loop1", "Loop", 10.0, 0.5)]),
+        view_hint=ViewHint(mode="2d", plane="xz"),
+    ),
+]
+
 _PLANNED: list[tuple[int, str, str, str, int]] = [
     (5, "infinite_line_charge", "Infinite line charge", "Végtelen vonaltöltés", 2),
     (6, "parallel_plate_capacitor", "Parallel plate capacitor", "Síkkondenzátor", 2),
     (7, "coaxial_conductors", "Coaxial cylindrical conductors", "Koaxiális hengeres vezetők", 2),
     (8, "charged_conducting_sphere", "Charged conducting sphere", "Töltött vezető gömb", 2),
-    (9, "straight_wire", "Straight current-carrying wire", "Egyenes áramvezető", 3),
-    (10, "two_parallel_wires", "Two parallel current-carrying wires",
-     "Két párhuzamos áramvezető", 3),
-    (11, "circular_loop", "Circular current loop", "Köráram", 3),
     (12, "solenoid", "Solenoid", "Szolenoid", 3),
     (13, "toroid", "Toroid", "Toroid", 3),
     (14, "permanent_magnet", "Permanent magnet", "Állandó mágnes", 3),
@@ -130,7 +253,7 @@ _PLANNED: list[tuple[int, str, str, str, int]] = [
      "Elektromágneses síkhullám terjedése", 5),
 ]
 
-PRESETS: list[Preset] = _AVAILABLE + [
+PRESETS: list[Preset] = sorted(_AVAILABLE + _MAGNETIC + [
     Preset(id=pid, number=n, name=L(en, hu), available=False, planned_phase=phase)
     for n, pid, en, hu, phase in _PLANNED
-]
+], key=lambda p: p.number)

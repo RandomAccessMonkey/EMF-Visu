@@ -19,10 +19,13 @@ from .. import wire
 from ..i18n import LocalizedText
 from ..sampling import (
     MAX_POINTS_PER_REQUEST,
+    FieldKind,
     LatticeSampling,
     PlaneGridSampling,
     Quantity,
     Sampling,
+    SamplingId,
+    field_kind_of,
 )
 from ..scene.models import Scene, StrictModel
 
@@ -82,6 +85,21 @@ class SolveRequest(StrictModel):
     field_lines: FieldLineRequest | None = None
     equipotentials: EquipotentialRequest | None = None
     isosurfaces: IsosurfaceRequest | None = None
+    # Magnetic requests (Phase 3A): samplings on which each current source's own field B_i (and
+    # H_i) is returned as well, as arrays "<sampling>.B@<object id>" / "<sampling>.H@<object id>".
+    source_contributions: list[SamplingId] = Field(default=[], max_length=4)
+
+    @property
+    def field_kind(self) -> FieldKind:
+        kind = field_kind_of(self.all_quantities())
+        assert kind is not None  # enforced by validation
+        return kind
+
+    def all_quantities(self) -> list[str]:
+        out: list[str] = list(self.quantities)
+        for s in self.samplings:
+            out += list(s.quantities or [])
+        return out
 
     @model_validator(mode="after")
     def _check(self) -> SolveRequest:
@@ -94,6 +112,19 @@ class SolveRequest(StrictModel):
         for s in self.samplings:
             if s.quantities is not None and len(set(s.quantities)) != len(s.quantities):
                 raise ValueError("per-sampling quantities must be unique")
+        kind = field_kind_of(self.all_quantities())
+        if kind is None:
+            raise ValueError("a request asks for either electric (E, phi, D and their "
+                             "derivatives) or magnetic (B, H, div_B, div_H) quantities; the two "
+                             "static fields are solved separately")
+        if kind == "magnetic" and (self.equipotentials is not None
+                                   or self.isosurfaces is not None):
+            raise ValueError("equipotentials and isosurfaces belong to electric requests")
+        if self.source_contributions:
+            if kind != "magnetic":
+                raise ValueError("source_contributions is available for magnetic requests")
+            if any(sid not in by_id for sid in self.source_contributions):
+                raise ValueError("source_contributions must reference sampling ids")
         if self.field_lines is not None:
             ref = by_id.get(self.field_lines.sampling_id)
             if ref is None or ref.kind == "points":
@@ -136,7 +167,9 @@ class ModelContext(BaseModel):
     has_conductors: bool = False
     time_varying: bool = False
     computes_magnetic_field: bool = False
-    source_count: int = 0  # number of non-zero point sources in the model
+    source_count: int = 0  # number of non-zero sources in the model (charges, or currents)
+    # Kinds of current source present (Phase 3A): "infinite_wire", "circular_loop".
+    current_source_kinds: list[str] = []
     # Gaussian surfaces in the request (Phase 2B-2): how many, and whether any of them has a
     # charge on its boundary (flux undefined) or failed validation.
     gauss_surfaces: int = 0
@@ -195,7 +228,10 @@ class MethodInfo(BaseModel):
 
 
 FieldLineEnd = Literal["positive_charge", "negative_charge", "domain_boundary",
-                       "stagnation_point", "max_length", "integration_failure"]
+                       "stagnation_point", "max_length", "integration_failure",
+                       # magnetic lines (Phase 3A): a numerically detected closed path, and
+                       # approaching an ideal current filament (always a numerical outcome).
+                       "closed_loop", "source_singularity"]
 
 
 class FieldLineInfo(BaseModel):
@@ -207,10 +243,14 @@ class FieldLineInfo(BaseModel):
     start_object_id: str | None = None
     end_object_id: str | None = None
     steps: int
+    # Magnetic lines: distance between the end and the start of a line detected as closed
+    # (the polyline is never joined artificially). None for every other line.
+    closure_gap_m: float | None = None
 
 
 class FieldLineSet(BaseModel):
     array: str
+    field: Literal["E", "B"] = "E"  # lines of E (electric request) or of B (magnetic request)
     seeding: Literal["planar", "spherical"]
     levels: int
     guard_radius_m: float
@@ -265,6 +305,24 @@ class PointSourceInfo(BaseModel):
     in_plane: dict[str, bool] = {}
 
 
+class CurrentSourceInfo(BaseModel):
+    """One ideal current filament (Phase 3A), in world coordinates, with its relation to every
+    plane-grid sampling (for drawing ⊙/⊗ crossings and projections; geometry only)."""
+
+    object_id: str
+    kind: Literal["infinite_wire", "circular_loop"]
+    current_A: float
+    point_m: list[float]  # wire: a point on the axis; loop: the centre
+    direction: list[float]  # wire: unit axis direction (positive current); loop: unit normal
+    radius_m: float | None = None  # loop only
+    # wire: the point where the axis crosses each sampling plane (None if parallel to it), and
+    # the sign of d·(u×v): +1 current out of the 2D view, -1 into it, 0 parallel.
+    plane_crossing_m: dict[str, list[float] | None] = {}
+    plane_crossing_sign: dict[str, int] = {}
+    # loop: signed distance of the centre from each plane along u×v
+    plane_distance_m: dict[str, float] = {}
+
+
 class ResultHeader(BaseModel):
     format_version: Literal[1] = RESULT_FORMAT_VERSION
     status: Literal["ok", "failed", "cancelled"] = "ok"
@@ -286,6 +344,7 @@ class ResultHeader(BaseModel):
     compute_time_ms: float = 0.0
     equation_status: list[EquationStatusEntry] = []
     point_sources: list[PointSourceInfo] = []
+    current_sources: list[CurrentSourceInfo] = []
     in_plane_tolerance_m: float | None = None
     field_lines: FieldLineSet | None = None
     equipotentials: EquipotentialSet | None = None
@@ -308,6 +367,7 @@ class Solver(Protocol):
     id: str
     version: str
     kind: SolverKind
+    name: LocalizedText
 
     def supports(self, scene: Scene, request: SolveRequest) -> Support: ...
 

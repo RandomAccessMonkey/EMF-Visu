@@ -7,6 +7,12 @@ const SEQUENTIAL: RGB[] = [
   [10, 16, 40], [40, 30, 110], [70, 60, 190], [40, 130, 230], [50, 200, 230], [170, 245, 220],
   [255, 250, 200],
 ]
+/** Magnetic magnitudes (|B|, |H|): a separate palette so they are never read on the electric
+ *  scale. */
+const MAGNETIC: RGB[] = [
+  [12, 8, 28], [48, 18, 88], [104, 36, 150], [170, 60, 190], [230, 110, 190], [250, 180, 210],
+  [255, 240, 245],
+]
 const DIVERGING: RGB[] = [
   [120, 200, 255], [56, 140, 248], [30, 70, 170], [12, 18, 34], [150, 50, 40], [240, 110, 70],
   [255, 215, 150],
@@ -27,9 +33,11 @@ export const sequential = (t: number, out: Uint8ClampedArray | number[], o = 0) 
   sample(SEQUENTIAL, t, out, o)
 export const diverging = (t: number, out: Uint8ClampedArray | number[], o = 0) =>
   sample(DIVERGING, t, out, o)
+export const magneticSequential = (t: number, out: Uint8ClampedArray | number[], o = 0) =>
+  sample(MAGNETIC, t, out, o)
 
-export const cssGradient = (kind: 'sequential' | 'diverging') =>
-  `linear-gradient(to right, ${(kind === 'sequential' ? SEQUENTIAL : DIVERGING)
+export const cssGradient = (kind: 'sequential' | 'diverging' | 'magnetic') =>
+  `linear-gradient(to right, ${(kind === 'sequential' ? SEQUENTIAL : kind === 'magnetic' ? MAGNETIC : DIVERGING)
     .map((c) => `rgb(${c.join(',')})`)
     .join(', ')})`
 

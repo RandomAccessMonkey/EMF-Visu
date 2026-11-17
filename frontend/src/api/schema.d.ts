@@ -375,6 +375,27 @@ export interface components {
                 number
             ];
         };
+        /**
+         * CircularLoopSource
+         * @description Ideal thin circular filament carrying a steady current (Phase 3A).
+         *
+         *     Carried by a ``ring`` primitive with role ``current_source``: centre = world position,
+         *     radius = ``radius_m`` times the in-plane world scale, normal n = normalised (c_x x c_y) of the
+         *     world matrix. Positive ``current_A`` circulates counter-clockwise about +n (right-hand rule:
+         *     B points along +n on the axis). Electrically neutral.
+         */
+        CircularLoopSource: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "circular_loop";
+            /**
+             * Current A
+             * @default 10
+             */
+            current_A: number;
+        };
         /** ComponentHealth */
         ComponentHealth: {
             /** Ok */
@@ -394,6 +415,49 @@ export interface components {
              * @default 1
              */
             side_m: number;
+        };
+        /**
+         * CurrentSourceInfo
+         * @description One ideal current filament (Phase 3A), in world coordinates, with its relation to every
+         *     plane-grid sampling (for drawing ⊙/⊗ crossings and projections; geometry only).
+         */
+        CurrentSourceInfo: {
+            /** Object Id */
+            object_id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "infinite_wire" | "circular_loop";
+            /** Current A */
+            current_A: number;
+            /** Point M */
+            point_m: number[];
+            /** Direction */
+            direction: number[];
+            /** Radius M */
+            radius_m?: number | null;
+            /**
+             * Plane Crossing M
+             * @default {}
+             */
+            plane_crossing_m: {
+                [key: string]: number[] | null;
+            };
+            /**
+             * Plane Crossing Sign
+             * @default {}
+             */
+            plane_crossing_sign: {
+                [key: string]: number;
+            };
+            /**
+             * Plane Distance M
+             * @default {}
+             */
+            plane_distance_m: {
+                [key: string]: number;
+            };
         };
         /**
          * CylinderPrimitive
@@ -553,6 +617,11 @@ export interface components {
             supported: boolean;
             /** Solver Id */
             solver_id: string | null;
+            /**
+             * Solver Ids
+             * @default []
+             */
+            solver_ids: string[];
             /** Unsupported Reasons */
             unsupported_reasons: components["schemas"]["LocalizedText"][];
             /** Equations */
@@ -610,18 +679,20 @@ export interface components {
              * Start Reason
              * @enum {string}
              */
-            start_reason: "positive_charge" | "negative_charge" | "domain_boundary" | "stagnation_point" | "max_length" | "integration_failure";
+            start_reason: "positive_charge" | "negative_charge" | "domain_boundary" | "stagnation_point" | "max_length" | "integration_failure" | "closed_loop" | "source_singularity";
             /**
              * End Reason
              * @enum {string}
              */
-            end_reason: "positive_charge" | "negative_charge" | "domain_boundary" | "stagnation_point" | "max_length" | "integration_failure";
+            end_reason: "positive_charge" | "negative_charge" | "domain_boundary" | "stagnation_point" | "max_length" | "integration_failure" | "closed_loop" | "source_singularity";
             /** Start Object Id */
             start_object_id?: string | null;
             /** End Object Id */
             end_object_id?: string | null;
             /** Steps */
             steps: number;
+            /** Closure Gap M */
+            closure_gap_m?: number | null;
         };
         /**
          * FieldLineRequest
@@ -659,6 +730,12 @@ export interface components {
         FieldLineSet: {
             /** Array */
             array: string;
+            /**
+             * Field
+             * @default E
+             * @enum {string}
+             */
+            field: "E" | "B";
             /**
              * Seeding
              * @enum {string}
@@ -813,6 +890,27 @@ export interface components {
             redis: components["schemas"]["ComponentHealth"];
         };
         /**
+         * InfiniteWireSource
+         * @description Ideal infinitely long straight filament carrying a steady current (Phase 3A).
+         *
+         *     Carried by a ``line`` primitive with role ``current_source``. A point on the axis is the
+         *     object's world position; the axis direction d is the normalised world image of local +z.
+         *     Positive ``current_A`` flows along +d. The primitive's length is display-only: the model is
+         *     infinite and has zero radius. The wire is electrically neutral (no electric field).
+         */
+        InfiniteWireSource: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "infinite_wire";
+            /**
+             * Current A
+             * @default 10
+             */
+            current_A: number;
+        };
+        /**
          * IsosurfaceRequest
          * @description Equipotential surfaces extracted on a lattice (the lattice samples are not transported).
          */
@@ -883,7 +981,7 @@ export interface components {
             /** Id */
             id: string;
             /** Quantities */
-            quantities?: ("E" | "phi" | "D" | "div_E" | "curl_E" | "div_D" | "curl_D")[] | null;
+            quantities?: ("E" | "phi" | "D" | "div_E" | "curl_E" | "div_D" | "curl_D" | "B" | "H" | "div_B" | "div_H")[] | null;
             /** Min M */
             min_m: [
                 number,
@@ -934,6 +1032,33 @@ export interface components {
             en: string;
             /** Hu */
             hu: string;
+        };
+        /**
+         * MagneticContribution
+         * @description Field of one current source at the probe point (Phase 3A).
+         */
+        MagneticContribution: {
+            /** Object Id */
+            object_id: string;
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "infinite_wire" | "circular_loop";
+            /** Current A */
+            current_A: number;
+            /** Distance M */
+            distance_m: number;
+            /** B T */
+            B_T: number[] | null;
+            /** B Magnitude T */
+            B_magnitude_T: number | null;
+            /** H A Per M */
+            H_A_per_m: number[] | null;
+            /** H Magnitude A Per M */
+            H_magnitude_A_per_m: number | null;
         };
         /** Material */
         Material: {
@@ -1063,6 +1188,11 @@ export interface components {
              */
             source_count: number;
             /**
+             * Current Source Kinds
+             * @default []
+             */
+            current_source_kinds: string[];
+            /**
              * Gauss Surfaces
              * @default 0
              */
@@ -1106,7 +1236,7 @@ export interface components {
             /** Id */
             id: string;
             /** Quantities */
-            quantities?: ("E" | "phi" | "D" | "div_E" | "curl_E" | "div_D" | "curl_D")[] | null;
+            quantities?: ("E" | "phi" | "D" | "div_E" | "curl_E" | "div_D" | "curl_D" | "B" | "H" | "div_B" | "div_H")[] | null;
             /**
              * Center M
              * @default [
@@ -1244,7 +1374,7 @@ export interface components {
             /** Id */
             id: string;
             /** Quantities */
-            quantities?: ("E" | "phi" | "D" | "div_E" | "curl_E" | "div_D" | "curl_D")[] | null;
+            quantities?: ("E" | "phi" | "D" | "div_E" | "curl_E" | "div_D" | "curl_D" | "B" | "H" | "div_B" | "div_H")[] | null;
             /** Points M */
             points_m: [
                 number,
@@ -1271,6 +1401,24 @@ export interface components {
              */
             equation_ids: string[];
             scene?: components["schemas"]["Scene"] | null;
+            /**
+             * Variants
+             * @default []
+             */
+            variants: components["schemas"]["PresetVariant"][];
+            view_hint?: components["schemas"]["ViewHint"] | null;
+        };
+        /**
+         * PresetVariant
+         * @description An alternative configuration of the same preset (Phase 3A: preset 10).
+         */
+        PresetVariant: {
+            /** Id */
+            id: string;
+            name: components["schemas"]["LocalizedText"];
+            description: components["schemas"]["LocalizedText"];
+            expected_behavior: components["schemas"]["LocalizedText"];
+            scene: components["schemas"]["Scene"];
         };
         /** ProbeBody */
         ProbeBody: {
@@ -1345,6 +1493,39 @@ export interface components {
             /** Curl D Distributional */
             curl_D_distributional: number[];
         };
+        /**
+         * ProbeMagnetic
+         * @description Magnetic part of the probe (Phase 3A); present when the scene has current sources.
+         */
+        ProbeMagnetic: {
+            /** Solver Id */
+            solver_id: string;
+            /** Solver Version */
+            solver_version: string;
+            /**
+             * Classification
+             * @enum {string}
+             */
+            classification: "exact_analytical" | "numerical_approximation" | "idealized_model" | "visualization_aid";
+            /** Defined */
+            defined: boolean;
+            /** Singular Tolerance M */
+            singular_tolerance_m: number;
+            /** Singular Object Id */
+            singular_object_id?: string | null;
+            /** Singular Kind */
+            singular_kind?: ("infinite_wire" | "circular_loop") | null;
+            /** Values */
+            values: components["schemas"]["ProbeValue"][];
+            /** Nearest Source Id */
+            nearest_source_id: string | null;
+            /** Nearest Source Distance M */
+            nearest_source_distance_m: number | null;
+            /** Contributions */
+            contributions: components["schemas"]["MagneticContribution"][];
+            /** Mu0 H Per M */
+            mu0_H_per_m: number;
+        };
         /** ProbeResponse */
         ProbeResponse: {
             /** Point M */
@@ -1380,6 +1561,7 @@ export interface components {
             diagnostics: components["schemas"]["ProbeDiagnostic"][];
             /** Diagnostics Method */
             diagnostics_method?: string | null;
+            magnetic?: components["schemas"]["ProbeMagnetic"] | null;
         };
         /** ProbeValue */
         ProbeValue: {
@@ -1553,6 +1735,11 @@ export interface components {
              * @default []
              */
             point_sources: components["schemas"]["PointSourceInfo"][];
+            /**
+             * Current Sources
+             * @default []
+             */
+            current_sources: components["schemas"]["CurrentSourceInfo"][];
             /** In Plane Tolerance M */
             in_plane_tolerance_m?: number | null;
             field_lines?: components["schemas"]["FieldLineSet"] | null;
@@ -1667,7 +1854,7 @@ export interface components {
             /** @default geometry_only */
             role: components["schemas"]["Role"];
             /** Source */
-            source?: components["schemas"]["PointChargeSource"] | null;
+            source?: (components["schemas"]["PointChargeSource"] | components["schemas"]["InfiniteWireSource"] | components["schemas"]["CircularLoopSource"]) | null;
             /** Material Id */
             material_id?: string | null;
             /**
@@ -1686,7 +1873,7 @@ export interface components {
             /** Samplings */
             samplings: (components["schemas"]["PlaneGridSampling"] | components["schemas"]["LatticeSampling"] | components["schemas"]["PointsSampling"])[];
             /** Quantities */
-            quantities: ("E" | "phi" | "D" | "div_E" | "curl_E" | "div_D" | "curl_D")[];
+            quantities: ("E" | "phi" | "D" | "div_E" | "curl_E" | "div_D" | "curl_D" | "B" | "H" | "div_B" | "div_H")[];
             /**
              * Quality
              * @default normal
@@ -1696,6 +1883,11 @@ export interface components {
             field_lines?: components["schemas"]["FieldLineRequest"] | null;
             equipotentials?: components["schemas"]["EquipotentialRequest"] | null;
             isosurfaces?: components["schemas"]["IsosurfaceRequest"] | null;
+            /**
+             * Source Contributions
+             * @default []
+             */
+            source_contributions: string[];
         };
         /** SolverDescriptor */
         SolverDescriptor: {
@@ -1845,6 +2037,16 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /**
+         * ViewHint
+         * @description View the preset opens with (display only; never part of the physics).
+         */
+        ViewHint: {
+            /** Mode */
+            mode?: ("2d" | "3d") | null;
+            /** Plane */
+            plane?: ("xy" | "xz" | "yz") | null;
         };
         /** CellResult */
         CellResult: {

@@ -11,7 +11,23 @@ from pydantic import Field, model_validator
 from .scene.models import StrictModel, Vec3
 
 MAX_POINTS_PER_REQUEST = 2_000_000
-Quantity = Literal["E", "phi", "D", "div_E", "curl_E", "div_D", "curl_D"]
+Quantity = Literal["E", "phi", "D", "div_E", "curl_E", "div_D", "curl_D",
+                   "B", "H", "div_B", "div_H"]
+# Electric and magnetic quantities are solved separately (Phase 3A): a request asks for one kind.
+ELECTRIC_QUANTITIES: frozenset[str] = frozenset(
+    {"E", "phi", "D", "div_E", "curl_E", "div_D", "curl_D"})
+MAGNETIC_QUANTITIES: frozenset[str] = frozenset({"B", "H", "div_B", "div_H"})
+FieldKind = Literal["electric", "magnetic"]
+
+
+def field_kind_of(quantities: list[str]) -> FieldKind | None:
+    """'electric' or 'magnetic' if every quantity is of that kind, None if they are mixed."""
+    q = set(quantities)
+    if q <= ELECTRIC_QUANTITIES:
+        return "electric"
+    if q <= MAGNETIC_QUANTITIES:
+        return "magnetic"
+    return None
 # Optional per-sampling override of the request's quantity list (Phase 2A, additive).
 Quantities = Annotated[list[Quantity] | None, Field(default=None, min_length=1)]
 SamplingId = Annotated[str, Field(min_length=1, max_length=40, pattern=r"^[A-Za-z0-9_]+$")]

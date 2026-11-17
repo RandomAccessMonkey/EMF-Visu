@@ -1,16 +1,20 @@
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 import numpy as np
 from fastapi import APIRouter, Depends, Response
 
+from emf_core import engine
 from emf_core.gauss_situations import SITUATIONS, GaussSituation
 from emf_core.postprocess import differential
 from emf_core.presets import PRESETS, Preset
+from emf_core.scene.currents import CurrentSources, LoopSource, WireSource, current_sources
+from emf_core.scene.models import Scene
 from emf_core.solvers import SolveRequest, SolverError, UnsupportedSceneError
 from emf_core.solvers.analytical import electrostatics as es
-from emf_core.units import EPS0, QUANTITIES
+from emf_core.solvers.analytical import magnetostatics as ms
+from emf_core.units import EPS0, MU0, QUANTITIES
 
 from ..deps import api_error, get_orchestrator
 from ..orchestrator import Orchestrator, RequestTooLargeError
@@ -19,10 +23,12 @@ from ..schemas import (
     EquationsResponse,
     ErrorBody,
     FluxBody,
+    MagneticContribution,
     ProbeBody,
     ProbeContribution,
     ProbeDiagnostic,
     ProbeDistributional,
+    ProbeMagnetic,
     ProbeResponse,
     ProbeValue,
     SimulationBody,
@@ -66,9 +72,12 @@ def probe(body: ProbeBody, orch: Orch) -> ProbeResponse:
         "samplings": [{"kind": "points", "id": "probe", "points_m": [body.point_m]}],
         "quantities": ["E", "phi", "D", "div_E", "curl_E", "div_D", "curl_D"],
     })
+    electric_scene = engine.field_subscene(body.scene, "electric")
     try:
-        solver = orch.select(body.scene, request)
-        result = solver.solve(body.scene, request)
+        solver = orch.select(electric_scene, request)
+        result = solver.solve(electric_scene, request)
+        magnetic = (_magnetic_probe(body.scene, body.point_m, orch)
+                    if "magnetic" in engine.field_kinds(body.scene) else None)
     except UnsupportedSceneError as exc:
         raise api_error(422, "unsupported", "no available solver supports this configuration",
                         exc.reasons) from exc
@@ -129,7 +138,75 @@ def probe(body: ProbeBody, orch: Orch) -> ProbeResponse:
                          distributional=distributional, diagnostics=diagnostics,
                          diagnostics_method="central differences of the exact field with steps h "
                                             "and h/2, Richardson-extrapolated; uncertainty = "
-                                            "truncation estimate + round-off bound")
+                                            "truncation estimate + round-off bound",
+                         magnetic=magnetic)
+
+
+def _magnetic_probe(scene: Scene, point_m: tuple[float, float, float],
+                    orch: Orchestrator) -> ProbeMagnetic:
+    """B, H, their divergence, and each current source's own field at one point (float64)."""
+    sub = engine.field_subscene(scene, "magnetic")
+    request = SolveRequest.model_validate({
+        "samplings": [{"kind": "points", "id": "probe", "points_m": [point_m]}],
+        "quantities": ["B", "H", "div_B", "div_H"]})
+    solver = orch.select(sub, request)
+    result = solver.solve(sub, request)
+    values: list[ProbeValue] = []
+    defined = True
+    for entry in result.header.arrays:
+        a = result.arrays[entry.name][0]
+        kind = "vector" if entry.components == 3 else "scalar"
+        if not np.all(np.isfinite(a)):
+            defined = False
+            status = "not_evaluated" if entry.quantity.startswith("div_") else "singular"
+            values.append(ProbeValue(quantity=entry.quantity, symbol=entry.symbol,
+                                     unit=entry.unit, value=None, kind=kind, status=status))
+        elif entry.components == 3:
+            values.append(ProbeValue(quantity=entry.quantity, symbol=entry.symbol, unit=entry.unit,
+                                     value=[float(x) for x in a],
+                                     magnitude=float(np.linalg.norm(a)), kind=kind))
+        else:
+            values.append(ProbeValue(quantity=entry.quantity, symbol=entry.symbol,
+                                     unit=entry.unit, value=float(a), kind=kind))
+    cs = current_sources(sub)
+    r_min = ms.COINCIDENCE_FACTOR * sub.domain.diagonal_m
+    point = np.asarray([point_m], dtype=np.float64)
+    names = {o.id: o.name or o.id for o in sub.objects}
+    currents = [w.current_A for w in cs.wires] + [lp.current_A for lp in cs.loops]
+    contributions: list[MagneticContribution] = []
+    singular_id: str | None = None
+    singular_kind: Literal["infinite_wire", "circular_loop"] | None = None
+    nearest_id: str | None = None
+    nearest_d = float("inf")
+    sources: list[WireSource | LoopSource] = [*cs.wires, *cs.loops]
+    for oid, cur, bi, src in zip(cs.ids, currents, ms.source_fields(point, cs, r_min), sources,
+                                 strict=True):
+        src_kind: Literal["infinite_wire", "circular_loop"] = (
+            "infinite_wire" if isinstance(src, WireSource) else "circular_loop")
+        single = CurrentSources(
+            wires=[src] if isinstance(src, WireSource) else [],
+            loops=[src] if isinstance(src, LoopSource) else [], problems=[])
+        dist = float(ms.distance_to_sources(point, single)[0])
+        if dist < nearest_d:
+            nearest_d, nearest_id = dist, oid
+        ok = bool(np.all(np.isfinite(bi[0])))
+        if not ok and singular_id is None:
+            singular_id, singular_kind = oid, src_kind
+        contributions.append(MagneticContribution(
+            object_id=oid, name=names[oid], kind=src_kind,
+            current_A=cur, distance_m=dist,
+            B_T=[float(x) for x in bi[0]] if ok else None,
+            B_magnitude_T=float(np.linalg.norm(bi[0])) if ok else None,
+            H_A_per_m=[float(x) / MU0 for x in bi[0]] if ok else None,
+            H_magnitude_A_per_m=float(np.linalg.norm(bi[0])) / MU0 if ok else None))
+    return ProbeMagnetic(
+        solver_id=solver.id, solver_version=solver.version,
+        classification=result.header.classification, defined=defined,
+        singular_tolerance_m=r_min, singular_object_id=singular_id,
+        singular_kind=singular_kind,
+        values=values, nearest_source_id=nearest_id,
+        nearest_source_distance_m=nearest_d if nearest_id is not None else None,
+        contributions=contributions, mu0_H_per_m=MU0)
 
 
 def _diagnostics(point: np.ndarray, positions: np.ndarray, charges: np.ndarray, r_min: float,
@@ -165,8 +242,10 @@ def _diagnostics(point: np.ndarray, positions: np.ndarray, charges: np.ndarray, 
 @router.post("/equations/evaluate")
 def evaluate_equations(body: EquationsBody, orch: Orch) -> EquationsResponse:
     """Equations with their applicability status for the model that this scene resolves to."""
-    views, reasons, solver_id = orch.equations(body.scene, body.surfaces)
-    return EquationsResponse(supported=solver_id is not None, solver_id=solver_id,
+    views, reasons, solver_ids = orch.equations(body.scene, body.surfaces)
+    return EquationsResponse(supported=bool(solver_ids),
+                             solver_id=solver_ids[0] if solver_ids else None,
+                             solver_ids=solver_ids,
                              unsupported_reasons=reasons, equations=views)
 
 

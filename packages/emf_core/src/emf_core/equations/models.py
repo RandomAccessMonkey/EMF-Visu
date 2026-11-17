@@ -39,6 +39,8 @@ class Equation(BaseModel):
     conditions: list[LocalizedText] = []  # boundary / initial conditions where relevant
     derivation: list[LocalizedText] = []  # optional step-by-step expansion
     used_by: list[str] = []  # solver ids whose implementation evaluates this equation
+    # Usage note shown instead of the generic one when the equation is "satisfied" (Phase 3A).
+    satisfied_note: LocalizedText | None = None
 
 
 class EquationView(BaseModel):

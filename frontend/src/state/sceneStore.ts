@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Domain, GaussSurface, PrimitiveType, Scene, SceneObject, SurfaceDisplay, Transform } from '@/api/types'
+import type { Domain, GaussSurface, PrimitiveType, Scene, SceneObject, Source, SurfaceDisplay, Transform, Vec3 } from '@/api/types'
 
 export const EMPTY_SCENE: Scene = {
   schema_version: 1,
@@ -41,7 +41,38 @@ const PRIMITIVE_DEFAULTS: { [K in PrimitiveType]: Extract<SceneObject['primitive
   line: { type: 'line', length_m: 1 },
 }
 
-export type NewObjectKind = 'positive_charge' | 'negative_charge' | Exclude<PrimitiveType, 'point' | 'group'>
+export type NewObjectKind = 'positive_charge' | 'negative_charge' | 'wire' | 'loop' | Exclude<PrimitiveType, 'point' | 'group'>
+
+export type ChargeSource = Extract<Source, { type: 'point_charge' }>
+export type CurrentSource = Extract<Source, { type: 'infinite_wire' | 'circular_loop' }>
+export type ChargeObject = SceneObject & { source: ChargeSource }
+
+/** Charge of a point-charge object, undefined for anything else. */
+export const chargeOf = (o: SceneObject): number | undefined =>
+  o.source?.type === 'point_charge' ? o.source.charge_C : undefined
+/** Current of a wire or loop object (A), undefined for anything else. */
+export const currentOf = (o: SceneObject): number | undefined =>
+  o.source && o.source.type !== 'point_charge' ? o.source.current_A : undefined
+export const isCurrentSource = (o: SceneObject): boolean => o.role === 'current_source'
+export const isChargeSource = (o: SceneObject): boolean => o.role === 'charge_source'
+
+/** Rotation (Euler XYZ, radians) that turns local +z into the unit vector d. Geometry only:
+ *  wires run along local +z and loops have their normal along local +z. */
+export function rotationForDirection(d: Vec3): Vec3 {
+  const n = Math.hypot(d[0], d[1], d[2])
+  if (!(n > 0)) return [0, 0, 0]
+  const [x, y, z] = [d[0] / n, d[1] / n, d[2] / n]
+  // R = Rx(a) Ry(b) Rz(0) maps e_z to (sin b, -sin a cos b, cos a cos b).
+  const b = Math.asin(Math.max(-1, Math.min(1, x)))
+  const a = Math.atan2(-y, z)
+  return [a, b, 0]
+}
+
+/** World direction of local +z for a root object's rotation (Euler XYZ). Geometry only. */
+export function directionOfRotation(r: Vec3): Vec3 {
+  const [a, b] = r
+  return [Math.sin(b), -Math.sin(a) * Math.cos(b), Math.cos(a) * Math.cos(b)]
+}
 
 function freshId(scene: Scene): string {
   const used = new Set(scene.objects.map((o) => o.id))
@@ -52,6 +83,12 @@ function freshId(scene: Scene): string {
 
 export function makeObject(scene: Scene, kind: NewObjectKind, name: string): SceneObject {
   const base = { id: freshId(scene), name, transform: IDENTITY, enabled: true }
+  if (kind === 'wire') {
+    return { ...base, primitive: { type: 'line', length_m: 4 }, role: 'current_source', source: { type: 'infinite_wire', current_A: 10 } }
+  }
+  if (kind === 'loop') {
+    return { ...base, primitive: { type: 'ring', radius_m: 0.5 }, role: 'current_source', source: { type: 'circular_loop', current_A: 10 } }
+  }
   if (kind === 'positive_charge' || kind === 'negative_charge') {
     return {
       ...base,
@@ -66,26 +103,26 @@ export function makeObject(scene: Scene, kind: NewObjectKind, name: string): Sce
 /** A dipole is two real point charges (+q, −q) under a group; q and d are read from the
  *  children, so there is no second copy of the physics state. */
 export interface DipoleInfo {
-  positive: SceneObject
-  negative: SceneObject
+  positive: ChargeObject
+  negative: ChargeObject
   charge_C: number // |q|
   separation_m: number // d
   balanced: boolean // the two charges are still exactly +q and −q
 }
 
 export function dipoleInfo(scene: Scene, groupId: string): DipoleInfo | null {
-  const kids = scene.objects.filter((o) => o.parent_id === groupId && o.source)
-  const positive = kids.find((o) => (o.source?.charge_C ?? 0) > 0)
-  const negative = kids.find((o) => (o.source?.charge_C ?? 0) < 0)
+  const kids = scene.objects.filter((o): o is ChargeObject => o.parent_id === groupId && o.source?.type === 'point_charge')
+  const positive = kids.find((o) => o.source.charge_C > 0)
+  const negative = kids.find((o) => o.source.charge_C < 0)
   if (kids.length !== 2 || !positive || !negative) return null
   const a = positive.transform.position_m
   const b = negative.transform.position_m
   return {
     positive,
     negative,
-    charge_C: positive.source!.charge_C,
+    charge_C: positive.source.charge_C,
     separation_m: Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]),
-    balanced: positive.source!.charge_C === -negative.source!.charge_C,
+    balanced: positive.source.charge_C === -negative.source.charge_C,
   }
 }
 
@@ -127,6 +164,8 @@ interface SceneState {
   projectId: string | null
   projectName: string
   presetId: string | null
+  /** Scene of the loaded preset (or variant), so an object can be reset to its preset state. */
+  presetScene: Scene | null
   select: (id: string | null) => void
   selectSurface: (id: string | null) => void
   addSurface: (kind: SurfaceKind, name: string) => void
@@ -142,7 +181,8 @@ interface SceneState {
   update: (id: string, patch: Partial<SceneObject>) => void
   setTransform: (id: string, patch: Partial<Transform>) => void
   setDomain: (domain: Domain) => void
-  load: (scene: Scene, meta?: { projectId?: string | null; name?: string; presetId?: string | null }) => void
+  resetToPreset: (id: string) => void
+  load: (scene: Scene, meta?: { projectId?: string | null; name?: string; presetId?: string | null; presetScene?: Scene | null }) => void
 }
 
 const mapObject = (scene: Scene, id: string, f: (o: SceneObject) => SceneObject): Scene => ({
@@ -158,6 +198,7 @@ export const useSceneStore = create<SceneState>((set) => ({
   projectId: null,
   projectName: '',
   presetId: null,
+  presetScene: null,
   // Selecting an object and selecting a surface are mutually exclusive (one gizmo at a time).
   select: (id) => set(id ? { selectedId: id, selectedSurfaceId: null } : { selectedId: null }),
   selectSurface: (id) => set(id ? { selectedSurfaceId: id, selectedId: null } : { selectedSurfaceId: null }),
@@ -217,9 +258,9 @@ export const useSceneStore = create<SceneState>((set) => ({
       const at = (sign: number) => mid.map((m, i) => m + (sign * axis[i]! * separation_m) / 2) as [number, number, number]
       const objects = s.scene.objects.map((o) => {
         if (o.id === info.positive.id)
-          return { ...o, source: { ...o.source!, charge_C }, transform: { ...o.transform, position_m: at(-1) } }
+          return { ...o, source: { type: 'point_charge' as const, charge_C }, transform: { ...o.transform, position_m: at(-1) } }
         if (o.id === info.negative.id)
-          return { ...o, source: { ...o.source!, charge_C: -charge_C }, transform: { ...o.transform, position_m: at(1) } }
+          return { ...o, source: { type: 'point_charge' as const, charge_C: -charge_C }, transform: { ...o.transform, position_m: at(1) } }
         return o
       })
       return { scene: { ...s.scene, objects } }
@@ -261,6 +302,11 @@ export const useSceneStore = create<SceneState>((set) => ({
       scene: mapObject(s.scene, id, (o) => ({ ...o, transform: { ...o.transform, ...patch } })),
     })),
   setDomain: (domain) => set((s) => ({ scene: { ...s.scene, domain } })),
+  resetToPreset: (id) =>
+    set((s) => {
+      const original = s.presetScene?.objects.find((o) => o.id === id)
+      return original ? { scene: mapObject(s.scene, id, () => original) } : s
+    }),
   load: (scene, meta) =>
     set({
       scene,
@@ -268,5 +314,6 @@ export const useSceneStore = create<SceneState>((set) => ({
       projectId: meta?.projectId ?? null,
       projectName: meta?.name ?? '',
       presetId: meta?.presetId ?? null,
+      presetScene: meta?.presetScene ?? (meta?.presetId ? scene : null),
     }),
 }))

@@ -11,18 +11,25 @@ function Accuracy({ sim }: { sim: Simulation }) {
   const { t } = useT()
   const high = useHighAccuracy()
   const solvers = useQuery({ queryKey: ['solvers'], queryFn: api.solvers, refetchInterval: 10_000 })
-  const solverId = sim.result?.header.solver_id
-  const worker = solvers.data?.find((s) => s.descriptor.id === solverId)
-  const online = worker?.queue_worker_online ?? false
-  const running = high.status?.state === 'queued' || high.status?.state === 'running'
-  const current = high.key === sim.highBundle.key
+  // One job per active field (electric and/or magnetic); every needed worker must be online.
+  const solverIds = [sim.active ? sim.result?.header.solver_id : undefined, sim.magnetic.active ? sim.magnetic.result?.header.solver_id : undefined].filter((x): x is string => !!x)
+  const online = solverIds.length > 0 && solverIds.every((id) => solvers.data?.find((s) => s.descriptor.id === id)?.queue_worker_online)
+  const jobs = sim.highBundles.map((b) => high.jobs[b.kind]).filter((j) => j !== undefined)
+  const current = jobs.length === sim.highBundles.length && sim.highBundles.every((b) => high.jobs[b.kind]?.key === b.key)
+  const running = jobs.some((j) => j.status?.state === 'queued' || j.status?.state === 'running')
+  const queued = jobs.every((j) => !j.status || j.status.state === 'queued')
+  const progress = jobs.length ? jobs.reduce((a, j) => a + (j.status?.progress ?? 0), 0) / jobs.length : 0
+  const cancelled = jobs.some((j) => j.status?.state === 'cancelled')
+  const error = jobs.find((j) => j.error)?.error
+  const highShown = sim.source === 'high' || sim.magnetic.source === 'high'
   return (
-    <Section title={t('accuracy.title')} aside={<Badge tone={sim.source === 'high' ? 'accent' : 'muted'}>{t(sim.source === 'high' ? 'accuracy.high' : 'accuracy.interactive')}</Badge>}>
+    <Section title={t('accuracy.title')} aside={<Badge tone={highShown ? 'accent' : 'muted'}>{t(highShown ? 'accuracy.high' : 'accuracy.interactive')}</Badge>}>
       <p className="text-[11px] leading-snug text-muted">
         {t('accuracy.explain', { preview: HEAT_RESOLUTION.preview, normal: HEAT_RESOLUTION.normal, high: HEAT_RESOLUTION.high })}
       </p>
+      {sim.highBundles.length > 1 && <p className="text-[11px] leading-snug text-muted">{t('accuracy.bothFields')}</p>}
       <div className="flex items-center gap-2">
-        <Button variant="primary" disabled={!online || running || !sim.result} onClick={() => void high.run(sim.highBundle)}>
+        <Button variant="primary" disabled={!online || running || solverIds.length === 0} onClick={() => void high.run(sim.highBundles)}>
           {t('accuracy.run')}
         </Button>
         {running && (
@@ -34,16 +41,16 @@ function Accuracy({ sim }: { sim: Simulation }) {
       {!online && <p className="text-[11px] text-warn">{t('accuracy.workerOffline')}</p>}
       {running && current && (
         <div aria-live="polite">
-          <div className="h-1.5 overflow-hidden rounded-full bg-border" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round((high.status?.progress ?? 0) * 100)}>
-            <div className="h-full bg-accent transition-[width]" style={{ width: `${(high.status?.progress ?? 0) * 100}%` }} />
+          <div className="h-1.5 overflow-hidden rounded-full bg-border" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress * 100)}>
+            <div className="h-full bg-accent transition-[width]" style={{ width: `${progress * 100}%` }} />
           </div>
           <p className="mt-1 text-[11px] text-muted">
-            {t(high.status?.state === 'queued' ? 'accuracy.queued' : 'accuracy.running')} {Math.round((high.status?.progress ?? 0) * 100)}%
+            {t(queued ? 'accuracy.queued' : 'accuracy.running')} {Math.round(progress * 100)}%
           </p>
         </div>
       )}
-      {current && high.status?.state === 'cancelled' && <p className="text-[11px] text-warn">{t('accuracy.cancelled')}</p>}
-      {current && high.error && <p className="text-[11px] text-danger">{t('accuracy.failed')}: {high.error}</p>}
+      {current && cancelled && <p className="text-[11px] text-warn">{t('accuracy.cancelled')}</p>}
+      {current && error && <p className="text-[11px] text-danger">{t('accuracy.failed')}: {error}</p>}
     </Section>
   )
 }
@@ -56,8 +63,63 @@ export function VisualizationPanel({ sim }: { sim: Simulation }) {
   const set = <K extends keyof ViewSettings>(key: K) => (value: ViewSettings[K]) => v.set({ [key]: value })
   const n = PLANE_BASIS[v.plane].nAxis
   const axisName = 'xyz'[n]!
+  const objects = useSceneStore((s) => s.scene.objects)
+  const currents = objects.filter((o) => o.role === 'current_source' && o.source && o.source.type !== 'point_charge')
+  const hasMagnetic = sim.magnetic.active
+  const electricOn = v.showArrows || v.showFieldLines || v.showContours
+  const magneticOn = v.showBArrows || v.showBLines
+  const shown = electricOn && magneticOn ? 'both' : magneticOn ? 'magnetic' : electricOn ? 'electric' : 'both'
+  const showFields = (which: 'electric' | 'magnetic' | 'both') =>
+    v.set({
+      showArrows: which !== 'magnetic', showFieldLines: which !== 'magnetic', showContours: which !== 'magnetic',
+      showBArrows: which !== 'electric', showBLines: which !== 'electric',
+    })
   return (
     <div>
+      {hasMagnetic && (
+        <Section title={t('viz.fieldsShown')}>
+          <Row label={t('viz.fieldsShown')} hint={t('viz.fieldsShownHint')}>
+            <Select label={t('viz.fieldsShown')} value={shown} onChange={showFields} options={[
+              { value: 'electric', label: t('viz.fieldsElectric') },
+              { value: 'magnetic', label: t('viz.fieldsMagnetic') },
+              { value: 'both', label: t('viz.fieldsBoth') },
+            ]} />
+          </Row>
+          <p className="text-[11px] leading-snug text-muted">{t('viz.fieldsShownHint')}</p>
+        </Section>
+      )}
+      {hasMagnetic && (
+        <Section title={t('viz.magnetic')}>
+          <Row label={t('viz.bArrows')}>
+            <Switch label={t('viz.bArrows')} checked={v.showBArrows} onChange={set('showBArrows')} />
+          </Row>
+          <Row label={t('viz.magneticField')} hint={t('viz.magneticFieldHint')}>
+            <Select label={t('viz.magneticField')} value={v.magneticField} onChange={set('magneticField')} options={[
+              { value: 'B', label: t('viz.vectorB') },
+              { value: 'H', label: t('viz.vectorH') },
+            ]} />
+          </Row>
+          <Row label={t('viz.contribution')} hint={t('viz.contributionHint')}>
+            <Select label={t('viz.contribution')} value={currents.some((o) => o.id === v.contribution) || v.contribution === 'all' ? v.contribution : 'total'} onChange={set('contribution')} options={[
+              { value: 'total', label: t('viz.contributionTotal') },
+              ...(currents.length > 1 ? [{ value: 'all', label: t('viz.contributionAll') }] : []),
+              ...currents.map((o) => ({ value: o.id, label: t('viz.contributionOne', { name: o.name || o.id }) })),
+            ]} />
+          </Row>
+          <p className="text-[11px] leading-snug text-muted">{t('viz.contributionHint')}</p>
+          <Row label={t('viz.bLines')}>
+            <Switch label={t('viz.bLines')} checked={v.showBLines} onChange={set('showBLines')} />
+          </Row>
+          <p className="text-[11px] leading-snug text-muted">{t('viz.bLinesHint')}</p>
+          <Row label={t('viz.currents')}>
+            <Switch label={t('viz.currents')} checked={v.showCurrents} onChange={set('showCurrents')} />
+          </Row>
+          <Row label={t('viz.currentDirection')}>
+            <Switch label={t('viz.currentDirection')} checked={v.showCurrentDirection} onChange={set('showCurrentDirection')} />
+          </Row>
+          <p className="text-[11px] leading-snug text-muted">{t('viz.currentsHint')}</p>
+        </Section>
+      )}
       <Section title={t('viz.vectors')}>
         <Row label={t('viz.arrows')} hint={t('viz.arrowsHint')}>
           <Switch label={t('viz.arrows')} checked={v.showArrows} onChange={set('showArrows')} />
@@ -131,6 +193,11 @@ export function VisualizationPanel({ sim }: { sim: Simulation }) {
             { value: 'curl_E', label: t('viz.heatCurlE') },
             { value: 'div_D', label: t('viz.heatDivD') },
             { value: 'curl_D', label: t('viz.heatCurlD') },
+            ...(hasMagnetic ? [
+              { value: 'B' as const, label: t('viz.heatB') },
+              { value: 'H' as const, label: t('viz.heatH') },
+              { value: 'div_B' as const, label: t('viz.heatDivB') },
+            ] : []),
             { value: 'none', label: t('viz.heatNone') },
           ]} />
         </Row>

@@ -130,7 +130,32 @@ class PointChargeSource(StrictModel):
     charge_C: FiniteFloat = 1e-9
 
 
-Source = Annotated[PointChargeSource, Field(discriminator="type")]
+class InfiniteWireSource(StrictModel):
+    """Ideal infinitely long straight filament carrying a steady current (Phase 3A).
+
+    Carried by a ``line`` primitive with role ``current_source``. A point on the axis is the
+    object's world position; the axis direction d is the normalised world image of local +z.
+    Positive ``current_A`` flows along +d. The primitive's length is display-only: the model is
+    infinite and has zero radius. The wire is electrically neutral (no electric field)."""
+
+    type: Literal["infinite_wire"] = "infinite_wire"
+    current_A: FiniteFloat = 10.0
+
+
+class CircularLoopSource(StrictModel):
+    """Ideal thin circular filament carrying a steady current (Phase 3A).
+
+    Carried by a ``ring`` primitive with role ``current_source``: centre = world position,
+    radius = ``radius_m`` times the in-plane world scale, normal n = normalised (c_x x c_y) of the
+    world matrix. Positive ``current_A`` circulates counter-clockwise about +n (right-hand rule:
+    B points along +n on the axis). Electrically neutral."""
+
+    type: Literal["circular_loop"] = "circular_loop"
+    current_A: FiniteFloat = 10.0
+
+
+Source = Annotated[PointChargeSource | InfiniteWireSource | CircularLoopSource,
+                   Field(discriminator="type")]
 
 
 # --- Materials: constitutive models are first-class, never implied ----------------------------

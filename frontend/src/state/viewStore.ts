@@ -4,8 +4,10 @@ import { ARROW_DENSITIES, LATTICE_DENSITIES, nearest, type SlicePlane } from '@/
 
 export type Lang = 'en' | 'hu'
 
-/** Scalar colour maps. 'E' is |E|; 'curl_E' and 'curl_D' are the curl magnitudes. */
-export const SCALAR_MAPS = ['phi', 'E', 'div_E', 'curl_E', 'div_D', 'curl_D', 'none'] as const
+/** Scalar colour maps. 'E' is |E|; 'curl_E' and 'curl_D' are the curl magnitudes; 'B' and 'H'
+ *  are |B| and |H| (magnetic result); 'div_B' is the divergence of B. */
+export const SCALAR_MAPS = ['phi', 'E', 'div_E', 'curl_E', 'div_D', 'curl_D', 'B', 'H', 'div_B', 'none'] as const
+export const MAGNETIC_MAPS: readonly ScalarMap[] = ['B', 'H', 'div_B']
 export type ScalarMap = (typeof SCALAR_MAPS)[number]
 
 /** Settings that are saved with a project. */
@@ -27,6 +29,14 @@ export interface ViewSettings {
   showLattice: boolean
   showSliceIn3d: boolean
   showGrid: boolean
+  /** Magnetic layers (Phase 3A). */
+  showBArrows: boolean
+  magneticField: 'B' | 'H'
+  showBLines: boolean
+  showCurrents: boolean
+  showCurrentDirection: boolean
+  /** 'total' or the object id of one current source whose own field is shown. */
+  contribution: string
   arrowDensity: number
   latticeDensity: number
   arrowScale: number
@@ -53,6 +63,12 @@ export const DEFAULT_VIEW: ViewSettings = {
   showLattice: false,
   showSliceIn3d: true,
   showGrid: true,
+  showBArrows: true,
+  magneticField: 'B',
+  showBLines: true,
+  showCurrents: true,
+  showCurrentDirection: true,
+  contribution: 'total',
   arrowDensity: 13,
   latticeDensity: 5,
   arrowScale: 1,
@@ -127,6 +143,7 @@ export function sanitizeView(raw: Record<string, unknown>): Partial<ViewSettings
   if (typeof out.lineDensity === 'number') out.lineDensity = Math.min(2, Math.max(0, Math.round(out.lineDensity)))
   if (out.vectorField !== undefined && out.vectorField !== 'E' && out.vectorField !== 'D') delete out.vectorField
   if (out.curlField !== undefined && out.curlField !== 'E' && out.curlField !== 'D') delete out.curlField
+  if (out.magneticField !== undefined && out.magneticField !== 'B' && out.magneticField !== 'H') delete out.magneticField
   if (out.heatmap !== undefined && !(SCALAR_MAPS as readonly string[]).includes(out.heatmap as string)) delete out.heatmap
   return out as Partial<ViewSettings>
 }

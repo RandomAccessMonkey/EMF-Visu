@@ -13,8 +13,10 @@ import { CurlGlyphs, SourceMarkers, VolumeScalars } from './CalculusLayers'
 import { Contours, FieldLines, Isosurfaces } from './FieldProducts'
 import { GaussLayer } from './GaussLayer'
 import type { FluxData } from '@/sim/gauss'
-import { magnitudes, sampling, type HeatImage } from './fieldImages'
+import { isMagneticKind, magnitudes, sampling, type HeatImage } from './fieldImages'
 import { SceneObjects } from './SceneObjects'
+import { CurrentMarkers, MagneticArrows } from './MagneticLayers'
+import { MAGNETIC_LINE_COLOR, MAGNETIC_NUMERICAL_LINE_COLOR } from './magneticColors'
 
 // Physics convention: right-handed, z up. Three.js is told so once; no axis swapping anywhere.
 THREE.Object3D.DEFAULT_UP.set(0, 0, 1)
@@ -233,11 +235,14 @@ function Invalidator({ deps }: { deps: unknown[] }) {
 interface Props {
   flux?: FluxData | undefined
   result: SimulationResult | undefined
+  /** Magnetic result (Phase 3A), solved and cached independently of the electric one. */
+  magnetic?: SimulationResult | undefined
   image: HeatImage | null
   arrowScale: LogScale | null
+  magneticArrowScale?: LogScale | null
 }
 
-export function Viewport({ result, image, arrowScale, flux }: Props) {
+export function Viewport({ result, magnetic, image, arrowScale, magneticArrowScale, flux }: Props) {
   const surfaces = useSceneStore((s) => s.surfaces)
   const selectedSurfaceId = useSceneStore((s) => s.selectedSurfaceId)
   const patch = useViewStore((s) => s.selectedPatch)
@@ -248,7 +253,8 @@ export function Viewport({ result, image, arrowScale, flux }: Props) {
   const domain = scene.domain
   const diag = Math.hypot(extent(domain, 0), extent(domain, 1), extent(domain, 2))
   const marker = diag * 0.011
-  const grid = result ? sampling<PlaneGridSampling>(result, 'heat') : undefined
+  // Both results sample the same slice; either one provides the plane (for probe clicks too).
+  const grid = result ? sampling<PlaneGridSampling>(result, 'heat') : magnetic ? sampling<PlaneGridSampling>(magnetic, 'heat') : undefined
   const sliceVisible = v.mode === '2d' || v.showSliceIn3d
   // Charges off the slice plane, according to the engine's source table.
   const offSlice = useMemo(
@@ -272,7 +278,7 @@ export function Viewport({ result, image, arrowScale, flux }: Props) {
       <ambientLight intensity={1.4} />
       <directionalLight position={[3, -4, 6]} intensity={1.6} />
       <Cameras domain={domain} />
-      <Invalidator deps={[scene, selectedId, v.mode, v.plane, v.offset, v.probePoint, v.showGrid, v.tool, result, v.showFieldLines, v.lineDensity, v.showContours, v.showIsosurfaces, v.showCurl, v.curlField, v.showSources, v.showVolumeScalars, v.heatmap, flux, surfaces, selectedSurfaceId, patch, cell]} />
+      <Invalidator deps={[scene, selectedId, v.mode, v.plane, v.offset, v.probePoint, v.showGrid, v.tool, result, v.showFieldLines, v.lineDensity, v.showContours, v.showIsosurfaces, v.showCurl, v.curlField, v.showSources, v.showVolumeScalars, v.heatmap, flux, surfaces, selectedSurfaceId, patch, cell, magnetic, v.showBArrows, v.magneticField, v.showBLines, v.showCurrents, v.showCurrentDirection, v.contribution]} />
       {v.mode === '3d' && <DomainFrame domain={domain} />}
       {v.showGrid && <GridAxes domain={domain} />}
       {grid && <SlicePlane image={image} grid={grid} visible={sliceVisible && v.heatmap !== 'none'} />}
@@ -287,10 +293,16 @@ export function Viewport({ result, image, arrowScale, flux }: Props) {
       {result && v.mode === '3d' && v.showIsosurfaces && <Isosurfaces result={result} />}
       {result && v.showCurl && sliceVisible && <CurlGlyphs result={result} id="arrows" field={v.curlField} />}
       {result && v.showCurl && v.mode === '3d' && v.showLattice && <CurlGlyphs result={result} id="vol" field={v.curlField} />}
-      {result && v.mode === '3d' && v.showVolumeScalars && v.heatmap !== 'none' && <VolumeScalars result={result} kind={v.heatmap} />}
+      {v.mode === '3d' && v.showVolumeScalars && v.heatmap !== 'none' && (isMagneticKind(v.heatmap) ? magnetic : result) && (
+        <VolumeScalars result={(isMagneticKind(v.heatmap) ? magnetic : result)!} kind={v.heatmap} />
+      )}
       {result && v.showSources && <SourceMarkers result={result} size={marker} />}
+      {magnetic && magneticArrowScale && v.showBArrows && sliceVisible && <MagneticArrows result={magnetic} id="arrows" scale={magneticArrowScale} />}
+      {magnetic && magneticArrowScale && v.showBArrows && v.mode === '3d' && v.showLattice && <MagneticArrows result={magnetic} id="vol" scale={magneticArrowScale} />}
+      {magnetic && v.showBLines && <FieldLines result={magnetic} level={v.lineDensity} markerSize={marker * 0.9} color={MAGNETIC_LINE_COLOR} numericalColor={MAGNETIC_NUMERICAL_LINE_COLOR} />}
+      {magnetic && <CurrentMarkers result={magnetic} size={marker} />}
       <GaussLayer flux={flux} marker={marker} />
-      <SceneObjects marker={marker} offSlice={offSlice} />
+      <SceneObjects marker={marker} offSlice={offSlice} wireLength={diag} />
       <ProbeMarker size={marker} />
     </Canvas>
   )

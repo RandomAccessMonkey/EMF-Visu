@@ -41,6 +41,7 @@ from ...i18n import L, LocalizedText
 from ...postprocess import field_lines as fl
 from ...postprocess import isolines as iso
 from ...sampling import PlaneGridSampling
+from ...scene.currents import current_sources
 from ...scene.models import (
     GroupPrimitive,
     MaterialModel,
@@ -269,9 +270,18 @@ class PointChargeVacuumSolver:
     id = "analytical.electrostatics.point_charges"
     version = "1.1.0"
     kind: SolverKind = "analytical"
+    field_kinds: tuple[str, ...] = ("electric",)
+    name = L("Analytical electrostatics: point charges in vacuum",
+             "Analitikus elektrosztatika: ponttöltések vákuumban")
 
     def supports(self, scene: Scene, request: SolveRequest) -> Support:
         reasons: list[LocalizedText] = []
+        if request.field_kind != "electric":
+            reasons.append(L(
+                "This solver computes the electric field only; B and H are solved by the "
+                "magnetostatic solver.",
+                "Ez a megoldó csak az elektromos mezőt számítja; B-t és H-t a magnetosztatikus "
+                "megoldó számítja."))
         if scene.dimensionality != "3d":
             reasons.append(L(
                 f"Dimensionality '{scene.dimensionality}' is not implemented; only the full 3D "
@@ -292,8 +302,11 @@ class PointChargeVacuumSolver:
                 "A peremfeltételek (földelés, rögzített potenciál, vezetők) peremérték-megoldót "
                 "igényelnek, amely még nem érhető el.",
             ))
+        # Well-formed current sources are electrically neutral ideal filaments: they produce no
+        # electric field and are left to the magnetostatic solver. Malformed ones are refused.
+        reasons.extend(current_sources(scene).problems)
         for o in scene.objects:
-            if not o.enabled or o.role is Role.GEOMETRY_ONLY:
+            if not o.enabled or o.role in (Role.GEOMETRY_ONLY, Role.CURRENT_SOURCE):
                 continue
             label = o.name or o.id
             if o.role is not Role.CHARGE_SOURCE:
@@ -303,7 +316,8 @@ class PointChargeVacuumSolver:
                     f"A(z) '{label}' objektum szerepe '{o.role.value}', amelyet még egyetlen "
                     "elérhető megoldó sem támogat. Egyszerűbb modellel nem helyettesítjük.",
                 ))
-            elif not isinstance(o.primitive, PointPrimitive) or o.source is None:
+            elif (not isinstance(o.primitive, PointPrimitive)
+                  or not isinstance(o.source, PointChargeSource)):
                 reasons.append(L(
                     f"Object '{label}' is a charge source that is not an ideal point charge; "
                     "extended charge distributions are not supported yet.",
@@ -695,8 +709,12 @@ class PointChargeVacuumSolver:
               "vagy peremek."),
             L("Potential reference: φ → 0 at infinity.",
               "A potenciál vonatkoztatási pontja: φ → 0 a végtelenben."),
-            L("Electrostatics: no time dependence, no currents, no magnetic field.",
-              "Elektrosztatika: nincs időfüggés, nincs áram, nincs mágneses mező."),
+            L("Electrostatics: no time dependence. Steady currents, if present, flow in "
+              "electrically neutral ideal filaments and produce no electric field; their magnetic "
+              "field is solved separately by the magnetostatic model.",
+              "Elektrosztatika: nincs időfüggés. Az esetleges stacionárius áramok elektromosan "
+              "semleges ideális vezetőszálakban folynak, és nem keltenek elektromos mezőt; "
+              "mágneses mezőjüket a magnetosztatikus modell külön számítja."),
             L("The region of interest only bounds sampling and drawing; it is not a physical "
               "boundary.",
               "A vizsgált tartomány csak a mintavételt és a rajzolást határolja; nem fizikai "

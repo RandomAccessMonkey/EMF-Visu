@@ -6,6 +6,7 @@ from ..i18n import L
 from .models import Equation, SymbolDef
 
 PC = "analytical.electrostatics.point_charges"
+MS = "analytical.magnetostatics.filaments"
 
 SYMBOLS: dict[str, SymbolDef] = {
     "E": SymbolDef(latex=r"\mathbf{E}", unit="V/m",
@@ -88,6 +89,36 @@ SYMBOLS: dict[str, SymbolDef] = {
                    meaning=L("a volume and its closed boundary surface ∂V", "egy térfogat és "
                              "annak zárt határfelülete, ∂V")),
     "t": SymbolDef(latex=r"t", unit="s", meaning=L("time", "idő")),
+    "rprime": SymbolDef(latex=r"\mathbf{r}'", unit="m",
+                        meaning=L("position of the current element dℓ' on the wire",
+                                  "a dℓ' áramelem helye a vezetőn")),
+    "rdist": SymbolDef(latex=r"r", unit="m",
+                       meaning=L("distance from the current element to the field point",
+                                 "az áramelem és a megfigyelési pont távolsága")),
+    "rperp": SymbolDef(latex=r"r_\perp", unit="m",
+                       meaning=L("shortest (perpendicular) distance from the wire axis",
+                                 "a vezető tengelyétől mért legrövidebb (merőleges) távolság")),
+    "phihat": SymbolDef(latex=r"\hat{\boldsymbol{\varphi}}", unit="1",
+                        meaning=L("azimuthal unit vector around the wire, oriented by the "
+                                  "right-hand rule with the current direction",
+                                  "a vezető körüli azimutális egységvektor, az áram irányával "
+                                  "a jobbkéz-szabály szerint irányítva")),
+    "a_loop": SymbolDef(latex=r"a", unit="m", meaning=L("loop radius", "a körvezető sugara")),
+    "z_axis": SymbolDef(latex=r"z", unit="m",
+                        meaning=L("signed distance along the loop axis from its centre",
+                                  "a körvezető tengelye mentén, a középponttól mért előjeles "
+                                  "távolság")),
+    "rho_cyl": SymbolDef(latex=r"\rho", unit="m",
+                         meaning=L("distance from the loop axis", "a körvezető tengelyétől mért "
+                                   "távolság")),
+    "Kk": SymbolDef(latex=r"K(m),\ E(m)", unit="1",
+                    meaning=L("complete elliptic integrals of the first and second kind, with "
+                              "parameter m = 4aρ/((a+ρ)² + z²)",
+                              "első- és másodfajú teljes elliptikus integrálok, m = "
+                              "4aρ/((a+ρ)² + z²) paraméterrel")),
+    "Bi": SymbolDef(latex=r"\mathbf{B}_i", unit="T",
+                    meaning=L("magnetic flux density of current source i alone",
+                              "az i-edik áramforrás saját mágneses indukciója")),
 }
 
 _LINEAR = L("Linear, isotropic material.", "Lineáris, izotrop anyag.")
@@ -152,9 +183,21 @@ EQUATIONS: list[Equation] = [
         latex=r"\nabla \cdot \mathbf{B} = 0",
         latex_integral=r"\oint_{\partial V} \mathbf{B}\cdot d\mathbf{A} = 0",
         meaning=L("There are no magnetic monopoles.", "Nincsenek mágneses monopólusok."),
-        intuition=L("Magnetic field lines never begin or end.",
-                    "A mágneses erővonalaknak nincs kezdetük és végük."),
+        intuition=L("Magnetic field lines never begin or end: they close on themselves or "
+                    "continue without end. ∇·B = 0 does not mean B = 0: around a wire B is "
+                    "large while its divergence is exactly zero.",
+                    "A mágneses erővonalaknak nincs kezdetük és végük: önmagukba záródnak, vagy "
+                    "vég nélkül folytatódnak. ∇·B = 0 nem jelenti azt, hogy B = 0: egy vezető "
+                    "körül B nagy, a divergenciája mégis pontosan nulla."),
         symbols=["B"],
+        conditions=[L("For ideal current filaments B is singular on the filament itself, so "
+                      "there is no pointwise value there. The law still holds everywhere in the "
+                      "distributional sense: current filaments are not magnetic monopoles, and "
+                      "no magnetic charge exists in the model.",
+                      "Ideális áramszálaknál B magán a szálon szinguláris, ott nincs pontbeli "
+                      "értéke. A törvény disztribúciós értelemben mégis mindenütt teljesül: az "
+                      "áramszálak nem mágneses monopólusok, és a modellben nincs mágneses "
+                      "töltés.")],
     ),
     Equation(
         id="faraday", category="maxwell",
@@ -569,19 +612,217 @@ EQUATIONS: list[Equation] = [
         assumptions=[L("Magnetostatic approximation: ∂D/∂t is neglected (steady currents).",
                        "Magnetosztatikus közelítés: ∂D/∂t elhanyagolva (stacionárius áramok).")],
         limitations=[L("Time-dependent effects must be included when currents change quickly.",
-                       "Gyorsan változó áramoknál az időfüggő hatásokat figyelembe kell venni.")],
+                       "Gyorsan változó áramoknál az időfüggő hatásokat figyelembe kell venni."),
+                     L("Not evaluated in this milestone: the solver computes no local current-"
+                       "density field J (ideal filaments have a line-distribution J), and the "
+                       "integral form ∮H·dℓ = I and its interactive demonstration follow in "
+                       "Phase 3B.",
+                       "Ebben a mérföldkőben nincs kiértékelve: a megoldó nem számít helyi J "
+                       "áramsűrűség-mezőt (az ideális áramszálak J-je vonal menti "
+                       "disztribúció), az integrális alak (∮H·dℓ = I) és interaktív bemutatása "
+                       "a 3B fázisban következik.")],
+        satisfied_note=L("Applicable to magnetostatics and obeyed by the computed field, but not "
+                         "evaluated: no local current-density field is computed in this "
+                         "milestone, and the circulation demonstration ∮H·dℓ = I follows in "
+                         "Phase 3B.",
+                         "A magnetosztatikára érvényes, és a számított mező kielégíti, de nincs "
+                         "kiértékelve: ebben a mérföldkőben nem számítunk helyi áramsűrűség-"
+                         "mezőt, a ∮H·dℓ = I körintegrál bemutatása a 3B fázisban következik."),
+        conditions=[L("Away from the filaments J = 0 and ∇×H = 0 pointwise; on an ideal filament "
+                      "J is a line distribution and the law holds in the distributional sense.",
+                      "Az áramszálakon kívül J = 0 és pontonként ∇×H = 0; ideális áramszálon J "
+                      "vonal menti disztribúció, és a törvény disztribúciós értelemben teljesül.")],
     ),
     Equation(
         id="biot_savart", category="magnetostatics",
-        name=L("Biot–Savart law", "Biot–Savart-törvény"),
+        name=L("Biot–Savart law (current element)", "Biot–Savart-törvény (áramelem)"),
         latex=r"d\mathbf{B} = \frac{\mu_0}{4\pi}\,\frac{I\,(d\boldsymbol{\ell}\times\hat{\mathbf{r}})}{r^2}",
-        meaning=L("Magnetic field contribution of a current element.",
-                  "Egy áramelem járuléka a mágneses mezőhöz."),
-        intuition=L("Each piece of wire contributes a field that circles around its direction.",
-                    "A vezető minden darabja a saját iránya körül örvénylő mezőt hoz létre."),
-        symbols=["B", "mu0", "I", "dl", "rhat"],
+        meaning=L("The source relation of magnetostatics: the magnetic field contribution of one "
+                  "short current element.",
+                  "A magnetosztatika forrásösszefüggése: egyetlen rövid áramelem járuléka a "
+                  "mágneses mezőhöz."),
+        intuition=L("dℓ points along the wire in the direction of the positive current; r̂ points "
+                    "from the element to the field point. dB is perpendicular to both (right-hand "
+                    "rule: dℓ × r̂) and falls off as 1/r², like an inverse-square law, but it "
+                    "circles the element instead of pointing away from it. Adding the "
+                    "contributions of all elements (the integral form) gives the total field.",
+                    "dℓ a vezető mentén, a pozitív áram irányába mutat; r̂ az elemtől a "
+                    "megfigyelési pont felé mutat. dB mindkettőre merőleges (jobbkéz-szabály: "
+                    "dℓ × r̂), és 1/r² szerint csökken, mint egy négyzetes távolságtörvény, de az "
+                    "elem körül kering ahelyett, hogy tőle elfelé mutatna. Az összes elem "
+                    "járulékának összegzése (integrális alak) adja az eredő mezőt."),
+        symbols=["B", "mu0", "I", "dl", "rhat", "rdist"],
         assumptions=[L("Steady current in vacuum (or a non-magnetic medium).",
                        "Stacionárius áram vákuumban (vagy nem mágneses közegben).")],
+        limitations=[L("A single element is not a physical source on its own: steady currents "
+                       "form closed circuits (or infinite wires), and only the integral over the "
+                       "whole circuit is a physical field.",
+                       "Egyetlen áramelem önmagában nem fizikai forrás: a stacionárius áramok "
+                       "zárt áramköröket (vagy végtelen vezetőket) alkotnak, és csak a teljes "
+                       "áramkörre vett integrál fizikai mező.")],
+    ),
+    Equation(
+        id="biot_savart_integral", category="magnetostatics",
+        name=L("Biot–Savart law (integral form)", "Biot–Savart-törvény (integrális alak)"),
+        latex=r"\mathbf{B}(\mathbf{r}) = \frac{\mu_0}{4\pi}\int_C \frac{I\,d\boldsymbol{\ell}'\times(\mathbf{r}-\mathbf{r}')}{|\mathbf{r}-\mathbf{r}'|^3}",
+        meaning=L("The total magnetic field of a current-carrying wire C: the sum of all "
+                  "current-element contributions.",
+                  "Egy C áramvezető teljes mágneses mezője: az összes áramelem járulékának "
+                  "összege."),
+        intuition=L("r − r' points from the element to the field point; dividing by |r − r'|³ is "
+                    "the same as r̂/r². The closed-form wire and loop formulas are exact "
+                    "solutions of this integral.",
+                    "r − r' az elemtől a megfigyelési pont felé mutat; |r − r'|³-nal osztva ez "
+                    "ugyanaz, mint r̂/r². Az egyenes vezető és a körvezető zárt alakú képletei "
+                    "ennek az integrálnak egzakt megoldásai."),
+        symbols=["B", "mu0", "I", "dl", "r", "rprime"],
+        assumptions=[L("Steady current, vacuum, thin wire (filament).",
+                       "Stacionárius áram, vákuum, vékony vezető (áramszál).")],
+        limitations=[L("Not integrated numerically by the solver: it evaluates the closed-form "
+                       "solutions. A numerical evaluation of this integral is used only in the "
+                       "validation tests.",
+                       "A megoldó nem integrálja numerikusan: a zárt alakú megoldásokat "
+                       "értékeli ki. Ennek az integrálnak a numerikus kiértékelését csak az "
+                       "ellenőrző tesztek használják.")],
+        satisfied_note=L("The solver evaluates exact closed-form solutions of this integral "
+                         "(straight wire, circular loop); the integral itself is not computed.",
+                         "A megoldó ennek az integrálnak egzakt, zárt alakú megoldásait értékeli "
+                         "ki (egyenes vezető, körvezető); magát az integrált nem számítja."),
+    ),
+    Equation(
+        id="infinite_wire_field", category="magnetostatics",
+        name=L("Field of an infinite straight wire", "Végtelen egyenes vezető tere"),
+        latex=r"\mathbf{B} = \frac{\mu_0 I}{2\pi r_\perp}\,\hat{\boldsymbol{\varphi}},\qquad \mathbf{H} = \frac{I}{2\pi r_\perp}\,\hat{\boldsymbol{\varphi}}",
+        meaning=L("Exact solution of the Biot–Savart integral for an infinitely long straight "
+                  "filament.",
+                  "A Biot–Savart-integrál egzakt megoldása végtelen hosszú egyenes áramszálra."),
+        intuition=L("The field lines are circles around the wire; point the right thumb along "
+                    "the current and the fingers curl along B. |B| halves when the distance "
+                    "doubles.",
+                    "Az erővonalak a vezető körüli körök; ha jobb hüvelykujjunk az áram irányába "
+                    "mutat, ujjaink B irányába hajlanak. A távolság kétszeresére |B| a felére "
+                    "csökken."),
+        symbols=["B", "H", "mu0", "I", "rperp", "phihat"],
+        assumptions=[L("Infinitely long, straight, zero-radius wire; steady current; vacuum.",
+                       "Végtelen hosszú, egyenes, nulla sugarú vezető; stacionárius áram; "
+                       "vákuum.")],
+        limitations=[L("Singular on the wire axis (r⊥ = 0): the ideal filament has no "
+                       "pointwise field there. A real wire of finite radius has a finite field "
+                       "inside it, which is outside this model.",
+                       "A vezető tengelyén (r⊥ = 0) szinguláris: az ideális áramszálnak ott "
+                       "nincs pontbeli tere. Egy véges sugarú valódi vezető belsejében véges "
+                       "a tér, ez azonban kívül esik ezen a modellen."),
+                     L("A real wire is finite; the formula is accurate when the distance is "
+                       "much smaller than the distance to its ends.",
+                       "Valódi vezető véges hosszú; a képlet akkor pontos, ha a távolság jóval "
+                       "kisebb a vezető végeitől mért távolságnál.")],
+        used_by=[MS],
+    ),
+    Equation(
+        id="loop_axis_field", category="magnetostatics",
+        name=L("Circular loop: field on the axis", "Körvezető: a tér a tengelyen"),
+        latex=r"B_z(z) = \frac{\mu_0 I a^2}{2\,(a^2 + z^2)^{3/2}}",
+        meaning=L("Exact field of a thin circular loop on its symmetry axis.",
+                  "Vékony körvezető egzakt tere a szimmetriatengelyén."),
+        intuition=L("On the axis B points along the axis (curl the right-hand fingers with the "
+                    "current: the thumb gives the direction); at the centre B = μ₀I/(2a), far "
+                    "away it falls off as 1/z³ like a dipole.",
+                    "A tengelyen B a tengely irányába mutat (ha jobb kezünk ujjai az áram "
+                    "irányában hajlanak, hüvelykujjunk adja az irányt); a középpontban "
+                    "B = μ₀I/(2a), nagy távolságban 1/z³ szerint csökken, mint egy dipólusé."),
+        symbols=["B", "mu0", "I", "a_loop", "z_axis"],
+        assumptions=[L("Thin (zero-radius) circular wire, steady current, vacuum.",
+                       "Vékony (nulla vastagságú) kör alakú vezető, stacionárius áram, vákuum.")],
+        limitations=[L("Valid only on the axis. Off the axis there is also a radial component; "
+                       "the solver never uses this formula off the axis.",
+                       "Csak a tengelyen érvényes. A tengelyen kívül radiális komponens is van; "
+                       "a megoldó a tengelyen kívül sosem használja ezt a képletet.")],
+        used_by=[MS],
+    ),
+    Equation(
+        id="loop_field_elliptic", category="magnetostatics",
+        name=L("Circular loop: field everywhere", "Körvezető: a tér mindenütt"),
+        latex=r"B_z = \frac{\mu_0 I}{2\pi\sqrt{(a+\rho)^2+z^2}}\left[K(m) + \frac{a^2-\rho^2-z^2}{(a-\rho)^2+z^2}E(m)\right],\quad B_\rho = \frac{\mu_0 I\,z}{2\pi\rho\sqrt{(a+\rho)^2+z^2}}\left[-K(m) + \frac{a^2+\rho^2+z^2}{(a-\rho)^2+z^2}E(m)\right]",
+        meaning=L("Exact solution of the Biot–Savart integral for a circular loop at any point, "
+                  "in terms of complete elliptic integrals.",
+                  "A Biot–Savart-integrál egzakt megoldása körvezetőre, tetszőleges pontban, "
+                  "teljes elliptikus integrálokkal kifejezve."),
+        intuition=L("The field is axially symmetric (no azimuthal component). Near the axis it "
+                    "is almost axial but has a small radial part; near the wire it circles the "
+                    "wire like a straight wire's field.",
+                    "A mező tengelyszimmetrikus (nincs azimutális komponense). A tengely közelében "
+                    "majdnem tengelyirányú, de kis radiális része is van; a vezető közelében a "
+                    "vezetőt kerüli meg, mint egy egyenes vezető tere."),
+        symbols=["B", "mu0", "I", "a_loop", "rho_cyl", "z_axis", "Kk"],
+        assumptions=[L("Thin circular wire, steady current, vacuum.",
+                       "Vékony kör alakú vezető, stacionárius áram, vákuum.")],
+        limitations=[L("Singular on the wire itself. Near the axis the bracket of B_ρ cancels "
+                       "to O(m²); there (m ≤ 0.5) the solver uses the exact power series of "
+                       "that bracket, which has only positive terms, and on the axis B_ρ = 0.",
+                       "Magán a vezetőn szinguláris. A tengely közelében B_ρ zárójeles "
+                       "kifejezése O(m²)-re kiesik; ott (m ≤ 0,5) a megoldó ennek a "
+                       "kifejezésnek az egzakt, csak pozitív tagokat tartalmazó hatványsorát "
+                       "használja, a tengelyen pedig B_ρ = 0.")],
+        used_by=[MS],
+    ),
+    Equation(
+        id="superposition_magnetic", category="magnetostatics",
+        name=L("Superposition of magnetic fields", "Mágneses mezők szuperpozíciója"),
+        latex=r"\mathbf{B} = \sum_i \mathbf{B}_i,\qquad \mathbf{H} = \sum_i \mathbf{H}_i",
+        meaning=L("The total field of several current sources is the vector sum of their "
+                  "individual fields.",
+                  "Több áramforrás eredő tere egyedi tereik vektori összege."),
+        intuition=L("Where two contributions point the same way the field is reinforced; where "
+                    "they point opposite ways it is weakened, and it can vanish.",
+                    "Ahol két járulék azonos irányba mutat, a mező erősödik; ahol "
+                    "ellentétesen, gyengül, és akár el is tűnhet."),
+        symbols=["B", "Bi", "H"],
+        assumptions=[L("Linear medium (vacuum).", "Lineáris közeg (vákuum).")],
+        used_by=[MS],
+    ),
+    Equation(
+        id="div_B_filaments", category="magnetostatics",
+        name=L("Divergence of B of current filaments", "Áramszálak B-terének divergenciája"),
+        latex=r"\nabla\cdot\mathbf{B} = 0\quad(\mathbf{r}\notin\text{filaments})",
+        meaning=L("Away from the ideal filaments the computed B has exactly zero divergence; "
+                  "on them only the distributional statement ∇·B = 0 applies.",
+                  "Az ideális áramszálakon kívül a számított B divergenciája pontosan nulla; "
+                  "rajtuk csak a ∇·B = 0 disztribúciós állítás érvényes."),
+        intuition=L("Every Biot–Savart contribution is divergence-free, so the sum is too. The "
+                    "colour map shows exact zeros, not small numbers.",
+                    "Minden Biot–Savart-járulék divergenciamentes, így az összegük is. A "
+                    "színtérkép pontos nullákat mutat, nem kis számokat."),
+        symbols=["B"],
+        assumptions=[L("Ideal filaments in vacuum.", "Ideális áramszálak vákuumban.")],
+        used_by=[MS],
+    ),
+    Equation(
+        id="b_mu0_h", category="constitutive",
+        name=L("Magnetic flux density in vacuum", "Mágneses indukció vákuumban"),
+        latex=r"\mathbf{B} = \mu_0\mathbf{H}",
+        meaning=L("In vacuum B and H are proportional, with the vacuum permeability as factor.",
+                  "Vákuumban B és H arányos, a szorzó a vákuum permeabilitása."),
+        intuition=L("B (tesla) and H (ampere per metre) are different quantities with different "
+                    "units; in vacuum they point the same way and differ by μ₀ ≈ 1.257×10⁻⁶ H/m.",
+                    "B (tesla) és H (amper per méter) különböző mennyiségek különböző "
+                    "mértékegységgel; vákuumban azonos irányúak, és μ₀ ≈ 1,257×10⁻⁶ H/m "
+                    "szorzóban térnek el."),
+        symbols=["B", "mu0", "H"],
+        assumptions=[L("Vacuum (M = 0). Magnetic materials are a later milestone.",
+                       "Vákuum (M = 0). A mágneses anyagok egy későbbi mérföldkő tárgyai.")],
+        used_by=[MS],
+    ),
+    Equation(
+        id="h_from_b", category="constitutive",
+        name=L("Magnetic field strength in vacuum", "Mágneses térerősség vákuumban"),
+        latex=r"\mathbf{H} = \frac{\mathbf{B}}{\mu_0}",
+        meaning=L("How the solver obtains H from B in vacuum.",
+                  "Ahogyan a megoldó vákuumban B-ből H-t kapja."),
+        intuition=L("Same relation as B = μ₀H, solved for H.",
+                    "Ugyanaz az összefüggés, mint B = μ₀H, H-ra kifejezve."),
+        symbols=["H", "B", "mu0"],
+        assumptions=[L("Vacuum (M = 0).", "Vákuum (M = 0).")],
+        used_by=[MS],
     ),
     Equation(
         id="constitutive_d_general", category="constitutive",

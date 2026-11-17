@@ -2,7 +2,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 import type React from 'react'
 import { api, ApiError } from '@/api/client'
-import type { MethodInfo, ProbeValue, Vec3 } from '@/api/types'
+import type { MethodInfo, ProbeMagnetic, ProbeValue, ResultHeader, Vec3 } from '@/api/types'
 import { Badge, Button, Section } from '@/components/ui/controls'
 import { useT, type MessageKey } from '@/i18n'
 import { formatNumber, formatSI, formatVector, prettyUnit } from '@/lib/format'
@@ -85,6 +85,13 @@ function Probe({ sim }: { sim: Simulation }) {
   })
   // The engine's exact world position of the selected charge, so the probe can be placed on it.
   const selectedSource = sim.result?.header.point_sources.find((s) => s.object_id === selectedId)
+  // A point on the selected wire's axis, or on the selected loop (from the engine's table).
+  const selectedCurrent = sim.magnetic.result?.header.current_sources.find((s) => s.object_id === selectedId)
+  const onCurrent: Vec3 | null = selectedCurrent
+    ? selectedCurrent.kind === 'infinite_wire'
+      ? (selectedCurrent.point_m as Vec3)
+      : loopPoint(selectedCurrent.point_m as Vec3, selectedCurrent.direction as Vec3, selectedCurrent.radius_m ?? 0)
+    : null
   const data = probe.data
   const fieldValues = data?.values.filter((v) => !isCalculus(v.quantity)) ?? []
   const calculusValues = data?.values.filter((v) => isCalculus(v.quantity)) ?? []
@@ -99,6 +106,11 @@ function Probe({ sim }: { sim: Simulation }) {
           {t('probe.atCharge')}
         </Button>
       )}
+      {onCurrent && (
+        <Button onClick={() => useViewStore.getState().set({ probePoint: onCurrent })}>
+          {t('probe.atCurrent')}
+        </Button>
+      )}
       {!point ? (
         <p className="text-xs text-muted">{t(tool === 'probe' ? 'probe.clickHint' : 'probe.enableHint')}</p>
       ) : (
@@ -108,6 +120,7 @@ function Probe({ sim }: { sim: Simulation }) {
           {data && !data.defined && (
             <p className="text-xs text-warn">{t('probe.undefined', { tol: data.singular_tolerance_m.toExponential(1) })}</p>
           )}
+          {data?.magnetic && <h4 className="mt-1 text-[11px] font-semibold uppercase tracking-wider text-muted">{t('probe.electricTitle')}</h4>}
           {data && (
             <table className="w-full text-xs" aria-label={t('probe.fields')}>
               <tbody>
@@ -195,10 +208,85 @@ function Probe({ sim }: { sim: Simulation }) {
               <p className="mt-1 text-[11px] leading-snug text-muted">{t('probe.diagNote', { h: formatNumber(data.diagnostics[0]!.step_m, 2) })}</p>
             </div>
           )}
+          {data?.magnetic && <MagneticProbe m={data.magnetic} />}
           <p className="text-[11px] text-muted">{t('probe.exactNote')}</p>
         </>
       )}
     </Section>
+  )
+}
+
+/** A point on a loop (geometry only): centre + radius × a unit vector perpendicular to n. */
+function loopPoint(c: Vec3, n: Vec3, a: number): Vec3 {
+  const ref: Vec3 = Math.abs(n[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0]
+  const e: Vec3 = [n[1] * ref[2] - n[2] * ref[1], n[2] * ref[0] - n[0] * ref[2], n[0] * ref[1] - n[1] * ref[0]]
+  const l = Math.hypot(...e)
+  return [c[0] + (a * e[0]) / l, c[1] + (a * e[1]) / l, c[2] + (a * e[2]) / l]
+}
+
+/** Magnetic part of the probe: B and H (separate quantities, units and roles), B = μ₀H, ∇·B,
+ *  the nearest current source, and each source's own field. */
+function MagneticProbe({ m }: { m: ProbeMagnetic }) {
+  const { t } = useT()
+  const vectors = m.values.filter((v) => !v.quantity.startsWith('div_'))
+  const divs = m.values.filter((v) => v.quantity.startsWith('div_'))
+  const nearest = m.contributions.find((c) => c.object_id === m.nearest_source_id)
+  const singular = m.contributions.find((c) => c.object_id === m.singular_object_id)
+  return (
+    <div className="rounded-md border border-[#c084fc]/40 p-2" data-testid="magnetic-probe">
+      <h4 className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-[#c084fc]">{t('probe.magneticTitle')}</h4>
+      {!m.defined && singular && (
+        <div role="note" className="mb-1 rounded-md border border-warn/40 bg-warn/5 p-2 text-[11px] leading-snug">
+          <p className="font-semibold text-warn">{t('probe.mSingularTitle')}</p>
+          <p>{t(m.singular_kind === 'infinite_wire' ? 'probe.mSingularWire' : 'probe.mSingularLoop', { name: singular.name, i: formatSI(singular.current_A, 'A') })}</p>
+          <p className="mt-1 text-muted">{t('probe.mSingularExplain')}</p>
+        </div>
+      )}
+      <table className="w-full text-xs" aria-label={t('probe.magneticFields')}>
+        <tbody>
+          {vectors.map((v) => (
+            <ProbeValueRow key={v.quantity} v={v} />
+          ))}
+          {divs.map((v) => (
+            <ProbeValueRow key={v.quantity} v={v} />
+          ))}
+        </tbody>
+      </table>
+      <p className="mt-1 font-mono text-[11px] text-muted">B = μ₀H, μ₀ = {m.mu0_H_per_m.toExponential(10)} H/m</p>
+      <p className="text-[11px] leading-snug text-muted">{t(m.defined ? 'probe.mDivNote' : 'probe.mDivSingularNote')}</p>
+      {nearest && m.nearest_source_distance_m !== null && (
+        <p className="mt-1 text-[11px]">
+          {t('probe.nearestSource', { name: nearest.name, d: formatSI(m.nearest_source_distance_m, 'm', 4) })}
+        </p>
+      )}
+      {m.contributions.length > 0 && (
+        <>
+          <h4 className="mb-1 mt-1 text-[11px] font-semibold uppercase tracking-wider text-muted">{t('probe.mSuperposition')}</h4>
+          <table className="w-full text-[11px]" aria-label={t('probe.mSuperposition')}>
+            <thead>
+              <tr className="text-left text-muted">
+                <th className="font-normal">{t('probe.source')}</th>
+                <th className="text-right font-normal">|Bᵢ|</th>
+                <th className="text-right font-normal">|Hᵢ|</th>
+              </tr>
+            </thead>
+            <tbody className="font-mono">
+              {m.contributions.map((c) => (
+                <tr key={c.object_id} className="border-t border-border/60 align-top">
+                  <td className="max-w-28 font-sans">
+                    <div className="truncate">{c.name} <span className="text-muted">({formatSI(c.current_A, 'A')})</span></div>
+                    {c.B_T && <div className="text-[10px] text-muted">Bᵢ = {formatVector(c.B_T)} T</div>}
+                  </td>
+                  <td className="text-right">{c.B_magnitude_T === null ? t('probe.singular') : formatSI(c.B_magnitude_T, 'T', 4)}</td>
+                  <td className="text-right">{c.H_magnitude_A_per_m === null ? t('probe.singular') : formatSI(c.H_magnitude_A_per_m, 'A/m', 4)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="mt-1 text-[11px] leading-snug text-muted">{t('probe.mSuperpositionNote')}</p>
+        </>
+      )}
+    </div>
   )
 }
 
@@ -276,10 +364,9 @@ function Method({ title, method, extra }: { title: string; method: MethodInfo; e
 }
 
 /** Derived visualizations: how each was obtained, separately from the accuracy of the field. */
-function DerivedProducts({ sim }: { sim: Simulation }) {
+function DerivedProducts({ header: h, title }: { header: ResultHeader | undefined; title: string }) {
   const { t } = useT()
   const level = useViewStore((s) => s.lineDensity)
-  const h = sim.result?.header
   if (!h || (!h.field_lines && !h.equipotentials && !h.isosurfaces)) return null
   const fl = h.field_lines
   const shown = fl ? fl.lines.filter((l) => l.level === Math.min(level, fl.levels - 1)) : []
@@ -289,11 +376,11 @@ function DerivedProducts({ sim }: { sim: Simulation }) {
     counts.set(key, (counts.get(key) ?? 0) + 1)
   }
   return (
-    <Section title={t('derived.title')}>
+    <Section title={title}>
       <p className="text-[11px] leading-snug text-muted">{t('derived.intro')}</p>
       {fl && (
         <Method
-          title={t('derived.fieldLines')}
+          title={t(fl.field === 'B' ? 'derived.bLines' : 'derived.fieldLines')}
           method={fl.method}
           extra={
             <div className="mt-1">
@@ -308,7 +395,8 @@ function DerivedProducts({ sim }: { sim: Simulation }) {
                 <tbody>
                   {[...counts.entries()].map(([key, n]) => {
                     const [from, to] = key.split('>') as [string, string]
-                    const numerical = ['max_length', 'integration_failure'].some((r) => r === from || r === to)
+                    const numericalEnds = fl.field === 'B' ? ['max_length', 'integration_failure', 'source_singularity', 'stagnation_point'] : ['max_length', 'integration_failure']
+                    const numerical = numericalEnds.some((r) => r === from || r === to)
                     return (
                       <tr key={key} className={numerical ? 'text-warn' : ''}>
                         <td>{t(`end.${from}` as MessageKey)}</td>
@@ -319,7 +407,7 @@ function DerivedProducts({ sim }: { sim: Simulation }) {
                   })}
                 </tbody>
               </table>
-              {shown.length === 0 && <p className="text-[11px] text-muted">{t('derived.noLines')}</p>}
+              {shown.length === 0 && <p className="text-[11px] text-muted">{t(fl.field === 'B' ? 'derived.noBLines' : 'derived.noLines')}</p>}
               {fl.lines_stay_in_plane === false && <p className="mt-1 text-[11px] text-warn">{t('derived.leavePlane')}</p>}
             </div>
           }
@@ -351,6 +439,40 @@ function DerivedProducts({ sim }: { sim: Simulation }) {
   )
 }
 
+/** Model, classification, assumptions and warnings of one result (electric or magnetic). */
+function ModelSections({ h, title }: { h: ResultHeader; title: string }) {
+  const { t, loc } = useT()
+  const advanced = useViewStore((s) => s.level === 'advanced')
+  return (
+    <>
+      <Section title={title}>
+        <div className="flex flex-wrap gap-1.5">
+          <Badge tone="ok">{t(`classification.${h.classification}` as MessageKey)}</Badge>
+          <Badge tone="muted">{t(`solverKind.${h.solver_kind}` as MessageKey)}</Badge>
+        </div>
+        <p className="text-xs leading-snug">{loc(h.classification_note)}</p>
+        {advanced && (
+          <p className="font-mono text-[11px] text-muted">
+            {h.solver_id} v{h.solver_version}
+          </p>
+        )}
+        <ul className="list-disc space-y-1 pl-4 text-xs">
+          {h.assumptions.map((a, i) => (
+            <li key={i}>{loc(a)}</li>
+          ))}
+        </ul>
+        {h.warnings.length > 0 && (
+          <ul className="list-disc space-y-1 pl-4 text-xs text-warn">
+            {h.warnings.map((w, i) => (
+              <li key={i}>{loc(w)}</li>
+            ))}
+          </ul>
+        )}
+      </Section>
+    </>
+  )
+}
+
 export function ResultsPanel({ sim, flux }: { sim: Simulation; flux?: FluxData }) {
   const { t, loc } = useT()
   const advanced = useViewStore((s) => s.level === 'advanced')
@@ -365,7 +487,7 @@ export function ResultsPanel({ sim, flux }: { sim: Simulation; flux?: FluxData }
       )}
       {h && !sim.error && (
         <>
-          <Section title={t('results.model')}>
+          <Section title={t(sim.magnetic.active ? 'results.electricModel' : 'results.model')}>
             <div className="flex flex-wrap gap-1.5">
               <Badge tone="ok">{t(`classification.${h.classification}` as MessageKey)}</Badge>
               <Badge tone="muted">{t(`solverKind.${h.solver_kind}` as MessageKey)}</Badge>
@@ -395,7 +517,18 @@ export function ResultsPanel({ sim, flux }: { sim: Simulation; flux?: FluxData }
           )}
         </>
       )}
-      {!sim.error && <DerivedProducts sim={sim} />}
+      {!sim.error && <DerivedProducts header={h} title={t('derived.title')} />}
+      {sim.magnetic.error && (
+        <div className="border-b border-border p-3">
+          <SimulationError error={sim.magnetic.error} />
+        </div>
+      )}
+      {sim.magnetic.result && !sim.magnetic.error && (
+        <>
+          <ModelSections h={sim.magnetic.result.header} title={t('results.magneticModel')} />
+          <DerivedProducts header={sim.magnetic.result.header} title={t('derived.magneticTitle')} />
+        </>
+      )}
       <Probe sim={sim} />
       {!sim.error && sim.result && <Sources sim={sim} />}
       {advanced && h && sim.result && (

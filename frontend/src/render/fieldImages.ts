@@ -1,10 +1,10 @@
 // Turns engine arrays into colours. Visualization only: values are mapped, never altered.
 import type { SimulationResult } from '@/api/container'
 import type { PlaneGridSampling } from '@/api/types'
-import { absQuantile, diverging, logT, sequential, symlogT, type LogScale } from './colormaps'
+import { absQuantile, diverging, logT, magneticSequential, sequential, symlogT, type LogScale } from './colormaps'
 
 export interface Legend {
-  kind: 'sequential' | 'diverging'
+  kind: 'sequential' | 'diverging' | 'magnetic'
   symbol: string
   unit: string
   min: number
@@ -25,7 +25,8 @@ export interface HeatImage {
   nearest: boolean
 }
 
-export type ScalarKind = 'phi' | 'E' | 'div_E' | 'curl_E' | 'div_D' | 'curl_D'
+export type ScalarKind = 'phi' | 'E' | 'div_E' | 'curl_E' | 'div_D' | 'curl_D' | 'B' | 'H' | 'div_B'
+export const isMagneticKind = (k: string) => k === 'B' || k === 'H' || k === 'div_B'
 
 export function sampling<T>(result: SimulationResult, id: string): T | undefined {
   return result.header.samplings.find((s) => s['id'] === id) as T | undefined
@@ -56,13 +57,18 @@ export const ZERO_CSS = `rgb(${ZERO_COLOR.join(',')})`
 
 const SYMBOLS: Record<ScalarKind, string> = {
   phi: 'φ', E: '|E|', div_E: '∇·E', curl_E: '|∇×E|', div_D: '∇·D', curl_D: '|∇×D|',
+  B: '|B|', H: '|H|', div_B: '∇·B',
 }
 
 /** Per-sample scalar values of a map, read from the engine's arrays (never derived from E):
- *  φ and |E| from the fine slice grid, divergence and curl magnitude from the vector grid. */
-export function scalarSamples(result: SimulationResult, kind: ScalarKind, samplingId?: string): { values: Float32Array; unit: string; samplingId: string } | null {
-  const id = samplingId ?? (kind === 'phi' || kind === 'E' ? 'heat' : 'arrows')
-  const field = result.arrays[`${id}.${kind}`]
+ *  φ, |E|, |B|, |H| from the fine slice grid, divergence and curl magnitude from the vector grid.
+ *  With `contribution` (a current source id), |Bᵢ| or |Hᵢ| of that source alone, which the engine
+ *  returns on the vector grid. */
+export function scalarSamples(result: SimulationResult, kind: ScalarKind, samplingId?: string, contribution?: string): { values: Float32Array; unit: string; samplingId: string } | null {
+  // 'all' shows the arrows of every source; a colour map can only show the total there.
+  const single = contribution && contribution !== 'total' && contribution !== 'all' && (kind === 'B' || kind === 'H')
+  const id = samplingId ?? (single ? 'arrows' : kind === 'phi' || kind === 'E' || kind === 'B' || kind === 'H' ? 'heat' : 'arrows')
+  const field = result.arrays[single ? `${id}.${kind}@${contribution}` : `${id}.${kind}`]
   if (!field) return null
   const vector = field.entry.components === 3
   return { values: vector ? magnitudes(field.data) : field.data, unit: field.entry.unit, samplingId: id }
@@ -90,6 +96,13 @@ export function scalarColoring(kind: ScalarKind, values: Float32Array, unit: str
       colorAt: finiteAction((v, out, o) => diverging(symlogT(v, limit), out, o)),
     }
   }
+  if (kind === 'B' || kind === 'H') {
+    const scale = magnitudeScale(values)
+    return {
+      legend: { kind: 'magnetic', symbol: SYMBOLS[kind], unit, ...scale, scale: 'log', samplingId },
+      colorAt: finiteAction((v, out, o) => magneticSequential(logT(v, scale), out, o)),
+    }
+  }
   if (kind === 'E') {
     const scale = magnitudeScale(values)
     return {
@@ -109,7 +122,7 @@ export function scalarColoring(kind: ScalarKind, values: Float32Array, unit: str
       maxAbs = Math.max(maxAbs, Math.abs(v))
     }
   }
-  const signed = kind === 'div_E' || kind === 'div_D'
+  const signed = kind === 'div_E' || kind === 'div_D' || kind === 'div_B'
   return {
     legend: {
       kind: signed ? 'diverging' : 'sequential',
@@ -129,8 +142,8 @@ export function scalarColoring(kind: ScalarKind, values: Float32Array, unit: str
   }
 }
 
-export function heatImage(result: SimulationResult, kind: ScalarKind): HeatImage | null {
-  const samples = scalarSamples(result, kind)
+export function heatImage(result: SimulationResult, kind: ScalarKind, contribution?: string): HeatImage | null {
+  const samples = scalarSamples(result, kind, undefined, contribution)
   if (!samples) return null
   const grid = sampling<PlaneGridSampling>(result, samples.samplingId)
   if (!grid) return null

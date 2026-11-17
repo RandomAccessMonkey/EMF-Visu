@@ -8,8 +8,13 @@ import type { SimulationResult } from '@/api/container'
 import type { FieldLineInfo } from '@/api/types'
 
 const NUMERICAL_ENDS = new Set(['max_length', 'integration_failure'])
+// A magnetic field line has no physical end: only a detected closure or truncation by the
+// region of interest is a regular outcome; every other end is numerical.
+const REGULAR_B_ENDS = new Set(['closed_loop', 'domain_boundary'])
 export const isNumericalEnd = (l: FieldLineInfo) =>
   NUMERICAL_ENDS.has(l.start_reason) || NUMERICAL_ENDS.has(l.end_reason)
+export const isNumericalBEnd = (l: FieldLineInfo) =>
+  !REGULAR_B_ENDS.has(l.start_reason) || !REGULAR_B_ENDS.has(l.end_reason)
 
 export const FIELD_LINE_COLOR = '#e8f7ff'
 export const NUMERICAL_LINE_COLOR = '#fbbf24'
@@ -48,7 +53,7 @@ const UP = new THREE.Vector3(0, 1, 0)
 
 /** Static direction markers: one arrowhead per line, pointing along +E. They do not move, so
  *  nothing suggests that charge or energy travels along a field line. */
-function DirectionMarkers({ points, lines, size }: { points: Float32Array; lines: FieldLineInfo[]; size: number }) {
+function DirectionMarkers({ points, lines, size, color }: { points: Float32Array; lines: FieldLineInfo[]; size: number; color: string }) {
   const ref = useRef<THREE.InstancedMesh>(null)
   const invalidate = useThree((s) => s.invalidate)
   const marks = useMemo(() => lines.map((l) => midpoint(points, l)).filter((m) => m !== null), [points, lines])
@@ -66,32 +71,33 @@ function DirectionMarkers({ points, lines, size }: { points: Float32Array; lines
   return (
     <instancedMesh key={marks.length} ref={ref} args={[undefined, undefined, marks.length]} frustumCulled={false} renderOrder={3}>
       <coneGeometry args={[0.5, 1.6, 10]} />
-      <meshBasicMaterial color={FIELD_LINE_COLOR} toneMapped={false} />
+      <meshBasicMaterial color={color} toneMapped={false} />
     </instancedMesh>
   )
 }
 
-export function FieldLines({ result, level, markerSize }: { result: SimulationResult; level: number; markerSize: number }) {
+export function FieldLines({ result, level, markerSize, color = FIELD_LINE_COLOR, numericalColor = NUMERICAL_LINE_COLOR }: { result: SimulationResult; level: number; markerSize: number; color?: string; numericalColor?: string }) {
   const set = result.header.field_lines
   const points = set ? result.arrays[set.array]?.data : undefined
   const data = useMemo(() => {
     if (!set || !points) return null
+    const numerical = set.field === 'B' ? isNumericalBEnd : isNumericalEnd
     const shown = set.lines.filter((l) => l.level === Math.min(level, set.levels - 1))
-    const good = shown.filter((l) => !isNumericalEnd(l))
-    const bad = shown.filter(isNumericalEnd)
+    const good = shown.filter((l) => !numerical(l))
+    const bad = shown.filter(numerical)
     return { good, goodPairs: segmentPairs(points, good), badPairs: segmentPairs(points, bad) }
   }, [set, points, level])
   if (!data || !points) return null
   return (
     <>
       {data.goodPairs.length > 0 && (
-        <Line points={data.goodPairs} segments color={FIELD_LINE_COLOR} lineWidth={1.4} transparent opacity={0.92} renderOrder={2} />
+        <Line points={data.goodPairs} segments color={color} lineWidth={1.4} transparent opacity={0.92} renderOrder={2} />
       )}
       {/* Lines whose end is a numerical outcome are drawn differently, never as normal endings. */}
       {data.badPairs.length > 0 && (
-        <Line points={data.badPairs} segments color={NUMERICAL_LINE_COLOR} lineWidth={1.4} dashed dashSize={0.04} gapSize={0.03} renderOrder={2} />
+        <Line points={data.badPairs} segments color={numericalColor} lineWidth={1.4} dashed dashSize={0.04} gapSize={0.03} renderOrder={2} />
       )}
-      <DirectionMarkers points={points} lines={data.good} size={markerSize} />
+      <DirectionMarkers points={points} lines={data.good} size={markerSize} color={color} />
     </>
   )
 }

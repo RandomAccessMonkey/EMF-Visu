@@ -1,12 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeftRight, Box, Circle, Copy, Cylinder, Eye, EyeOff, Minus, Plus, Square, Trash2 } from 'lucide-react'
+import { ArrowLeftRight, Box, Circle, CircleDot, Copy, Cylinder, Eye, EyeOff, Minus, Plus, Square, Trash2, Zap } from 'lucide-react'
 import { api } from '@/api/client'
-import type { PrimitiveType, SceneObject } from '@/api/types'
+import type { Preset, PrimitiveType, SceneObject } from '@/api/types'
 import { Badge, Button, Section } from '@/components/ui/controls'
 import { useT, type MessageKey } from '@/i18n'
 import { cn, formatSI } from '@/lib/format'
-import { dipoleInfo, useSceneStore, type NewObjectKind } from '@/state/sceneStore'
+import { chargeOf, currentOf, dipoleInfo, useSceneStore, type NewObjectKind } from '@/state/sceneStore'
 import { useViewStore } from '@/state/viewStore'
+import { MAGNETIC_SOURCE_COLOR } from '@/render/magneticColors'
 
 const GEOMETRY: { kind: Exclude<PrimitiveType, 'point' | 'group'>; icon: typeof Box }[] = [
   { kind: 'sphere', icon: Circle },
@@ -17,14 +18,41 @@ const GEOMETRY: { kind: Exclude<PrimitiveType, 'point' | 'group'>; icon: typeof 
   { kind: 'line', icon: Minus },
 ]
 
+/** Load a preset (or one of its variants) and apply its view hint (display only). */
+function loadPreset(p: Preset, scene: NonNullable<Preset['scene']>) {
+  useSceneStore.getState().load(scene, { presetId: p.id, presetScene: scene })
+  const hint = p.view_hint
+  useViewStore.getState().set({
+    probePoint: null,
+    ...(hint?.mode ? { mode: hint.mode } : {}),
+    ...(hint?.plane ? { plane: hint.plane, offset: 0 } : {}),
+  })
+}
+
+function Variants({ p }: { p: Preset }) {
+  const { t, loc } = useT()
+  const scene = useSceneStore((s) => s.presetScene)
+  if (p.variants.length === 0) return null
+  return (
+    <div className="mt-1.5 flex flex-wrap gap-1" role="group" aria-label={t('preset.variants')}>
+      {p.variants.map((v) => (
+        <Button key={v.id} variant={JSON.stringify(scene) === JSON.stringify(v.scene) ? 'primary' : 'ghost'} title={loc(v.description)} onClick={() => loadPreset(p, v.scene)}>
+          {loc(v.name)}
+        </Button>
+      ))}
+    </div>
+  )
+}
+
 function Presets() {
   const { t, loc } = useT()
   const presets = useQuery({ queryKey: ['presets'], queryFn: api.presets, staleTime: Infinity })
   const presetId = useSceneStore((s) => s.presetId)
-  const load = useSceneStore((s) => s.load)
   const beginner = useViewStore((s) => s.level === 'beginner')
+  const presetScene = useSceneStore((s) => s.presetScene)
   if (presets.isError) return <p className="text-xs text-danger">{t('error.api')}</p>
   const active = presets.data?.find((p) => p.id === presetId)
+  const variant = active?.variants.find((v) => JSON.stringify(v.scene) === JSON.stringify(presetScene))
   return (
     <>
       <ul className="flex flex-col gap-0.5">
@@ -34,11 +62,7 @@ function Presets() {
               type="button"
               disabled={!p.available}
               title={p.available ? loc(p.description) : t('preset.unavailable', { phase: p.planned_phase ?? '—' })}
-              onClick={() => {
-                if (!p.scene) return
-                load(p.scene, { presetId: p.id })
-                useViewStore.getState().set({ probePoint: null })
-              }}
+              onClick={() => p.scene && loadPreset(p, p.scene)}
               className={cn(
                 'flex w-full items-center justify-between gap-2 rounded px-2 py-1 text-left text-xs',
                 p.available ? 'hover:bg-panel-2' : 'cursor-not-allowed text-muted/60',
@@ -51,15 +75,16 @@ function Presets() {
               </span>
               {!p.available && <Badge tone="muted">{t('preset.phase', { phase: p.planned_phase ?? '—' })}</Badge>}
             </button>
+            {p.id === presetId && <Variants p={p} />}
           </li>
         ))}
       </ul>
       {active && beginner && (
         <div className="rounded-md border border-accent/25 bg-accent/5 p-2 text-xs leading-relaxed text-text/90">
-          <p>{loc(active.description)}</p>
+          <p>{loc(variant?.description ?? active.description)}</p>
           <p className="mt-1 text-muted">
             <span className="font-semibold text-accent-2">{t('preset.expected')}: </span>
-            {loc(active.expected_behavior)}
+            {loc(variant?.expected_behavior ?? active.expected_behavior)}
           </p>
         </div>
       )}
@@ -75,16 +100,19 @@ function ObjectRow({ o, depth }: { o: SceneObject; depth: number }) {
   // Derived from the scene on every render: selectors must not return fresh objects.
   const dipole = o.primitive.type === 'group' ? dipoleInfo(scene, o.id) : null
   const { select, update, remove, duplicate } = useSceneStore.getState()
-  const q = o.source?.charge_C
+  const q = chargeOf(o)
+  const current = currentOf(o)
   const label = o.name || o.id
   const isGroup = o.primitive.type === 'group'
   const summary = isGroup
     ? dipole?.balanced
       ? `±${formatSI(dipole.charge_C, 'C')} · d = ${formatSI(dipole.separation_m, 'm')}`
       : t('primitive.group')
-    : q !== undefined && q !== null
+    : q !== undefined
       ? formatSI(q, 'C')
-      : t(`primitive.${o.primitive.type}` as MessageKey)
+      : current !== undefined
+        ? `${formatSI(current, 'A')} · ${t(o.source?.type === 'infinite_wire' ? 'objects.wireShort' : 'objects.loopShort')}`
+        : t(`primitive.${o.primitive.type}` as MessageKey)
   return (
     <>
       <li
@@ -98,10 +126,12 @@ function ObjectRow({ o, depth }: { o: SceneObject; depth: number }) {
         <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left text-xs" onClick={() => select(o.id)} aria-pressed={selected}>
           {isGroup ? (
             <ArrowLeftRight size={11} className="shrink-0 text-accent-2" />
+          ) : current !== undefined ? (
+            <Zap size={11} className="shrink-0" style={{ color: MAGNETIC_SOURCE_COLOR }} />
           ) : (
             <span
               className="h-2.5 w-2.5 shrink-0 rounded-full"
-              style={{ background: q === undefined || q === null ? '#7c8db0' : q > 0 ? '#ff7a59' : q < 0 ? '#4aa8ff' : '#9aa7bd' }}
+              style={{ background: q === undefined ? '#7c8db0' : q > 0 ? '#ff7a59' : q < 0 ? '#4aa8ff' : '#9aa7bd' }}
             />
           )}
           <span className="truncate">{label}</span>
@@ -140,6 +170,14 @@ export function ObjectsPanel() {
           </Button>
           <Button variant="primary" className="flex-1" onClick={() => add('negative_charge', 'objects.charge')}>
             <Minus size={13} /> {t('objects.addNegative')}
+          </Button>
+        </div>
+        <div className="flex gap-1.5">
+          <Button className="flex-1" onClick={() => add('wire', 'objects.wire')} title={t('objects.addWireHint')}>
+            <Zap size={13} /> {t('objects.addWire')}
+          </Button>
+          <Button className="flex-1" onClick={() => add('loop', 'objects.loop')} title={t('objects.addLoopHint')}>
+            <CircleDot size={13} /> {t('objects.addLoop')}
           </Button>
         </div>
         <Button onClick={() => useSceneStore.getState().addDipole(`${t('objects.dipole')} ${objects.filter((o) => o.primitive.type === 'group').length + 1}`)} title={t('objects.addDipoleHint')}>

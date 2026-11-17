@@ -11,7 +11,8 @@ import { ResultsPanel, SimulationError } from '@/panels/ResultsPanel'
 import { StatusBar } from '@/panels/StatusBar'
 import { TopBar } from '@/panels/TopBar'
 import { VisualizationPanel } from '@/panels/VisualizationPanel'
-import { heatImage, magnitudeScale, magnitudes } from '@/render/fieldImages'
+import { heatImage, isMagneticKind, magnitudeScale, magnitudes } from '@/render/fieldImages'
+import { effectiveContribution, magneticArrayName } from '@/render/MagneticLayers'
 import { Viewport } from '@/render/Viewport'
 import { useFlux } from '@/sim/useFlux'
 import { useSimulation } from '@/sim/useSimulation'
@@ -60,15 +61,27 @@ export default function App() {
   }, [lang])
 
   // Colour mapping of cached engine arrays: recomputed on visual changes without any re-solve.
+  // Magnetic maps (|B|, |H|, ∇·B) come from the magnetic result, the others from the electric.
+  const contributionChoice = useViewStore((s) => s.contribution)
+  const sourceIds = useMemo(() => sim.magnetic.result?.header.current_sources.map((c) => c.object_id) ?? [], [sim.magnetic.result])
+  const contribution = effectiveContribution(contributionChoice, sourceIds)
+  const heatResult = heatKind !== 'none' && isMagneticKind(heatKind) ? sim.magnetic.result : sim.result
   const image = useMemo(
-    () => (sim.result && heatKind !== 'none' ? heatImage(sim.result, heatKind) : null),
-    [sim.result, heatKind],
+    () => (heatResult && heatKind !== 'none' ? heatImage(heatResult, heatKind, contribution) : null),
+    [heatResult, heatKind, contribution],
   )
   const vectorField = useViewStore((s) => s.vectorField)
   const arrowScale = useMemo(() => {
     const field = sim.result?.arrays[`arrows.${vectorField}`]
     return field ? magnitudeScale(magnitudes(field.data)) : null
   }, [sim.result, vectorField])
+  // B/H arrows have their own scale and legend; with one source shown, that source's own field.
+  const magneticField = useViewStore((s) => s.magneticField)
+  const magneticArrowScale = useMemo(() => {
+    const field = sim.magnetic.result?.arrays[magneticArrayName('arrows', magneticField, contribution)]
+    return field ? magnitudeScale(magnitudes(field.data)) : null
+  }, [sim.magnetic.result, magneticField, contribution])
+  const error = sim.error ?? sim.magnetic.error
 
   return (
     <div className="flex h-full flex-col">
@@ -80,17 +93,31 @@ export default function App() {
         <main className="order-1 flex min-h-[45vh] min-w-0 flex-1 flex-col lg:order-2">
           <ViewStatement />
           <div className="relative min-h-0 flex-1">
-          <Viewport flux={sim.error ? undefined : flux.data} result={sim.error ? undefined : sim.result} image={sim.error ? null : image} arrowScale={sim.error ? null : arrowScale} />
-          <Legend heat={sim.error ? null : (image?.legend ?? null)} arrows={sim.error ? null : arrowScale} result={sim.error ? undefined : sim.result} flux={sim.error ? undefined : flux.data} />
+          <Viewport
+            flux={sim.error ? undefined : flux.data}
+            result={sim.error ? undefined : sim.result}
+            magnetic={sim.magnetic.error ? undefined : sim.magnetic.result}
+            image={(isMagneticKind(heatKind) ? sim.magnetic.error : sim.error) ? null : image}
+            arrowScale={sim.error ? null : arrowScale}
+            magneticArrowScale={sim.magnetic.error ? null : magneticArrowScale}
+          />
+          <Legend
+            heat={(isMagneticKind(heatKind) ? sim.magnetic.error : sim.error) ? null : (image?.legend ?? null)}
+            arrows={sim.error ? null : arrowScale}
+            result={sim.error ? undefined : sim.result}
+            flux={sim.error ? undefined : flux.data}
+            magnetic={sim.magnetic.error ? undefined : sim.magnetic.result}
+            magneticArrows={sim.magnetic.error ? null : magneticArrowScale}
+          />
           <AnimatePresence>
-            {sim.error && (
+            {error && (
               <motion.div
                 initial={{ opacity: 0, y: -8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
                 className="absolute right-3 top-3 w-80 max-w-[90%] rounded-lg bg-panel shadow-xl"
               >
-                <SimulationError error={sim.error} />
+                <SimulationError error={error} />
               </motion.div>
             )}
           </AnimatePresence>

@@ -291,3 +291,61 @@ a normal user, with `scripts/native.py`; no Docker and, unless stated, no Redis.
 | Frontend type-check, lint, unit tests | clean; 43 passed |
 | Windows (`native.ps1`, `taskkill`, `tasklist`, PostgreSQL discovery, `initdb` on Windows) | not executed (no Windows machine available) |
 
+## Verification record for Phase 3A (magnetostatic sources)
+
+Development environment: Linux x86_64, Python 3.12, PostgreSQL 16.15, Node 22, Redis present.
+
+**Analytical and numerical validation** (`tests/physics/test_magnetostatics.py`, 51 tests):
+
+| Check | Reference | Tolerance | Result |
+|---|---|---|---|
+| Infinite wire magnitude, 4 distances × 3 currents | μ₀I/(2πr) | 1e-12 relative | pass |
+| Wire direction | φ̂ (right-hand rule), no radial or axial part | 1e-15 | pass |
+| Arbitrary wire orientation (4 directions, 20 points each) | closed form, and numerical Biot–Savart over a ±3 m segment plus its analytical tail | 1e-12; 1e-10 | pass |
+| Current reversal, doubling (wire and loop) | exact sign flip, factor 2 | bitwise; 1e-15 | pass |
+| Two wires same direction / opposite / unequal (zero at x = 3/14 m) | superposed closed forms | 1e-13 | pass |
+| Superposition of three sources | sum of single-source solves | 1e-14 | pass |
+| Loop on the axis, 5 positions | μ₀Ia²/(2(a²+z²)^{3/2}), B_ρ exactly 0 | 1e-14 | pass |
+| Loop off axis, 10 points, distance from the wire ≥ 0.01 a | numerical Biot–Savart (trapezoidal rule, refined until two levels agree to 1e-13) | ≤ 1e-8 relative vector error | pass; measured 1.6e-16 … 1.1e-14 (512–8192 nodes) |
+| Loop near the wire, 0.001 a ≤ d < 0.01 a, 4 points | same, refined to 1e-12 | ≤ 1e-6 | pass; measured 5.7e-15 … 7.4e-14 (8192–65 536 nodes) |
+| Convergence of the numerical reference | error decreases monotonically from > 1e-2 (64 nodes) to < 1e-12 (2048 nodes) | | pass |
+| Loop orientation (3 normals) | rigidly rotated reference field | 1e-12 | pass |
+| Axial and mirror symmetry | constant B_z, B_ρ over 12 azimuths, no B_φ; B_z even, B_ρ odd in z | 1e-14 | pass |
+| Loop right-hand rule | B along +n inside; B circles the wire around (a, 0, 0) | sign | pass |
+| Near-axis formulation | series coefficients positive and decreasing; tail bound < 1e-20; B_ρ/ρ → 3μ₀Ia²z/(4(a²+z²)^{5/2}) as ρ → 0 (10⁻¹²…10⁻⁴ m); no jump across m = 0.5; series against numerical Biot–Savart | 1e-6 (leading order); 1e-11; 1e-10 | pass |
+| B = μ₀H, units T and A/m | | 1e-15 | pass |
+| Singularities | NaN on a wire and on a loop; ∇·B not evaluated there; true value at 2 × the position tolerance | | pass |
+| ∇·B | finite differences (Richardson) consistent with 0 at 8 random points; solver returns exact 0 at 50 points | | pass |
+| Charges do not change B, wires do not change E; cache keys independent | | bitwise | pass |
+
+**Magnetic field lines** (`tests/physics/test_magnetic_field_lines.py`, 11 tests): closed
+circles around a wire, counter-clockwise for current along +z and reversed for −I, radius
+constant within the integration tolerance, closure gap ≤ 1 mm; lines cut by a narrow region
+reported `domain_boundary` at both ends (on the boundary) and never closed; two-wire and loop
+lines follow B (cos ≥ 0.999 per segment); closed loop lines wind exactly once around a wire
+crossing; 3D lines; a helix whose pitch exceeds the closure tolerance is not reported closed;
+lines stopped by the step budget or by a non-finite field end as `max_length` /
+`integration_failure`, never closed; closed lines meet the documented criteria at all three
+qualities.
+
+**API** (`tests/api/test_api_phase3a.py`, 11 tests): units of B, H, ∇·B, ∇·H; mixed requests
+rejected; E and B in one probe with separate units, B = μ₀H, nearest source; contributions sum
+to the total; singular state on a wire and on a loop with the source identified; equation
+statuses for wire-only, loop-only, mixed and charge-only scenes (bilingual); presets 9–11 incl.
+variants and view hint; independent electric and magnetic caches (moving a charge keeps the
+magnetic result, moving a wire keeps the electric and the flux result); malformed and elliptical
+sources refused with reasons; projects with currents persisted; old projects load.
+
+| Item | Result |
+|---|---|
+| Python tests | 276 passed (203 earlier, unchanged except one expected count; 73 new) |
+| ruff, mypy (strict) | clean |
+| Frontend type-check, lint, production build | clean |
+| Frontend unit tests | 50 passed (43 earlier, 7 new) |
+| End-to-end script, native stack (`scripts/native.py`) with Redis and worker | 46 of 46 checks (35 earlier + 11 magnetic), including one high-resolution job per field for a charge-and-wire scene |
+| End-to-end script, stack without a worker (`EMF_E2E_NO_WORKER=1`) | 45 of 45 checks (the high-resolution checks skipped as designed) |
+| Magnetic high-resolution job through the worker (API) | succeeded, 769 × 769 B samples, high-quality field lines |
+| Visual inspection (screenshots) | wire, two wires (same, opposite, each source separately), loop in the xz cross-section and in 3D, charge plus wire: directions follow the right-hand rule; ⊙/⊗ at the correct crossings |
+| Docker images | not rebuilt in this phase (no Docker-related file changed) |
+| Windows | not executed (no Windows machine); the native workflow was run on Linux |
+

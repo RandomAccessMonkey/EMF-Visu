@@ -1,22 +1,96 @@
-import { Billboard, TransformControls } from '@react-three/drei'
+import { Billboard, Html, TransformControls } from '@react-three/drei'
 import { useThree, type ThreeEvent } from '@react-three/fiber'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import type { SceneObject, Vec3 } from '@/api/types'
 import { PLANE_BASIS } from '@/sim/request'
-import { useSceneStore } from '@/state/sceneStore'
+import { chargeOf, useSceneStore } from '@/state/sceneStore'
+import { MAGNETIC_SOURCE_COLOR } from './magneticColors'
 import { useViewStore } from '@/state/viewStore'
 
 const groups = new Map<string, THREE.Group>()
 const COLORS = { positive: '#ff7a59', negative: '#4aa8ff', neutral: '#9aa7bd', inert: '#7c8db0' }
 
 function chargeColor(o: SceneObject): string {
-  const q = o.source?.charge_C ?? 0
+  const q = chargeOf(o) ?? 0
   return q > 0 ? COLORS.positive : q < 0 ? COLORS.negative : COLORS.neutral
 }
 
-function Shape({ o, marker, ghost }: { o: SceneObject; marker: number; ghost: boolean }) {
+const Z = new THREE.Vector3(0, 0, 1)
+const Y = new THREE.Vector3(0, 1, 0)
+
+/** Static chevrons along local +z (the positive current direction) times the sign of I. */
+function Chevrons({ positions, sign, size }: { positions: THREE.Vector3[]; sign: number; size: number }) {
+  const q = new THREE.Quaternion().setFromUnitVectors(Y, Z.clone().multiplyScalar(sign >= 0 ? 1 : -1))
+  return (
+    <>
+      {positions.map((p, i) => (
+        <mesh key={i} position={p} quaternion={q}>
+          <coneGeometry args={[size * 0.55, size * 1.5, 12]} />
+          <meshBasicMaterial color={MAGNETIC_SOURCE_COLOR} toneMapped={false} />
+        </mesh>
+      ))}
+    </>
+  )
+}
+
+/** An infinite wire, drawn as a segment across the region with "∞" at its ends: the drawn ends
+ *  are not physical ends. Local +z is the positive current direction. */
+function WireBody({ o, marker, length, highlight }: { o: SceneObject; marker: number; length: number; highlight: boolean }) {
+  const showDir = useViewStore((s) => s.showCurrentDirection)
+  const I = o.source?.type === 'infinite_wire' ? o.source.current_A : 0
+  const half = length / 2
+  const chevrons = useMemo(() => [-0.3, 0, 0.3].map((f) => new THREE.Vector3(0, 0, f * length)), [length])
+  return (
+    <>
+      <mesh rotation={[Math.PI / 2, 0, 0]}>
+        <cylinderGeometry args={[marker * (highlight ? 0.5 : 0.28), marker * (highlight ? 0.5 : 0.28), length, 12]} />
+        <meshBasicMaterial color={highlight ? '#f3e8ff' : MAGNETIC_SOURCE_COLOR} toneMapped={false} transparent opacity={0.9} />
+      </mesh>
+      {showDir && I !== 0 && <Chevrons positions={chevrons} sign={Math.sign(I)} size={marker} />}
+      {[-half, half].map((z) => (
+        <Html key={z} position={[0, 0, z]} center zIndexRange={[10, 0]} style={{ pointerEvents: 'none' }}>
+          <span className="select-none font-mono text-[11px]" style={{ color: MAGNETIC_SOURCE_COLOR }}>∞</span>
+        </Html>
+      ))}
+    </>
+  )
+}
+
+/** A thin circular loop in its local xy plane, with arrowheads along the current direction
+ *  (counter-clockwise about local +z for positive current). */
+function LoopBody({ o, marker, highlight }: { o: SceneObject; marker: number; highlight: boolean }) {
+  const showDir = useViewStore((s) => s.showCurrentDirection)
+  const radius = o.primitive.type === 'ring' ? o.primitive.radius_m : 0
+  const I = o.source?.type === 'circular_loop' ? o.source.current_A : 0
+  const arrows = useMemo(
+    () => [0, 1, 2, 3].map((k) => {
+      const a = (k * Math.PI) / 2 + Math.PI / 4
+      const tangent = new THREE.Vector3(-Math.sin(a), Math.cos(a), 0).multiplyScalar(Math.sign(I) || 1)
+      return { p: new THREE.Vector3(radius * Math.cos(a), radius * Math.sin(a), 0), q: new THREE.Quaternion().setFromUnitVectors(Y, tangent) }
+    }),
+    [radius, I],
+  )
+  return (
+    <>
+      <mesh>
+        <torusGeometry args={[radius, marker * (highlight ? 0.5 : 0.28), 10, 96]} />
+        <meshBasicMaterial color={highlight ? '#f3e8ff' : MAGNETIC_SOURCE_COLOR} toneMapped={false} />
+      </mesh>
+      {showDir && I !== 0 && arrows.map((a, i) => (
+        <mesh key={i} position={a.p} quaternion={a.q}>
+          <coneGeometry args={[marker * 0.55, marker * 1.5, 12]} />
+          <meshBasicMaterial color={MAGNETIC_SOURCE_COLOR} toneMapped={false} />
+        </mesh>
+      ))}
+    </>
+  )
+}
+
+function Shape({ o, marker, ghost, wireLength, highlight }: { o: SceneObject; marker: number; ghost: boolean; wireLength: number; highlight: boolean }) {
   const p = o.primitive
+  if (o.source?.type === 'infinite_wire' && p.type === 'line') return <WireBody o={o} marker={marker} length={wireLength} highlight={highlight} />
+  if (o.source?.type === 'circular_loop' && p.type === 'ring') return <LoopBody o={o} marker={marker} highlight={highlight} />
   const inert = (
     <meshStandardMaterial color={COLORS.inert} transparent opacity={0.3} roughness={0.6} side={THREE.DoubleSide} />
   )
@@ -69,13 +143,14 @@ function Shape({ o, marker, ghost }: { o: SceneObject; marker: number; ghost: bo
   }
 }
 
-function ObjectNode({ o, marker, offSlice }: { o: SceneObject; marker: number; offSlice: ReadonlySet<string> }) {
+function ObjectNode({ o, marker, offSlice, wireLength }: { o: SceneObject; marker: number; offSlice: ReadonlySet<string>; wireLength: number }) {
   const ref = useRef<THREE.Group>(null)
   const children = useSceneStore((s) => s.scene.objects).filter((c) => c.parent_id === o.id)
   const selected = useSceneStore((s) => s.selectedId === o.id)
   const { select, setTransform } = useSceneStore.getState()
   const mode = useViewStore((s) => s.mode)
   const tool = useViewStore((s) => s.tool)
+  const showCurrents = useViewStore((s) => s.showCurrents)
   const drag = useRef<{ plane: THREE.Plane } | null>(null)
   const [hover, setHover] = useState(false)
 
@@ -136,7 +211,9 @@ function ObjectNode({ o, marker, offSlice }: { o: SceneObject; marker: number; o
         onPointerOver={() => setHover(true)}
         onPointerOut={() => setHover(false)}
       >
-        <Shape o={o} marker={marker} ghost={mode === '2d' && offSlice.has(o.id)} />
+        {(o.role !== 'current_source' || showCurrents) && (
+          <Shape o={o} marker={marker} ghost={mode === '2d' && offSlice.has(o.id)} wireLength={wireLength} highlight={selected || hover} />
+        )}
         {(selected || hover) && (o.primitive.type === 'point' || o.primitive.type === 'group') && (
           <mesh>
             <sphereGeometry args={[marker * 1.9, 24, 16]} />
@@ -145,7 +222,7 @@ function ObjectNode({ o, marker, offSlice }: { o: SceneObject; marker: number; o
         )}
       </group>
       {children.map((c) => (
-        <ObjectNode key={c.id} o={c} marker={marker} offSlice={offSlice} />
+        <ObjectNode key={c.id} o={c} marker={marker} offSlice={offSlice} wireLength={wireLength} />
       ))}
     </group>
   )
@@ -184,7 +261,7 @@ function Gizmo() {
   )
 }
 
-export function SceneObjects({ marker, offSlice }: { marker: number; offSlice: ReadonlySet<string> }) {
+export function SceneObjects({ marker, offSlice, wireLength }: { marker: number; offSlice: ReadonlySet<string>; wireLength: number }) {
   const objects = useSceneStore((s) => s.scene.objects)
   const mode = useViewStore((s) => s.mode)
   const tool = useViewStore((s) => s.tool)
@@ -192,7 +269,7 @@ export function SceneObjects({ marker, offSlice }: { marker: number; offSlice: R
   return (
     <>
       {roots.map((o) => (
-        <ObjectNode key={o.id} o={o} marker={marker} offSlice={offSlice} />
+        <ObjectNode key={o.id} o={o} marker={marker} offSlice={offSlice} wireLength={wireLength} />
       ))}
       {mode === '3d' && tool === 'select' && <Gizmo />}
     </>

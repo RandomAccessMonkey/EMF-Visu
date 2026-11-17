@@ -2,12 +2,12 @@ import type { Role, SceneObject, Vec3 } from '@/api/types'
 import { Button, NumberField, Row, Section, Select, Slider } from '@/components/ui/controls'
 import { useT, type MessageKey } from '@/i18n'
 import { formatSI } from '@/lib/format'
-import { dipoleInfo, useSceneStore } from '@/state/sceneStore'
+import { dipoleInfo, directionOfRotation, rotationForDirection, useSceneStore, type CurrentSource } from '@/state/sceneStore'
 import { useViewStore } from '@/state/viewStore'
 
 const AXES = ['x', 'y', 'z'] as const
 const DEG = Math.PI / 180
-const UNSUPPORTED_ROLES: Role[] = ['conductor', 'dielectric', 'magnetic_material', 'current_source']
+const UNSUPPORTED_ROLES: Role[] = ['conductor', 'dielectric', 'magnetic_material']
 
 function VecRows(props: { value: Vec3; onChange: (v: Vec3) => void; unit: string; factor?: number; prefix: string; step?: number; nonZero?: boolean }) {
   return (
@@ -64,6 +64,8 @@ function Dimensions({ o }: { o: SceneObject }) {
         </>
       )
     case 'line':
+      // A wire's drawn length is not part of the model: the wire is infinite.
+      if (o.source?.type === 'infinite_wire') return <p className="text-[11px] leading-snug text-muted">{t('wire.infiniteNote')}</p>
       return num('dim.length', p.length_m, (v) => ({ ...p, length_m: v }))
     case 'box':
       return (
@@ -111,6 +113,56 @@ function DipoleParameters({ o }: { o: SceneObject }) {
   )
 }
 
+/** Unit vector editor: the stored geometry is the object's rotation; the vector shown is the
+ *  world direction of local +z (wire direction, or loop normal). */
+function DirectionRows({ o, prefix }: { o: SceneObject; prefix: string }) {
+  const setTransform = useSceneStore((s) => s.setTransform)
+  const d = directionOfRotation(o.transform.rotation_euler_xyz_rad)
+  const round = (v: number) => Math.round(v * 1e6) / 1e6
+  return (
+    <VecRows
+      prefix={prefix}
+      unit=""
+      step={0.1}
+      value={[round(d[0]), round(d[1]), round(d[2])]}
+      onChange={(v) => {
+        if (!(Math.hypot(...v) > 0)) return
+        setTransform(o.id, { rotation_euler_xyz_rad: rotationForDirection(v) })
+      }}
+    />
+  )
+}
+
+function CurrentParameters({ o, source }: { o: SceneObject; source: CurrentSource }) {
+  const { t } = useT()
+  const update = useSceneStore((s) => s.update)
+  const canReset = useSceneStore((s) => !!s.presetScene?.objects.some((x) => x.id === o.id))
+  const resetToPreset = useSceneStore((s) => s.resetToPreset)
+  const wire = source.type === 'infinite_wire'
+  const setI = (current_A: number) => update(o.id, { source: { ...source, current_A } })
+  return (
+    <Section title={t('params.current')}>
+      <Row label={`${t('params.current')} I`} hint={t(wire ? 'params.currentHintWire' : 'params.currentHintLoop')}>
+        <Slider label={t('params.current')} value={Math.max(-100, Math.min(100, source.current_A))} min={-100} max={100} step={0.5} onChange={setI} />
+        <NumberField label={t('params.current')} value={source.current_A} unit="A" step={0.5} onChange={setI} />
+      </Row>
+      <Row label={t('params.direction')}>
+        <span className="font-mono text-xs">{source.current_A > 0 ? '+' : source.current_A < 0 ? '−' : '0'}</span>
+        <Button aria-label={t('params.reverse')} onClick={() => setI(-source.current_A)} title={t('params.reverseHint')}>
+          {t('params.reverse')}
+        </Button>
+      </Row>
+      <p className="text-[11px] leading-snug text-muted">{t(wire ? 'params.wireDirectionNote' : 'params.loopDirectionNote')}</p>
+      <DirectionRows o={o} prefix={t(wire ? 'params.wireDirection' : 'params.loopNormal')} />
+      {canReset && (
+        <Button onClick={() => resetToPreset(o.id)} title={t('params.resetHint')}>
+          {t('params.reset')}
+        </Button>
+      )}
+    </Section>
+  )
+}
+
 function ObjectParameters({ o }: { o: SceneObject }) {
   const { t } = useT()
   const { update, setTransform } = useSceneStore.getState()
@@ -130,7 +182,7 @@ function ObjectParameters({ o }: { o: SceneObject }) {
         </Row>
         <Row label={t('params.role')} hint={t('params.roleHint')}>
           {source ? (
-            <span className="text-xs">{t('role.charge_source')}</span>
+            <span className="text-xs">{t(source.type === 'point_charge' ? 'role.charge_source' : source.type === 'infinite_wire' ? 'role.wire' : 'role.loop')}</span>
           ) : isGroup ? (
             <span className="text-xs">{t(o.primitive.type === 'group' && o.primitive.kind === 'dipole' ? 'role.dipole_group' : 'role.group')}</span>
           ) : (
@@ -156,7 +208,8 @@ function ObjectParameters({ o }: { o: SceneObject }) {
           <DipoleParameters o={o} />
         </Section>
       )}
-      {source && (
+      {source && source.type !== 'point_charge' && <CurrentParameters o={o} source={source} />}
+      {source?.type === 'point_charge' && (
         <Section title={t('params.electrical')}>
           <Row label={`${t('params.charge')} q`} hint={t('params.chargeHint')}>
             <Slider label={t('params.charge')} value={Math.max(-100, Math.min(100, source.charge_C / 1e-9))} min={-100} max={100} step={0.5} onChange={(v) => update(o.id, { source: { ...source, charge_C: v * 1e-9 } })} />
@@ -173,7 +226,7 @@ function ObjectParameters({ o }: { o: SceneObject }) {
       )}
       <Section title={t('params.transform')}>
         <VecRows prefix={t('params.position')} unit="m" step={0.1} value={o.transform.position_m} onChange={(v) => setTransform(o.id, { position_m: v })} />
-        {(advanced || !source) && (
+        {(advanced || !source) && source?.type !== 'infinite_wire' && source?.type !== 'circular_loop' && (
           <>
             <VecRows prefix={t('params.rotation')} unit="°" factor={DEG} step={5} value={o.transform.rotation_euler_xyz_rad} onChange={(v) => setTransform(o.id, { rotation_euler_xyz_rad: v })} />
             <VecRows prefix={t('params.scale')} unit="×" step={0.1} nonZero value={o.transform.scale} onChange={(v) => setTransform(o.id, { scale: v })} />

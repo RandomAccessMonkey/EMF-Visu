@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from ..i18n import L, LocalizedText
 from ..scene.models import Scene
-from .analytical import PointChargeVacuumSolver
+from .analytical import FilamentMagnetostaticSolver, PointChargeVacuumSolver
 from .base import Solver, SolveRequest, SolverKind
 
 
@@ -69,8 +69,7 @@ class SolverCatalog:
         live = [
             SolverDescriptor(
                 id=s.id, kind=s.kind, version=s.version, available=True, queue=f"solver.{s.kind}",
-                name=L("Analytical electrostatics: point charges in vacuum",
-                       "Analitikus elektrosztatika: ponttöltések vákuumban"),
+                name=s.name,
             )
             for s in self._solvers.values()
         ]
@@ -81,7 +80,11 @@ class SolverCatalog:
         registered first, so they win whenever they apply). Never falls back to a simpler
         model: if nothing supports the scene, raise with every solver's reasons."""
         reasons: list[LocalizedText] = []
+        # Only solvers of the requested field kind are asked, so a refusal lists the reasons
+        # that matter (not "this solver computes the other field").
         for s in self._solvers.values():
+            if request.field_kind not in getattr(s, "field_kinds", ("electric", "magnetic")):
+                continue
             sup = s.supports(scene, request)
             if sup.supported:
                 return s
@@ -90,4 +93,4 @@ class SolverCatalog:
 
 
 def default_catalog() -> SolverCatalog:
-    return SolverCatalog([PointChargeVacuumSolver()])
+    return SolverCatalog([PointChargeVacuumSolver(), FilamentMagnetostaticSolver()])

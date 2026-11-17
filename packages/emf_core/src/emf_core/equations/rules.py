@@ -53,7 +53,7 @@ def _ampere_maxwell(c: ModelContext) -> Out:
 
 
 def _e_from_phi(c: ModelContext) -> Out:
-    if c.regime == "electrostatic":
+    if c.regime in ("electrostatic", "magnetostatic") and not c.time_varying:
         return OK
     return ("not_applicable", L("With time-varying B the field is not purely a gradient.",
                                 "Időben változó B esetén a mező nem tisztán gradiens."))
@@ -75,6 +75,8 @@ def _coulomb(c: ModelContext) -> Out:
 
 
 def _superposition(c: ModelContext) -> Out:
+    if c.regime != "electrostatic":
+        return ("not_evaluated", _NO_E)
     if c.medium not in ("vacuum", "homogeneous_linear", "inhomogeneous_linear"):
         return ("not_applicable", L("The medium is not linear.", "A közeg nem lineáris."))
     if c.source_count == 0:
@@ -167,7 +169,7 @@ def _gauss_integral(c: ModelContext) -> Out:
 
 
 def _divergence_theorem(c: ModelContext) -> Out:
-    if c.source_count > 0:
+    if c.regime == "electrostatic" and c.source_count > 0:
         return ("applicable_under_assumptions",
                 L("The point charges make div E a distribution: the theorem holds in the "
                   "distributional sense, provided no charge lies on the surface.",
@@ -244,6 +246,12 @@ def _lorentz(c: ModelContext) -> Out:
 
 
 def _poynting(c: ModelContext) -> Out:
+    if c.computes_magnetic_field and _static(c):
+        return ("not_evaluated",
+                L("S = E × H is not computed in this milestone. In static fields its divergence "
+                  "is zero, so no energy accumulates anywhere.",
+                  "Az S = E × H mennyiséget ebben a mérföldkőben nem számítjuk. Sztatikus "
+                  "mezőkben a divergenciája nulla, így sehol sem halmozódik fel energia."))
     if not c.computes_magnetic_field:
         return ("not_evaluated",
                 L("H is not computed by the electrostatic solver (H = 0 in this model, so there "
@@ -256,6 +264,71 @@ def _poynting(c: ModelContext) -> Out:
 def _energy(c: ModelContext) -> Out:
     return ("not_evaluated", L("Energy density is not computed by the current solver yet.",
                                "Az energiasűrűséget a jelenlegi megoldó még nem számítja."))
+
+
+_NO_E = L("The active model contains no charges; the electric field is not computed by this "
+          "magnetostatic model.",
+          "Az aktív modellben nincs töltés; ez a magnetosztatikus modell nem számít elektromos "
+          "mezőt.")
+
+
+def _vacuum_b(c: ModelContext) -> Out:
+    if not c.computes_magnetic_field:
+        return ("not_evaluated", _NO_B)
+    if c.medium != "vacuum":
+        return ("not_applicable", L("The medium is not vacuum; use B = μH or B = μ₀(H + M).",
+                                    "A közeg nem vákuum; a B = μH vagy B = μ₀(H + M) alak "
+                                    "használandó."))
+    return OK
+
+
+def _current_kind(kind: str, missing: LocalizedText) -> Rule:
+    def rule(c: ModelContext) -> Out:
+        if not c.computes_magnetic_field:
+            return ("not_evaluated", _NO_B)
+        if kind not in c.current_source_kinds:
+            return ("not_applicable", missing)
+        return OK
+    return rule
+
+
+def _loop_axis(c: ModelContext) -> Out:
+    status, reason = _current_kind("circular_loop", _NO_LOOP)(c)
+    if status != "applicable":
+        return status, reason
+    return ("applicable_under_assumptions",
+            L("Only on the symmetry axis of a loop; off the axis the full elliptic-integral "
+              "solution applies (and is what the solver evaluates).",
+              "Csak a körvezető szimmetriatengelyén; azon kívül a teljes, elliptikus "
+              "integrálos megoldás érvényes (a megoldó azt értékeli ki)."))
+
+
+_NO_LOOP = L("The scene contains no circular current loop.",
+             "A jelenetben nincs körvezető.")
+_NO_WIRE = L("The scene contains no straight wire.", "A jelenetben nincs egyenes vezető.")
+
+
+def _superposition_b(c: ModelContext) -> Out:
+    if not c.computes_magnetic_field:
+        return ("not_evaluated", _NO_B)
+    if c.source_count == 0:
+        return ("applicable_under_assumptions",
+                L("No current flows: every term of the sum is zero.",
+                  "Nem folyik áram: az összeg minden tagja nulla."))
+    if c.source_count == 1:
+        return ("applicable_under_assumptions",
+                L("Only one current source is present, so the sum has a single term.",
+                  "Csak egy áramforrás van jelen, így az összeg egyetlen tagból áll."))
+    return OK
+
+
+def _magnetostatic_source(c: ModelContext) -> Out:
+    status, reason = _magnetostatic_only(c)
+    if status == "applicable" and c.source_count == 0:
+        return ("applicable_under_assumptions",
+                L("All currents are zero, so B = 0 everywhere.",
+                  "Minden áram nulla, így B = 0 mindenütt."))
+    return status, reason
 
 
 RULES: dict[str, Rule] = {
@@ -284,7 +357,15 @@ RULES: dict[str, Rule] = {
     "poisson_homogeneous": _poisson_homog,
     "laplace": _laplace,
     "ampere_static": _magnetostatic_only,
-    "biot_savart": _magnetostatic_only,
+    "biot_savart": _magnetostatic_source,
+    "biot_savart_integral": _magnetostatic_source,
+    "infinite_wire_field": _current_kind("infinite_wire", _NO_WIRE),
+    "loop_axis_field": _loop_axis,
+    "loop_field_elliptic": _current_kind("circular_loop", _NO_LOOP),
+    "superposition_magnetic": _superposition_b,
+    "div_B_filaments": lambda c: OK if c.computes_magnetic_field else ("not_evaluated", _NO_B),
+    "b_mu0_h": _vacuum_b,
+    "h_from_b": _vacuum_b,
     "constitutive_d_general": lambda c: OK,
     "constitutive_d_linear": _d_linear,
     "constitutive_b_general": _needs_b,

@@ -1105,6 +1105,25 @@
         "title": "BoxShape",
         "description": "Width (local x), depth (local y), height (local z)."
       },
+      "CircularLoopSource": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "circular_loop",
+            "title": "Type",
+            "default": "circular_loop"
+          },
+          "current_A": {
+            "type": "number",
+            "title": "Current A",
+            "default": 10.0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "CircularLoopSource",
+        "description": "Ideal thin circular filament carrying a steady current (Phase 3A).\n\nCarried by a ``ring`` primitive with role ``current_source``: centre = world position,\nradius = ``radius_m`` times the in-plane world scale, normal n = normalised (c_x x c_y) of the\nworld matrix. Positive ``current_A`` circulates counter-clockwise about +n (right-hand rule:\nB points along +n on the axis). Electrically neutral."
+      },
       "ComponentHealth": {
         "properties": {
           "ok": {
@@ -1147,6 +1166,95 @@
         "additionalProperties": false,
         "type": "object",
         "title": "CubeShape"
+      },
+      "CurrentSourceInfo": {
+        "properties": {
+          "object_id": {
+            "type": "string",
+            "title": "Object Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "infinite_wire",
+              "circular_loop"
+            ],
+            "title": "Kind"
+          },
+          "current_A": {
+            "type": "number",
+            "title": "Current A"
+          },
+          "point_m": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Point M"
+          },
+          "direction": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Direction"
+          },
+          "radius_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Radius M"
+          },
+          "plane_crossing_m": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "number"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Plane Crossing M",
+            "default": {}
+          },
+          "plane_crossing_sign": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Plane Crossing Sign",
+            "default": {}
+          },
+          "plane_distance_m": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Plane Distance M",
+            "default": {}
+          }
+        },
+        "type": "object",
+        "required": [
+          "object_id",
+          "kind",
+          "current_A",
+          "point_m",
+          "direction"
+        ],
+        "title": "CurrentSourceInfo",
+        "description": "One ideal current filament (Phase 3A), in world coordinates, with its relation to every\nplane-grid sampling (for drawing \u2299/\u2297 crossings and projections; geometry only)."
       },
       "CylinderPrimitive": {
         "properties": {
@@ -1481,6 +1589,14 @@
             ],
             "title": "Solver Id"
           },
+          "solver_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Solver Ids",
+            "default": []
+          },
           "unsupported_reasons": {
             "items": {
               "$ref": "#/components/schemas/LocalizedText"
@@ -1632,7 +1748,9 @@
               "domain_boundary",
               "stagnation_point",
               "max_length",
-              "integration_failure"
+              "integration_failure",
+              "closed_loop",
+              "source_singularity"
             ],
             "title": "Start Reason"
           },
@@ -1644,7 +1762,9 @@
               "domain_boundary",
               "stagnation_point",
               "max_length",
-              "integration_failure"
+              "integration_failure",
+              "closed_loop",
+              "source_singularity"
             ],
             "title": "End Reason"
           },
@@ -1673,6 +1793,17 @@
           "steps": {
             "type": "integer",
             "title": "Steps"
+          },
+          "closure_gap_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closure Gap M"
           }
         },
         "type": "object",
@@ -1736,6 +1867,15 @@
           "array": {
             "type": "string",
             "title": "Array"
+          },
+          "field": {
+            "type": "string",
+            "enum": [
+              "E",
+              "B"
+            ],
+            "title": "Field",
+            "default": "E"
           },
           "seeding": {
             "type": "string",
@@ -2109,6 +2249,25 @@
         ],
         "title": "Health"
       },
+      "InfiniteWireSource": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "infinite_wire",
+            "title": "Type",
+            "default": "infinite_wire"
+          },
+          "current_A": {
+            "type": "number",
+            "title": "Current A",
+            "default": 10.0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "InfiniteWireSource",
+        "description": "Ideal infinitely long straight filament carrying a steady current (Phase 3A).\n\nCarried by a ``line`` primitive with role ``current_source``. A point on the axis is the\nobject's world position; the axis direction d is the normalised world image of local +z.\nPositive ``current_A`` flows along +d. The primitive's length is display-only: the model is\ninfinite and has zero radius. The wire is electrically neutral (no electric field)."
+      },
       "IsosurfaceRequest": {
         "properties": {
           "lattice": {
@@ -2286,7 +2445,11 @@
                     "div_E",
                     "curl_E",
                     "div_D",
-                    "curl_D"
+                    "curl_D",
+                    "B",
+                    "H",
+                    "div_B",
+                    "div_H"
                   ]
                 },
                 "type": "array",
@@ -2425,6 +2588,98 @@
           "hu"
         ],
         "title": "LocalizedText"
+      },
+      "MagneticContribution": {
+        "properties": {
+          "object_id": {
+            "type": "string",
+            "title": "Object Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "infinite_wire",
+              "circular_loop"
+            ],
+            "title": "Kind"
+          },
+          "current_A": {
+            "type": "number",
+            "title": "Current A"
+          },
+          "distance_m": {
+            "type": "number",
+            "title": "Distance M"
+          },
+          "B_T": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "B T"
+          },
+          "B_magnitude_T": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "B Magnitude T"
+          },
+          "H_A_per_m": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "H A Per M"
+          },
+          "H_magnitude_A_per_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "H Magnitude A Per M"
+          }
+        },
+        "type": "object",
+        "required": [
+          "object_id",
+          "name",
+          "kind",
+          "current_A",
+          "distance_m",
+          "B_T",
+          "B_magnitude_T",
+          "H_A_per_m",
+          "H_magnitude_A_per_m"
+        ],
+        "title": "MagneticContribution",
+        "description": "Field of one current source at the probe point (Phase 3A)."
       },
       "Material": {
         "properties": {
@@ -2653,6 +2908,14 @@
             "title": "Source Count",
             "default": 0
           },
+          "current_source_kinds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Current Source Kinds",
+            "default": []
+          },
           "gauss_surfaces": {
             "type": "integer",
             "title": "Gauss Surfaces",
@@ -2727,7 +2990,11 @@
                     "div_E",
                     "curl_E",
                     "div_D",
-                    "curl_D"
+                    "curl_D",
+                    "B",
+                    "H",
+                    "div_B",
+                    "div_H"
                   ]
                 },
                 "type": "array",
@@ -2978,7 +3245,11 @@
                     "div_E",
                     "curl_E",
                     "div_D",
-                    "curl_D"
+                    "curl_D",
+                    "B",
+                    "H",
+                    "div_B",
+                    "div_H"
                   ]
                 },
                 "type": "array",
@@ -3086,6 +3357,24 @@
                 "type": "null"
               }
             ]
+          },
+          "variants": {
+            "items": {
+              "$ref": "#/components/schemas/PresetVariant"
+            },
+            "type": "array",
+            "title": "Variants",
+            "default": []
+          },
+          "view_hint": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ViewHint"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -3096,6 +3385,36 @@
           "available"
         ],
         "title": "Preset"
+      },
+      "PresetVariant": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "$ref": "#/components/schemas/LocalizedText"
+          },
+          "description": {
+            "$ref": "#/components/schemas/LocalizedText"
+          },
+          "expected_behavior": {
+            "$ref": "#/components/schemas/LocalizedText"
+          },
+          "scene": {
+            "$ref": "#/components/schemas/Scene"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "expected_behavior",
+          "scene"
+        ],
+        "title": "PresetVariant",
+        "description": "An alternative configuration of the same preset (Phase 3A: preset 10)."
       },
       "ProbeBody": {
         "properties": {
@@ -3324,6 +3643,117 @@
         "title": "ProbeDistributional",
         "description": "What holds at a point-charge position, where only distributions are meaningful."
       },
+      "ProbeMagnetic": {
+        "properties": {
+          "solver_id": {
+            "type": "string",
+            "title": "Solver Id"
+          },
+          "solver_version": {
+            "type": "string",
+            "title": "Solver Version"
+          },
+          "classification": {
+            "type": "string",
+            "enum": [
+              "exact_analytical",
+              "numerical_approximation",
+              "idealized_model",
+              "visualization_aid"
+            ],
+            "title": "Classification"
+          },
+          "defined": {
+            "type": "boolean",
+            "title": "Defined"
+          },
+          "singular_tolerance_m": {
+            "type": "number",
+            "title": "Singular Tolerance M"
+          },
+          "singular_object_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Singular Object Id"
+          },
+          "singular_kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "infinite_wire",
+                  "circular_loop"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Singular Kind"
+          },
+          "values": {
+            "items": {
+              "$ref": "#/components/schemas/ProbeValue"
+            },
+            "type": "array",
+            "title": "Values"
+          },
+          "nearest_source_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nearest Source Id"
+          },
+          "nearest_source_distance_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nearest Source Distance M"
+          },
+          "contributions": {
+            "items": {
+              "$ref": "#/components/schemas/MagneticContribution"
+            },
+            "type": "array",
+            "title": "Contributions"
+          },
+          "mu0_H_per_m": {
+            "type": "number",
+            "title": "Mu0 H Per M"
+          }
+        },
+        "type": "object",
+        "required": [
+          "solver_id",
+          "solver_version",
+          "classification",
+          "defined",
+          "singular_tolerance_m",
+          "values",
+          "nearest_source_id",
+          "nearest_source_distance_m",
+          "contributions",
+          "mu0_H_per_m"
+        ],
+        "title": "ProbeMagnetic",
+        "description": "Magnetic part of the probe (Phase 3A); present when the scene has current sources."
+      },
       "ProbeResponse": {
         "properties": {
           "point_m": {
@@ -3422,6 +3852,16 @@
               }
             ],
             "title": "Diagnostics Method"
+          },
+          "magnetic": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProbeMagnetic"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -3775,6 +4215,14 @@
             "title": "Point Sources",
             "default": []
           },
+          "current_sources": {
+            "items": {
+              "$ref": "#/components/schemas/CurrentSourceInfo"
+            },
+            "type": "array",
+            "title": "Current Sources",
+            "default": []
+          },
           "in_plane_tolerance_m": {
             "anyOf": [
               {
@@ -4028,11 +4476,19 @@
                 "oneOf": [
                   {
                     "$ref": "#/components/schemas/PointChargeSource"
+                  },
+                  {
+                    "$ref": "#/components/schemas/InfiniteWireSource"
+                  },
+                  {
+                    "$ref": "#/components/schemas/CircularLoopSource"
                   }
                 ],
                 "discriminator": {
                   "propertyName": "type",
                   "mapping": {
+                    "circular_loop": "#/components/schemas/CircularLoopSource",
+                    "infinite_wire": "#/components/schemas/InfiniteWireSource",
                     "point_charge": "#/components/schemas/PointChargeSource"
                   }
                 }
@@ -4123,7 +4579,11 @@
                 "div_E",
                 "curl_E",
                 "div_D",
-                "curl_D"
+                "curl_D",
+                "B",
+                "H",
+                "div_B",
+                "div_H"
               ]
             },
             "type": "array",
@@ -4169,6 +4629,18 @@
                 "type": "null"
               }
             ]
+          },
+          "source_contributions": {
+            "items": {
+              "type": "string",
+              "maxLength": 40,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_]+$"
+            },
+            "type": "array",
+            "maxItems": 4,
+            "title": "Source Contributions",
+            "default": []
           }
         },
         "additionalProperties": false,
@@ -4475,6 +4947,44 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "ViewHint": {
+        "properties": {
+          "mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "2d",
+                  "3d"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mode"
+          },
+          "plane": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "xy",
+                  "xz",
+                  "yz"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plane"
+          }
+        },
+        "type": "object",
+        "title": "ViewHint",
+        "description": "View the preset opens with (display only; never part of the physics)."
       },
       "CellResult": {
         "properties": {

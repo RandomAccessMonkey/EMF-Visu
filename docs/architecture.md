@@ -11,8 +11,9 @@ same change as any significant architectural decision.
   specification.
 - **Current state:** Phase 1 (Foundation), Phase 2A (point-charge electrostatics and field
   visualization), Phase 2B-1 (divergence, curl and local field analysis) and Phase 2B-2 (closed
-  surfaces, flux, Gauss and Gauss–Ostrogradsky demonstrations) are implemented. Phase 3 and
-  later are not started.
+  surfaces, flux, Gauss and Gauss–Ostrogradsky demonstrations) and Phase 3A (magnetostatic
+  sources: infinite wires and circular loops, B and H, magnetic field lines) are implemented.
+  Phase 3B and later are not started.
 
 ## 1. Principles
 
@@ -171,7 +172,7 @@ every solver. Unknown fields and non-finite numbers are rejected.
 | `objects[]` | `id`, `name`, `primitive`, `transform`, `parent_id`, `role`, `source`, `material_id`, `enabled` |
 | `primitive` | discriminated on `type`: `group` (container; `kind` `generic` or `dipole`), `point`, `sphere`, `box`, `cylinder`, `ring`, `plane`, `line` |
 | `role` | `geometry_only` (inert, excluded from the model and reported as such), `charge_source`, `current_source`, `conductor`, `dielectric`, `magnetic_material` |
-| `source` | discriminated on `type`: `point_charge {charge_C}` |
+| `source` | discriminated on `type`: `point_charge {charge_C}`, `infinite_wire {current_A}` (on a `line`), `circular_loop {current_A}` (on a `ring`) (Phase 3A) |
 | `materials[]` | `model` (`vacuum`, `linear_dielectric`, `linear_magnetic`, `ohmic_conductor`, `perfect_conductor`), `relative_permittivity`, `relative_permeability`, `conductivity_S_per_m` |
 | `boundaries[]` | `fixed_potential`, `ground`, `pec`, `absorbing`, `periodic` (declared; no solver evaluates them yet) |
 | `domain` | axis-aligned bounds, background material, potential reference |
@@ -199,8 +200,9 @@ version and kind, classification and note, assumptions, warnings, excluded (iner
 time, equation statuses, the derived-product tables with their method metadata, and the array
 table (name, quantity, symbol, unit, kind `field` or `geometry`, shape, float64 stats).
 
-`SolverCatalog.select()` returns the first registered solver that supports the scene (analytical
-solvers are registered first) or raises `UnsupportedSceneError` with every reason.
+`SolverCatalog.select()` returns the first registered solver of the request's field kind
+(electric or magnetic) that supports the scene (analytical solvers are registered first) or
+raises `UnsupportedSceneError` with the reasons of the solvers of that kind.
 
 ### 6.3 Worker protocol (version 1)
 
@@ -231,8 +233,8 @@ formula), *satisfied* (it applies and the field obeys it, but nothing solves it)
 | `GET /solvers` | catalog with real availability and queue-worker liveness |
 | `GET /presets` | the 20 presets; unavailable ones carry no scene |
 | `POST /simulations` | synchronous solve → EMF1 container; `X-EMF-Cache: hit\|miss`; `422 unsupported` with reasons; `413` above the synchronous point limit |
-| `POST /probe` | fields at one point as float64 JSON (not interpolated), each charge's contribution, and the singular state at a charge position |
-| `POST /equations/evaluate` | equations with status for the model this scene resolves to (optionally with Gaussian surfaces) |
+| `POST /probe` | fields at one point as float64 JSON (not interpolated), each charge's contribution, and the singular state at a charge position; with current sources also a `magnetic` block (B, H, ∇·B, ∇·H, each source's Bᵢ/Hᵢ, nearest source, singular state on a filament) |
+| `POST /equations/evaluate` | equations with status for the model(s) this scene resolves to (electric and/or magnetic, merged; optionally with Gaussian surfaces); `solver_ids` lists them |
 | `POST /flux` | closed-surface flux (EMF1 container with a `FluxHeader`); own cache key |
 | `GET /gauss/situations` | the nine guided situations (scene + surfaces) |
 | `POST /jobs`, `GET /jobs/{id}`, `DELETE /jobs/{id}`, `GET /jobs/{id}/result` | queued solves, status, cancel, result |
@@ -547,6 +549,133 @@ Statuses depend on whether surfaces exist and whether a charge lies on one.
 `ProjectIn`, `ProjectOut` gain `surfaces`. `FluxHeader` is added to the OpenAPI components so
 the frontend types are generated.
 
+## 9d. Phase 3A: magnetostatic sources and magnetic field visualization
+
+Design note written before implementation; the implementation follows it (deviations are
+listed at the end of this section).
+
+**Sources (scene model, additive).** Two new `source` types, both with role `current_source`:
+
+| Source | Primitive | Geometry taken from the object's world transform | Positive current |
+|---|---|---|---|
+| `infinite_wire {current_A}` | `line` | a point on the axis = world position; direction d̂ = normalised world image of local +z | along +d̂ |
+| `circular_loop {current_A}` | `ring` | centre = world position; radius a = `radius_m` × in-plane scale; normal n̂ = normalised (c_x × c_y) of the world matrix | counter-clockwise about +n̂ (right-hand rule: B along +n̂ on the axis) |
+
+The `line` length is display-only for a wire (the model is infinite); the renderer draws the wire
+across the whole region and labels it "∞". A loop whose world transform is not a similarity in
+its own plane (|c_x| ≠ |c_y| or c_x ⊥̸ c_y) would be an ellipse and is refused with a reason.
+A `current_source` without one of these sources, or with a mismatched primitive, is refused as
+before. Old projects contain neither type and load unchanged; `schema_version` stays 1.
+
+**Two independent field solves.** Static charges produce no B, and steady currents in
+electrically neutral ideal filaments produce no E. The two static fields are therefore exactly
+decoupled, and the system keeps them in separate solves:
+
+- `SolveRequest` quantities are either electric (`E, phi, D, div_*, curl_*` of E/D) or magnetic
+  (`B, H, div_B, div_H`); a request mixing both kinds is rejected by validation.
+- `analytical.electrostatics.point_charges` (still v1.1.0, unchanged numbers) now ignores
+  well-formed current sources instead of refusing them, and states the neutral-wire assumption.
+- New `analytical.magnetostatics.filaments` (v1.0.0) supports magnetic requests; it ignores
+  point charges.
+- `engine.field_subscene(scene, kind)` drops the other kind's sources; every cache key (server
+  `physics_fingerprint`, `flux_fingerprint`; client `physicsKey`) is computed from that
+  subscene. Moving a wire never invalidates an electric result or a flux result, and moving a
+  charge never invalidates a magnetic result.
+- The frontend issues the electric request when the scene has charges or has no current
+  sources (so existing scenes behave exactly as before), and the magnetic request when it has
+  current sources. Two TanStack queries, two keys, two debounced bundles.
+- High-resolution jobs queue one job per active field kind (approved decision).
+
+**Physics** (all float64, exact closed forms, no discretization):
+
+- Wire: B = μ₀I/(2π|r⊥|²) d̂ × r⊥, with r⊥ = (r − p) − ((r − p)·d̂)d̂.
+- Loop, in local cylindrical coordinates (ρ, z) with m = 4aρ/D₊, D± = (a ± ρ)² + z²,
+  1 − m = D₋/D₊ computed directly (no cancellation):
+  B_z = μ₀I/(2π√D₊) [K + (a² − ρ² − z²)/D₋ · E],
+  B_ρ = μ₀I z/(2πρ√D₊) · f(m)/(2(1 − m)), f(m) = (2 − m)E − 2(1 − m)K.
+  K is evaluated with `scipy.special.ellipkm1(1 − m)` (accurate as m → 1, near the wire),
+  E with `ellipe(m)`.
+- Near the axis f(m) loses all digits by cancellation (f ≈ (3π/16)m²). For m ≤ m_s = 0.5 the
+  solver uses the exact power series f(m) = (π/2) Σ_{n≥2} f_n mⁿ, derived from the hypergeometric
+  series of K and E, with all f_n > 0 (no cancellation), and writes f(m)/ρ = (4a/D₊)(π/2)
+  Σ f_n m^{n−1}, which is exact at ρ = 0 (B_ρ = 0 there, B_z reduces to μ₀Ia²/(2(a²+z²)^{3/2})).
+  Truncation: a fixed 80 terms (f₂…f₈₀), summed by Horner's rule. Because f_n decreases, the
+  tail is bounded by f₈₀ m⁸¹/(1 − m); relative to the sum this is below 6e-28 at m = 0.5
+  (tested to be below 1e-20). Transition criterion: series for m ≤ 0.5, closed form above, where
+  the closed form's relative cancellation error is at most about 2ε/(0.375 m²) ≈ 5e-15.
+  Continuity across the transition (a jump below 1e-11 relative between m = 0.5 ± 1e-12) and the
+  exact axis limit are tested.
+- H = B/μ₀ in vacuum; superposition B = Σ Bᵢ. ∇·B and ∇·H are returned as exact 0 wherever B is
+  defined (analytical identity for the Biot–Savart field of a closed or infinite filament), NaN
+  where undefined. Singular set: distance to a wire axis or to the loop wire (√D₋) at most
+  1e-12 × domain diagonal (the same position tolerance as for point charges).
+- Validation reference (tests only, never used by the solver): direct numerical Biot–Savart
+  integration over the loop with the periodic trapezoidal rule (exponentially convergent for a
+  smooth periodic integrand), refined until converged; for the wire, quadrature over a long
+  finite segment plus its analytical tail.
+
+**Magnetic field lines** (`postprocess/magnetic_lines.py`, reusing the Dormand–Prince
+coefficients and seed helpers of the electric tracer): dr/ds = B/|B|, traced forward from each
+seed; if the forward trace does not close, the backward trace from the same seed is added, so a
+line that leaves the region is drawn from boundary to boundary. Seeds: on rays perpendicular to
+each wire (in the slice for 2D mode, in several planes along the wire in 3D), and on radii of
+each loop's disk in meridian planes (every loop field line threads the disk once). End reasons:
+`closed_loop`, `domain_boundary` (truncated by the drawing region, not a physical end),
+`source_singularity`, `stagnation_point`, `max_length`, `integration_failure`; only the first two
+are drawn as normal lines, the others in the numerical-warning style.
+Closed-loop criterion, all required: arc length travelled ≥ max(2 d₀, 20 δ), where d₀ is the
+distance from the start to the nearest filament (a closed B line links a current, so it is at
+least 2 d₀ long); the trace has at some point moved at least d₀ away from its start; the point
+of the current step closest to the start lies inside the step and within δ of the start, with
+δ = max(5 × accumulated local error estimate, 10 × atol); and the tangent there agrees with the
+start tangent (cos ≥ 0.98). The step is represented by the cubic Hermite interpolant of its end
+points and end tangents, scaled by the arc-length step (the integrator's own curve to fourth
+order), not by the chord, whose sagitta h²/(8r) can exceed δ. The line ends at that point; the
+gap is recorded (`closure_gap_m`); the polyline is never joined to its start artificially. A
+seed closer than 20 atol + 0.25 guard radius to a line already drawn at the same density level
+is skipped (display choice, no duplicates).
+
+**Probe.** `/probe` keeps every electric field unchanged and adds a `magnetic` block when the
+scene has current sources: B, |B|, H, |H|, ∇·B, ∇·H, the distance to the nearest current source,
+each source's Bᵢ and Hᵢ, and on a wire or loop the singular state with the source identified.
+
+**Equation registry.** New: `b_mu0_h` (B = μ₀H), `h_from_b` (H = B/μ₀), `biot_savart_integral`,
+`infinite_wire_field`, `loop_axis_field`, `loop_field_elliptic`, `superposition_magnetic`,
+`div_B_filaments`. `gauss_magnetic`, `biot_savart` and `ampere_static` gain explanations
+(∇·B = 0 is not B = 0; Ampère is applicable but not evaluated as a local J field in 3A).
+For a scene with both kinds of source, `/equations/evaluate` resolves the electric and the
+magnetic model context separately and merges per equation: the most applicable status wins
+(applicable > under assumptions > not evaluated > not applicable) together with its reason, and
+the evaluated/checked lists are united. This is valid because the two static sub-models are
+decoupled.
+
+**Presets.** 9: wire along z through the origin, I = 10 A. 10: two wires along z at x = ±0.5 m
+with three variants (same direction 10 A / 10 A; opposite 10 A / −10 A; unequal 10 A / 4 A), all
+numbered 10 (approved). 11: loop of radius 0.5 m in the xy plane, I = 10 A, opening the 2D view
+on the xz cross-section through its axis (new optional `Preset.view_hint`, approved).
+
+**Frontend.** Separate encodings: electric arrows and lines keep their colours; magnetic arrows
+use their own palette and legend; B/H magnetic lines are violet with direction cones. The colour
+map menu gains |B|, |H| and ∇·B (its own legend). Visual toggles: B arrows, field (B or H),
+magnetic lines, current sources, direction indicators (⊙/⊗ for wires crossing the 2D slice,
+chevrons along wires and loops), and "contribution" (total or one source; the engine returns
+each source's Bᵢ on the vector grid, so switching is visual-only). Objects panel: + wire, + loop.
+Parameters: current (A, slider ±100 A plus number), reverse, direction vector (wire), axis
+normal and radius (loop), reset to the preset configuration.
+
+**Implementation notes and deviations from the design note above.**
+
+| Item | What was done | Why |
+|---|---|---|
+| Solver selection | the catalog only asks solvers of the request's field kind (`field_kinds` attribute) | a refused magnetic scene should not list "this solver computes the electric field only" |
+| Electric subscene | drops well-formed or disabled current sources, keeps malformed ones | a malformed current source is still refused for electric requests, as before Phase 3A |
+| Electrostatic solver | assumption text changed from "no currents" to "currents, if present, are electrically neutral filaments"; field values unchanged | mixed scenes |
+| Contribution colour map | with one source selected, the |Bᵢ| or |Hᵢ| map is drawn from the 49 × 49 vector grid (where the engine returns per-source fields), not the fine slice grid | per-source fields on the fine grid would multiply the payload |
+| "Each source separately" | arrows of every source at the same points, each in its own colour, log length on a shared scale (vector grid only; the 3D lattice shows the total) | reinforcement and opposition become visible directly |
+| Contribution limit | per-source arrays for at most 12 sources; above that a warning | bounded payload |
+| Existing test changed | `tests/api/test_api.py`: number of available presets 4 → 7 | presets 9–11 are now available by design; no tolerance changed |
+| Existing e2e test extended | `tests/e2e/smoke.cjs`: magnetic checks appended; existing checks unchanged | |
+
 ## 10. Implementation status and roadmap
 
 | Area | Phase 1 state |
@@ -558,7 +687,7 @@ the frontend types are generated.
 | Analytical solver | point charges in vacuum |
 | Probe | E, φ, D, ∇·E, ∇×E, ∇·D, ∇×D at a point, per-charge contributions, singular state with the distributional statement, finite-difference check (advanced). Energy density: later milestone |
 | Equation registry | all required equations plus superposition, with computed statuses and usage; derivations are empty |
-| Presets | 1–4 available; 5–20 listed as unavailable |
+| Presets | 1–4 and 9–11 available (10 with three variants, 11 with a view hint); the others listed as unavailable |
 | Persistence | projects (scene + view settings) in PostgreSQL |
 | Job queue | analytical worker, progress, cancellation |
 | Waveforms, time dependence, timeline | not started (Phase 4) |
@@ -566,7 +695,9 @@ the frontend types are generated.
 | Divergence and curl display, distributional sources | implemented (Phase 2B-1) |
 | Gaussian surfaces, closed-surface flux, Gauss and Gauss–Ostrogradsky demonstrations, subdivision | implemented (Phase 2B-2) |
 | Open-surface flux, circulation tools, analytical conductor cases, presets 5–8 | not started |
-| Magnetostatics, induction | not started (Phases 3, 4) |
+| Magnetostatics (Phase 3A) | infinite straight wires and circular loops in vacuum: B, H, superposition and per-source contributions, B field lines with closed-loop detection, ∇·B, probe, equations |
+| Magnetostatics (Phase 3B and later) | not started: solenoids, toroids, permanent magnets, magnetic materials, magnetic flux, Ampère circulation demonstration |
+| Induction | not started (Phase 4) |
 | FEM (DOLFINx, Gmsh), FDTD (Meep) | not started (Phase 5); reported as unavailable |
 | Circuit subsystem (MNA) | not started; reported as unavailable |
 
@@ -587,7 +718,22 @@ Acceptance criteria per phase are unchanged from the approved plan:
 
 ## 11. Known limitations
 
-- Only ideal point charges in vacuum are solved. Everything else is refused or disabled.
+- Only ideal point charges and ideal current filaments (infinite straight wires, thin circular
+  loops) in vacuum are solved. Everything else is refused or disabled.
+- Magnetostatics: wires are infinite and of zero radius, loops are thin; B and H are singular on
+  the filaments (reported as undefined, never clipped). A real wire's finite radius and internal
+  field are outside the model. Wires and loops are electrically neutral (no E). Ampère's law is
+  applicable but not evaluated (no local J field); its circulation demonstration is Phase 3B.
+- Magnetic field lines: closure is decided numerically (tolerance δ, see 9d); where B lines are
+  not closed curves (general 3D arrangements of several sources), a line that passes within δ of
+  its start cannot be told apart from a closed one. Line density is a display choice (geometric
+  seed radii around a single wire enclose equal flux per unit length). In a 2D slice, lines are
+  only seeded by sources that cross the slice; a wire lying in the slice seeds none (its B is
+  perpendicular to the slice), and the result says so.
+- Elliptic integrals: K is evaluated as `ellipkm1(1 − m)` with 1 − m formed directly; far out on
+  the axis (z ≫ a) the B_z bracket loses about (z/a)² ε of relative accuracy; near the axis the
+  B_ρ series is used (see 9d).
+- The individual-contribution colour map uses the coarser vector grid.
 - Field lines: in a 2D cross-section their spacing does not represent |E|. In 3D it does only
   approximately (rounded line counts, uniform seeds on a small sphere). Lines end at the edge
   of the region of interest although the physical line continues. If charges lie off the slice

@@ -5,8 +5,8 @@ calculation. Build a configuration, change a parameter, see the field respond, a
 equations govern it and under what assumptions.
 
 **Status: Phase 1 (Foundation), Phase 2A (point-charge electrostatics), Phase 2B-1
-(divergence and curl) and Phase 2B-2 (Gauss's law and the divergence theorem) are
-implemented.**
+(divergence and curl), Phase 2B-2 (Gauss's law and the divergence theorem) and Phase 3A
+(magnetostatic sources: wires and loops) are implemented.**
 What works today:
 
 - Any number of positive and negative ideal point charges in vacuum, and dipoles made of two
@@ -28,14 +28,20 @@ What works today:
   the triangulated surface and compared with the enclosed charge, local flux density on the
   surface, inside/outside/boundary classification, subdivision into cells with cancelling
   internal faces, and nine guided situations (Gauss tab).
-- Presets 1–4, saved projects, English and Hungarian, beginner and advanced levels.
+- Steady currents (Phase 3A): infinitely long straight wires and thin circular loops in any
+  orientation, any number of them. B and H (separately, with their own units and legend), exact
+  closed forms (elliptic integrals for the loop, with a stable near-axis series), superposition
+  with each source's own contribution, magnetic field lines with detected closed loops, ⊙/⊗
+  current markers, ∇·B = 0, E and B side by side in the probe, and the magnetostatic equations.
+- Presets 1–4 and 9–11, saved projects, English and Hungarian, beginner and advanced levels.
 - High-resolution solves as cancellable jobs on a separate worker, with live progress.
 
 Field lines, contours and surfaces are numerical constructions on top of the exact field; the
 Results panel states the method and its limits for each.
 
 Everything else in the product definition (conductors, dielectrics, extended charge
-distributions, magnetostatics, induction, FEM, FDTD, circuits, flux tools) is **not implemented
+distributions, solenoids, toroids, magnets and magnetic materials, magnetic flux, Ampère
+circulation, induction, FEM, FDTD, circuits, open-surface flux tools) is **not implemented
 yet**. Such features are disabled or refused with a reason; nothing is approximated silently.
 See [docs/architecture.md](docs/architecture.md) for the full status table.
 
