@@ -37,9 +37,6 @@ with the software.  For example:
 
 > Required Notice: Copyright Yoyodyne, Inc. (http://example.com)
 
-Required Notice: Copyright (c) 2026 RandomAccessMonkey. All rights reserved.
-Required Notice: https://github.com/RandomAccessMonkey/EMF-Visu
-
 ## Changes and New Works License
 
 The licensor grants you an additional copyright license to
@@ -76,7 +73,7 @@ from the funding.
 ## Fair Use
 
 You may have "fair use" rights for the software under the
-law. These terms do not limit them.
+law.  These terms do not limit them.
 
 ## No Other Rights
 
@@ -124,9 +121,14 @@ organizations that have control over, are under the control of,
 or are under common control with that organization.  **Control**
 means ownership of substantially all the assets of an entity,
 or the power to direct its management and policies by vote,
-contract, or otherwise. Control can be direct or indirect.
+contract, or otherwise.  Control can be direct or indirect.
 **Your licenses** are all the licenses granted to you for the
 software under these terms.
 
 **Use** means anything you do with the software requiring one
 of your licenses.
+
+© PolyForm Project Inc.
+
+Required Notice: Copyright (c) 2026 RandomAccessMonkey. All rights reserved.
+Required Notice: https://github.com/RandomAccessMonkey/EMF-Visu
