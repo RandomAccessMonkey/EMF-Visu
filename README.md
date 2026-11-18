@@ -6,8 +6,8 @@ equations govern it and under what assumptions.
 
 ## Public source review and usage terms
 
-EMF-Visu is made publicly visible for source-code review, educational evaluation, testing and
-bug reports. **It is not released under an open-source licence.** The project is provided under
+EMF-Visu is intended for public source-code review, educational evaluation, testing and
+bug reports. The repository remains private until the owner completes the publication checks. **It is not released under an open-source licence.** The project is provided under
 the restricted terms in [LICENSE](LICENSE).
 
 You may inspect the source and run an unmodified copy for personal, non-commercial evaluation
@@ -18,7 +18,7 @@ Written permission from the copyright holder is required for uses outside the pe
 
 GitHub may provide platform features such as public forks under its own Terms of Service. A
 GitHub fork does not by itself grant a separate licence to commercially use or redistribute the
-software. Please use [GitHub Issues](../../issues) for reproducible bug reports and feedback.
+software. Please use [GitHub Issues](https://github.com/RandomAccessMonkey/EMF-Visu/issues) for reproducible bug reports and feedback.
 
 **Status: Phase 1 (Foundation), Phase 2A (point-charge electrostatics), Phase 2B-1
 (divergence and curl), Phase 2B-2 (Gauss's law and the divergence theorem), Phase 3A
