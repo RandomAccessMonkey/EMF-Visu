@@ -1035,6 +1035,21 @@ table, inductance matrix, I(t)/EMF/velocity/energy plots, per-band table and J(r
 circuits coloured by current sign with direction cones; B_prescribed / B_passive as vector
 fields and maps; probe sections. Equation category `circuits` (25 equations). Presets 26–29.
 
+## 9i-a. Time playback (shared by every time-dependent model)
+
+`sim/playback.ts` (`PlaybackLoop`, one per time bar). Play runs indefinitely: the time advances
+by Δt per step and, on reaching the end of the range, wraps to the start with the overflow
+carried, t = t_start + ((m·Δt) mod (t_end − t_start)), m an integer step counter. Each time is
+computed afresh from m (no accumulated sum, no drift); when the range is a whole number N of
+steps this is exactly t_start + (m mod N)·Δt, i.e. playback stays on the deterministic grid and
+the end point is the next cycle's start. Pause keeps the time; Play resumes from it; Stop (only
+on the user's click) ends playback and returns to the start time. One timer at most: repeated
+Play does not start a second loop, and the loop is released on unmount. A step waits for the
+previous step's result (polled every 30 ms) and the minimum interval is 30 ms; a background tab
+only slows the timer down, playback stays "playing". Editing the time or the range during
+playback re-derives m from the current time; every played time lies in [t_start, t_end).
+Sub-nanosecond Δt is kept (the coax time bar edits in ns, Δt ≥ 1 fs).
+
 ## 9j. Coaxial cable: ideal TEM transmission line
 
 A standalone analytical module (`emf_core.coax`, routes `POST /coax/snapshot` and
@@ -1090,10 +1105,30 @@ lossless, single-mode TEM model**:
   cross-section position, layer switches, parameters, V/I with wave components, the power
   check, waveforms V(z), Z₀I(z), V±(z) and V(t), Z₀I(t), V(L, t), P(t), probe, Maxwell checks,
   interface quantities); 2D true-scale cross-section with dimensions, radial E and azimuthal H
-  arrows and lines, ⊙/⊗ for S; 3D cut-away cable (radial dimensions × 0.12 L/c, stated on
-  screen) with V(z, t) on the dielectric's cut faces and E, H and S arrows at 65 stations.
-  Arrow length ∝ |field| / its maximum over the playback range (linear `ArrowField` mode).
+  arrows and lines, ⊙/⊗ for S; 3D cut-away cable (radial dimensions magnified, stated on
+  screen) with the line voltage V(z, t) between inner conductor and shield as the colour of the
+  dielectric's cut faces and back wall, and E, H and S arrows along the cable. The displayed
+  power is the instantaneous P_inst(z, t) = V·I (not a time average).
   Presets 30 (100 MHz sine, matched) and 31 (Gaussian pulse, open). Projects store `coax`.
+- Display sampling (`render/coaxSamples.ts`; engine `sample_rings`): arrows sit on 4 rings, the
+  centres of equal radial segments of [a + m, b − m] with m = 0.08 (b − a); the engine returns
+  E_r, H_φ and S_z at every ring (`stations.*_rings`, `cross_section.rings_m`, 48 angles per
+  ring), so each arrow carries the true analytical value at its own radius. One linear scale per
+  field type (its maximum over the playback range at the innermost ring), so |E|, |H| ∝ 1/r and
+  |S| ∝ 1/r² are visible; E, H and S have separate scales (different units). An E arrow is at
+  most one segment long and centred on its ring, so it never reaches a conductor; S uses the
+  outer three rings. E, H and S use disjoint rays (cross-section) or positions (3D), and arrows
+  are drawn 1.8× thicker than the shared default.
+- 3D camera presets (Coax tab): Isometric cut-away (wedge towards the camera, both ends and
+  the cross-section visible, radial × 0.12 L/c); Side (orthographic, front half removed so the
+  longitudinal mid-plane faces the camera, radial × 0.2 L/c: E vertical, H as ⊙/⊗ — it is
+  normal to that plane — and S along the axis); Section (looking along the axis at the
+  inspected cross-section, the cable ending there). A preset sets the camera once; orbit, pan
+  and zoom stay free and are kept while the animation advances (the camera is keyed only by the
+  preset and Reset view). Display map (x, y, z) → (z − L/2, k y, −k x): a proper rotation with
+  radial magnification, so vectors keep their radial / azimuthal / axial character.
+- Arrow density Low / Medium / High: 17 / 33 / 65 stations along the cable and 6 / 8 / 12 rays
+  per field in the cross-section. Sampling only; the physics is unchanged.
 
 ## 10. Implementation status and roadmap
 
@@ -1109,7 +1144,7 @@ lossless, single-mode TEM model**:
 | Presets | 1–4, 9–16 and 21–31 available (22–25: moving conductors and a test particle, Phase 4B; 26–29: passive circuits, Phase 4C; 30–31: coaxial TEM cable) (10 with three variants, 13 with two, view hints incl. a default probe point, 12–14 with default Ampère paths, 15, 16, 21 with measurement surfaces and a time range); 5–8 and 17–20 listed as unavailable |
 | Persistence | projects (scene incl. current profiles + view settings incl. simulation time and range + Gaussian surfaces + Ampère paths + Faraday measurement surfaces) in PostgreSQL |
 | Job queue | analytical worker, progress, cancellation |
-| Time-dependent currents, timeline | implemented (Phase 4A): constant, sinusoidal, ramp and piecewise-linear profiles with analytical dI/dt, deterministic playback |
+| Time-dependent currents, timeline | implemented (Phase 4A): constant, sinusoidal, ramp and piecewise-linear profiles with analytical dI/dt, deterministic playback; Play loops over the range until Pause or Stop |
 | Field lines, equipotentials | implemented for point charges (Phase 2A) |
 | Divergence and curl display, distributional sources | implemented (Phase 2B-1) |
 | Gaussian surfaces, closed-surface flux, Gauss and Gauss–Ostrogradsky demonstrations, subdivision | implemented (Phase 2B-2) |

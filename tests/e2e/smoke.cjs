@@ -1116,6 +1116,41 @@ async function main() {
   await shot('36-coax-pulse-2d')
   step('2D cross-section: probe inside the inner conductor reports zero fields; Maxwell checks agree')
 
+  // 3D camera presets (display only) and looping playback over the time range.
+  for (const name of ['Side', 'Section', 'Isometric']) {
+    await coaxPanel.getByRole('radio', { name, exact: true }).click()
+    await legendHas(/t = 7\.000 ns/)
+  }
+  const bar = page.getByTestId('time-bar')
+  const tNow = async () => Number(await bar.getByRole('spinbutton', { name: 'Time', exact: true }).inputValue())
+  await bar.getByRole('spinbutton', { name: 'Time step', exact: true }).fill('1')
+  await bar.getByRole('button', { name: 'Play' }).click()
+  let wraps = 0
+  let prev = await tNow()
+  const deadline = Date.now() + 120000
+  while (wraps < 3 && Date.now() < deadline) {
+    await page.waitForTimeout(80)
+    const now = await tNow()
+    if (now < prev) {
+      wraps++
+      assert.equal(now, 0, `wrapped to ${now} ns instead of the start`)
+    }
+    prev = now
+  }
+  assert.ok(wraps >= 3, `only ${wraps} wraps`)
+  await bar.getByRole('button', { name: 'Pause' }).waitFor() // still playing after three cycles
+  await bar.getByRole('button', { name: 'Pause' }).click()
+  const paused = await tNow()
+  await page.waitForTimeout(600)
+  assert.equal(await tNow(), paused)
+  await bar.getByRole('button', { name: 'Play' }).click() // resume
+  await page.waitForFunction((t0) => Number(document.querySelector('[data-testid="time-bar"] input[aria-label="Time"]').value) !== t0, paused)
+  await bar.getByRole('button', { name: 'Stop and reset' }).click()
+  await valueIs(bar.getByRole('spinbutton', { name: 'Time', exact: true }), '0')
+  await bar.getByRole('button', { name: 'Play' }).waitFor()
+  await bar.getByRole('spinbutton', { name: 'Time step', exact: true }).fill('0.1')
+  step('camera presets; Play loops the range (3 complete cycles, wrapping to the start); pause, resume and stop')
+
   const xname = `e2e coax ${Date.now()}`
   await page.getByRole('button', { name: 'Projects' }).click()
   await page.getByLabel('Project name').fill(xname)

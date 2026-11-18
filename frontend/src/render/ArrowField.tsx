@@ -26,6 +26,8 @@ interface Props {
   /** Colour scale: electric (default) or magnetic, or one solid colour (source contributions). */
   palette?: 'electric' | 'magnetic'
   solidColor?: string
+  /** Thickness of shaft and head relative to the default (length unchanged); default 1. */
+  girth?: number
 }
 
 const UP = new THREE.Vector3(0, 1, 0)
@@ -33,7 +35,7 @@ const UP = new THREE.Vector3(0, 1, 0)
 /** Instanced field arrows: one draw call for the whole field. Direction is the field
  *  direction; colour encodes magnitude on the legend's log scale. Arrow length is either
  *  uniform (direction only) or log-scaled magnitude — a visualization choice, stated in the UI. */
-export function ArrowField({ points, vectors, magnitudes, scale, cell, lengthMode, sizeFactor, palette = 'electric', solidColor }: Props) {
+export function ArrowField({ points, vectors, magnitudes, scale, cell, lengthMode, sizeFactor, palette = 'electric', solidColor, girth = 1 }: Props) {
   const ref = useRef<THREE.InstancedMesh>(null)
   const invalidate = useThree((s) => s.invalidate)
   const geometry = useMemo(arrowGeometry, [])
@@ -60,7 +62,7 @@ export function ArrowField({ points, vectors, magnitudes, scale, cell, lengthMod
         q.setFromUnitVectors(UP, dir)
       }
       pos.set(points[3 * i]!, points[3 * i + 1]!, points[3 * i + 2]!)
-      m.compose(pos, q, size.setScalar(len))
+      m.compose(pos, q, size.set(len * girth, len, len * girth))
       mesh.setMatrixAt(i, m)
       if (solidColor) mesh.setColorAt(i, color.set(solidColor))
       else {
@@ -71,7 +73,7 @@ export function ArrowField({ points, vectors, magnitudes, scale, cell, lengthMod
     mesh.instanceMatrix.needsUpdate = true
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
     invalidate()
-  }, [points, vectors, magnitudes, scale, cell, lengthMode, sizeFactor, count, invalidate, palette, solidColor])
+  }, [points, vectors, magnitudes, scale, cell, lengthMode, sizeFactor, count, invalidate, palette, solidColor, girth])
 
   return (
     <instancedMesh key={count} ref={ref} args={[geometry, undefined, count]} frustumCulled={false}>

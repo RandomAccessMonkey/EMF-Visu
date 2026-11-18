@@ -463,3 +463,38 @@ def test_coax_presets():
     assert (b.time.start_s, b.time.end_s) == (0.0, 25e-9)
     # Earlier preset numbers are unchanged.
     assert by[29].id == "coupled_passive_circuits" and by[26].id == "shorted_loop_induction"
+
+
+# ------------------------------------------------------------------ display sampling
+
+
+def test_sample_rings_keep_a_margin_and_carry_analytical_values():
+    s = spec(load="open")
+    p = coax.parameters(s)
+    rings, seg = coax.sample_rings(s.geometry)
+    m = coax.SAMPLE_MARGIN * (B - A)
+    assert len(rings) == 4 and seg == pytest.approx((B - A - 2 * m) / 4)
+    # An arrow centred on a ring and at most one segment long stays clear of both conductors.
+    assert rings[0] - seg / 2 == pytest.approx(A + m)
+    assert rings[-1] + seg / 2 == pytest.approx(B - m)
+    snap = coax.snapshot(coax.CoaxSnapshotRequest(
+        spec=s, t_s=13e-9, z_m=1.0, range=coax.TimeRange(start_s=0, end_s=25e-9), stations=9))
+    st = snap.stations
+    assert st.rings_m == rings and len(st.E_r_rings) == 9
+    for j, z in enumerate(st.z_m):
+        ls = coax.line_state(s, p, z, 13e-9)
+        V, I = float(ls["V"]), float(ls["I"])  # noqa: E741
+        for i, r in enumerate(rings):
+            e_ref, h_ref = V / (r * math.log(B / A)), I / (2 * math.pi * r)
+            assert st.E_r_rings[j][i] == pytest.approx(e_ref, rel=1e-12, abs=1e-30)
+            assert st.H_phi_rings[j][i] == pytest.approx(h_ref, rel=1e-12, abs=1e-30)
+            assert st.S_z_rings[j][i] == pytest.approx(
+                st.E_r_rings[j][i] * st.H_phi_rings[j][i], rel=1e-12, abs=1e-40)
+    cs = snap.cross_section
+    assert cs.rings_m == rings and cs.n_angles == coax.SECTION_ANGLES
+    assert len(cs.points_m) == len(rings) * cs.n_angles
+    for i, (x, y) in enumerate(cs.points_m):
+        r = math.hypot(x, y)
+        assert r == pytest.approx(rings[i // cs.n_angles], rel=1e-12)
+        ex, ey = cs.E[i]
+        assert ex * y - ey * x == pytest.approx(0.0, abs=1e-9 * (abs(ex) + abs(ey) + 1e-30))

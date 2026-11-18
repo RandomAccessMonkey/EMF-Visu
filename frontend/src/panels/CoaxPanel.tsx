@@ -28,6 +28,17 @@ export function openCoax() {
   useViewStore.getState().set({ timeStart: 0, timeEnd: 25e-9, timeStep: 0.1e-9, timeS: 7e-9, playing: false, mode: '3d', probePoint: null })
 }
 
+/** A labelled row for a group of buttons. Not a <label>: a label would name its first button,
+ *  hiding that option's own name from assistive technology. */
+function GroupRow({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-2" title={hint}>
+      <span className="shrink-0 text-xs text-muted">{label}</span>
+      <span className="flex min-w-0 items-center gap-2">{children}</span>
+    </div>
+  )
+}
+
 function Value({ label, children, hint }: { label: ReactNode; children: ReactNode; hint?: string }) {
   return (
     <div className="flex items-baseline justify-between gap-2 text-xs" title={hint}>
@@ -81,9 +92,9 @@ function Editor({ spec }: { spec: CoaxSpec }) {
         <p className="text-[10px] leading-snug text-muted">{t(e.type === 'sinusoidal' ? 'coax.sinHint' : 'coax.widthHint')}</p>
       </Section>
       <Section title={t('coax.terminations')}>
-        <Row label={t('coax.load')}>
+        <GroupRow label={t('coax.load')}>
           <Segmented<CoaxTermination> label={t('coax.load')} value={spec.load ?? 'matched'} onChange={(load) => update((s) => ({ ...s, load }))} options={TERMS.map((x) => ({ value: x, label: t(`coax.term.${x}`), title: t(`coax.gamma.${x}`) }))} />
-        </Row>
+        </GroupRow>
         <Row label={t('coax.source')} hint={t('coax.sourceHint')}>
           <Select<CoaxTermination> label={t('coax.source')} value={spec.source ?? 'matched'} onChange={(source) => update((s) => ({ ...s, source }))} options={TERMS.map((x) => ({ value: x, label: t(`coax.src.${x}`) }))} />
         </Row>
@@ -130,6 +141,17 @@ function Layers() {
   return (
     <Section title={t('coax.layers')}>
       <Segmented<'2d' | '3d'> label={t('coax.view')} value={v.mode} onChange={(mode) => v.set({ mode })} options={[{ value: '2d', label: t('coax.view2d') }, { value: '3d', label: t('coax.view3d') }]} />
+      <GroupRow label={t('coax.camera')} hint={t('coax.cameraHint')}>
+        <Segmented<'iso' | 'side' | 'section'>
+          label={t('coax.camera')}
+          value={v.coaxCamera}
+          onChange={(coaxCamera) => v.set({ coaxCamera, mode: '3d', cameraResetToken: v.cameraResetToken + 1 })}
+          options={(['iso', 'side', 'section'] as const).map((x) => ({ value: x, label: t(`coax.camera.${x}`), title: t(`coax.camera.${x}Hint`) }))}
+        />
+      </GroupRow>
+      <GroupRow label={t('coax.density')} hint={t('coax.densityHint')}>
+        <Segmented<'low' | 'medium' | 'high'> label={t('coax.density')} value={v.coaxDensity} onChange={(coaxDensity) => v.set({ coaxDensity })} options={(['low', 'medium', 'high'] as const).map((x) => ({ value: x, label: t(`coax.density.${x}`) }))} />
+      </GroupRow>
       {items.map(([key, label, color]) => (
         <Row key={key} label={t(label)}>
           <span className="h-2 w-2 rounded-full" style={{ background: color }} />
@@ -166,7 +188,7 @@ function Waves({ d }: { d: CoaxSnapshot }) {
       <Value label="V⁺ / V⁻">{formatSI(d.Vf, 'V', 3)} / {formatSI(d.Vb, 'V', 3)}</Value>
       <Value label="I = (V⁺ − V⁻)/Z₀">{formatSI(d.I, 'A', 4)}</Value>
       <Value label="I⁺ / I⁻">{formatSI(d.If, 'A', 3)} / {formatSI(d.Ib, 'A', 3)}</Value>
-      <Value label="P = V·I">{formatSI(d.V * d.I, 'W', 4)}</Value>
+      <Value label={t('coax.pInst')}>{formatSI(d.V * d.I, 'W', 4)}</Value>
       <p className="text-[10px] leading-snug text-muted">{t('coax.waveNote')}</p>
     </Section>
   )
@@ -293,7 +315,7 @@ function Plots({ coax }: { coax: CoaxData }) {
           { label: 'V(L, t)', color: '#a3e635', values: tr.V_load },
         ]} />
       )}
-      {tr && <SeriesPlot t={tr.t_s} now={d.t_s} title={t('coax.plotPower')} unit="W" lines={[{ label: 'P = V·I', color: COAX_S_COLOR, values: tr.P_W }]} />}
+      {tr && <SeriesPlot t={tr.t_s} now={d.t_s} title={t('coax.plotPower')} unit="W" lines={[{ label: t('coax.pInst'), color: COAX_S_COLOR, values: tr.P_W }]} />}
     </Section>
   )
 }

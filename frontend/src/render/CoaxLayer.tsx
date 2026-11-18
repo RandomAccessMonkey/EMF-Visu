@@ -15,17 +15,19 @@ import type { CoaxData } from '@/sim/coax'
 import { useViewStore } from '@/state/viewStore'
 import { ArrowField } from './ArrowField'
 import { MAGNETIC_LINE_COLOR } from './magneticColors'
+import { CUT, fieldScales, sectionRays, stationArrows, toDisplay, type CoaxCamera } from './coaxSamples'
 
 export const COAX_E_COLOR = '#fdba74' // E field lines (radial)
 export const COAX_H_COLOR = MAGNETIC_LINE_COLOR // H field lines (azimuthal)
 export const COAX_S_COLOR = '#facc15' // Poynting vector
+/** Coax arrows are drawn thicker than the shared default so they read at cable scale. */
+const GIRTH = 1.8
 const COPPER = '#c2793a'
 const SHIELD = '#8b95a7'
-const DIELECTRIC = '#1e3a5f'
+const DIELECTRIC = '#1d4466'
 const POS = new THREE.Color('#f87171')
 const NEG = new THREE.Color('#60a5fa')
 const ZERO = new THREE.Color('#243047')
-const UP = new THREE.Vector3(0, 1, 0)
 
 /** Diverging colour of a signed value relative to its scale (V(z) along the cable). */
 export function divergingColor(v: number, scale: number, out = new THREE.Color()): THREE.Color {
@@ -33,14 +35,98 @@ export function divergingColor(v: number, scale: number, out = new THREE.Color()
   return out.copy(ZERO).lerp(t >= 0 ? POS : NEG, Math.abs(t))
 }
 
-/** Radial display magnification of the 3D cable: the outer radius is drawn as 12 % of L. */
-export function radialScale(g: CoaxSpec['geometry']): number {
-  return Math.max(1, (0.12 * g.length_m) / g.shield_outer_radius_m)
+/** Radial display magnification of the 3D cable: the outer radius is drawn as 12 % of L (20 %
+ *  in the side view, where only the longitudinal section is seen). Stated on screen. */
+export function radialScale(g: CoaxSpec['geometry'], view: CoaxCamera = 'iso'): number {
+  return Math.max(1, ((view === 'side' ? 0.2 : 0.12) * g.length_m) / g.shield_outer_radius_m)
 }
 
-/** Angle (physical φ) the 3D camera looks from; the cut-away wedge is centred on it. */
-const CUT_PHI = Math.atan2(-1.45, -0.8)
-const CUT_HALF = (55 * Math.PI) / 180
+// ------------------------------------------------------------------------------ glyphs
+
+/** ⊙ (vector toward the viewer) or ⊗ (away), drawn in its local x–y plane (local +z faces the
+ *  viewer); size ∝ magnitude. Used for S in cross-sections and for H in the side view. */
+function AxialGlyph({ p, toward, size, color, rotation }: { p: Vec3; toward: boolean; size: number; color: string; rotation?: [number, number, number] }) {
+  const ring = useMemo(() => Array.from({ length: 33 }, (_, j) => [Math.cos((j * Math.PI) / 16) * size, Math.sin((j * Math.PI) / 16) * size, 0] as Vec3), [size])
+  const s = size * 0.62
+  return (
+    <group position={p} rotation={rotation ?? [0, 0, 0]}>
+      <Line points={ring} color={color} lineWidth={1.4} />
+      {toward ? (
+        <mesh position={[0, 0, size * 0.01]}>
+          <circleGeometry args={[size * 0.3, 16]} />
+          <meshBasicMaterial color={color} toneMapped={false} side={THREE.DoubleSide} />
+        </mesh>
+      ) : (
+        <Line points={[[-s, -s, 0], [s, s, 0], [0, 0, 0], [-s, s, 0], [s, -s, 0]]} color={color} lineWidth={1.4} />
+      )}
+    </group>
+  )
+}
+
+/** Cross-section field samples (E, H rays and S glyphs), mapped by `place` (physical x, y →
+ *  world point) and `dir` (physical in-plane vector → world vector). Shared by the 2D view and
+ *  the 3D section view so both use the same rays, scales and conventions. */
+function SectionFields({ data, place, dir, glyphRotation, unit, towardSign }: {
+  data: CoaxSnapshot
+  place: (x: number, y: number) => Vec3
+  dir: (vx: number, vy: number) => Vec3
+  glyphRotation?: [number, number, number]
+  unit: number // world length of one metre in the cross-section plane
+  towardSign: 1 | -1 // sign of S_z that points toward the viewer
+}) {
+  const v = useViewStore()
+  const cs = data.cross_section
+  const set = useMemo(() => {
+    const rays = sectionRays(cs, v.coaxDensity)
+    const rings = rays.rings
+    if (!rings.length) return null
+    const seg = cs.segment_m ?? 0
+    const sc = fieldScales(data, rings[0]!)
+    const build = (angles: number[], comp: 'E' | 'H') => {
+      const pts: number[] = []
+      const vec: number[] = []
+      const mag: number[] = []
+      rings.forEach((_, ri) => angles.forEach((aj) => {
+        const i = rays.index(ri, aj)
+        const [px, py] = cs.points_m[i]!
+        const [vx, vy] = (comp === 'E' ? cs.E : cs.H)[i]!
+        pts.push(...place(px, py))
+        vec.push(...dir(vx, vy))
+        mag.push(Math.hypot(vx, vy))
+      }))
+      return { points: new Float32Array(pts), vectors: new Float32Array(vec), magnitudes: new Float32Array(mag) }
+    }
+    // Arc between an H ray and its neighbouring E/S rays at the innermost ring (H is longest there).
+    const arc = (2 * Math.PI * rings[0]!) / (3 * rays.E.length)
+    const glyphs = rings.slice(1).flatMap((_, q) => rays.S.map((aj) => {
+      const i = rays.index(q + 1, aj)
+      const [px, py] = cs.points_m[i]!
+      return { p: place(px, py), s: cs.S_z[i]! }
+    }))
+    return {
+      E: build(rays.E, 'E'),
+      H: build(rays.H, 'H'),
+      glyphs,
+      sc,
+      // Linear lengths: at the scale maximum an E arrow fills 95 % of its radial segment and an
+      // H arrow at most 1.6 arcs, so no arrow reaches a conductor or its neighbours.
+      cellE: ((0.95 * seg) / 0.85) * unit,
+      cellH: (Math.min(0.95 * seg, 1.6 * arc) / 0.85) * unit,
+      glyph: 0.32 * seg * unit,
+    }
+  }, [cs, data, v.coaxDensity, place, dir, unit])
+  if (!set) return null
+  return (
+    <>
+      {v.showArrows && <ArrowField points={set.E.points} vectors={set.E.vectors} magnitudes={set.E.magnitudes} scale={{ min: 0, max: set.sc.E }} cell={set.cellE} lengthMode="linear" sizeFactor={v.arrowScale} girth={GIRTH} solidColor={COAX_E_COLOR} />}
+      {v.showBArrows && <ArrowField points={set.H.points} vectors={set.H.vectors} magnitudes={set.H.magnitudes} scale={{ min: 0, max: set.sc.H }} cell={set.cellH} lengthMode="linear" sizeFactor={v.arrowScale} girth={GIRTH} solidColor={COAX_H_COLOR} />}
+      {v.coaxShowPoynting && set.glyphs.map((g, i) => {
+        const kk = set.sc.S > 0 ? Math.min(1, Math.abs(g.s) / set.sc.S) : 0
+        return kk > 2e-3 ? <AxialGlyph key={i} p={g.p} toward={g.s * towardSign > 0} size={set.glyph * (0.35 + 0.65 * Math.sqrt(kk))} color={COAX_S_COLOR} rotation={glyphRotation} /> : null
+      })}
+    </>
+  )
+}
 
 // ------------------------------------------------------------------------------- 2D view
 
@@ -52,66 +138,20 @@ function Cross2D({ spec, data }: { spec: CoaxSpec; data: CoaxSnapshot | undefine
   const a = g.inner_radius_m
   const b = g.shield_inner_radius_m
   const c = g.shield_outer_radius_m
-  const zoom = (0.8 * Math.min(size.width, size.height)) / (2 * c * 1.35)
+  const zoom = (0.72 * Math.min(size.width, size.height)) / (2 * c * 1.35)
   const m = c * 0.035 // marker size
   const cs = data?.cross_section
-  const lnba = data?.params.ln_b_over_a ?? Math.log(b / a)
   const alphaE = data && data.scale_V > 0 ? Math.min(1, Math.abs(data.V) / data.scale_V) : 0
   const alphaH = data && data.scale_I > 0 ? Math.min(1, Math.abs(data.I) / data.scale_I) : 0
-  // Sample rings (log-spaced radii, inner to outer): E arrows on rings 0 and 2, H arrows on rings
-  // 1 and 3, the axial S markers on every other point of ring 3, so no glyphs overlap.
-  const samples = useMemo(() => {
-    if (!cs) return []
-    const radii = [...new Set(cs.points_m.map(([x, y]) => Math.hypot(x, y).toPrecision(9)))].map(Number).sort((x, y) => x - y)
-    const count = new Map<number, number>()
-    return cs.points_m.map(([x, y], i) => {
-      const r = Math.hypot(x, y)
-      const ring = radii.findIndex((q) => Math.abs(q - r) <= 1e-6 * r)
-      const k = count.get(ring) ?? 0
-      count.set(ring, k + 1)
-      const role = ring % 2 === 0 ? 'E' : ring === radii.length - 1 && k % 2 === 0 ? 'S' : 'H'
-      return { i, x, y, r, role }
-    })
-  }, [cs])
-  const arrows = useMemo(() => {
-    if (!cs || !data || samples.length === 0) return null
-    const pack = (role: 'E' | 'H') => {
-      const sel = samples.filter((p) => p.role === role)
-      const pts = new Float32Array(3 * sel.length)
-      const vec = new Float32Array(3 * sel.length)
-      const mag = new Float32Array(sel.length)
-      sel.forEach((p, n) => {
-        const [vx, vy] = (role === 'E' ? cs.E : cs.H)[p.i]!
-        pts.set([p.x, p.y, c * 0.002], 3 * n)
-        vec.set([vx, vy, 0], 3 * n)
-        mag[n] = Math.hypot(vx, vy)
-      })
-      return { pts, vec, mag, r1: Math.min(...sel.map((p) => p.r)) }
-    }
-    const e = pack('E')
-    const h = pack('H')
-    // Fixed scales: the largest |E| and |H| over the playback range, at each set's innermost ring.
-    return {
-      e,
-      h,
-      eScale: { min: 0, max: data.scale_V / (e.r1 * lnba) },
-      hScale: { min: 0, max: data.scale_I / (2 * Math.PI * h.r1) },
-      cell: ((b - a) / 4) * 1.35,
-    }
-  }, [cs, data, samples, b, a, c, lnba])
-  const sMarks = useMemo(() => {
-    if (!cs || !data || !v.coaxShowPoynting) return []
-    // The Poynting vector is axial: ⊙ (out of the screen, +z) or ⊗ (into it, −z), size ∝ |S|.
-    const sel = samples.filter((p) => p.role === 'S').map((p) => ({ ...p, s: cs.S_z[p.i]! }))
-    const sRef = (data.scale_V * data.scale_I) / (2 * Math.PI * (sel[0]?.r ?? 1) ** 2 * lnba)
-    return sel.map((p) => ({ ...p, k: sRef > 0 ? Math.min(1, Math.abs(p.s) / sRef) : 0 }))
-  }, [cs, data, samples, v.coaxShowPoynting, lnba])
+  const place = useMemo(() => (x: number, y: number): Vec3 => [x, y, c * 0.004], [c])
+  const dir = useMemo(() => (vx: number, vy: number): Vec3 => [vx, vy, 0], [])
   const labelAt = (r: number, ang: number): Vec3 => [r * Math.cos(ang), r * Math.sin(ang), 0]
   const dims: [string, number, number][] = [
-    [`a = ${formatSI(a, 'm', 3)}`, a, (205 * Math.PI) / 180],
-    [`b = ${formatSI(b, 'm', 3)}`, b, (235 * Math.PI) / 180],
-    [`c = ${formatSI(c, 'm', 3)}`, c, (265 * Math.PI) / 180],
+    [`a = ${formatSI(a, 'm', 3)}`, a, (-20 * Math.PI) / 180],
+    [`b = ${formatSI(b, 'm', 3)}`, b, (-42 * Math.PI) / 180],
+    [`c = ${formatSI(c, 'm', 3)}`, c, (-64 * Math.PI) / 180],
   ]
+  const circle = (r: number) => Array.from({ length: 161 }, (_, i) => [r * Math.cos((2 * Math.PI * i) / 160), r * Math.sin((2 * Math.PI * i) / 160), c * 0.001] as Vec3)
   return (
     <>
       <OrthographicCamera key={`coax2d-${v.cameraResetToken}`} makeDefault position={[0, 0, 10 * c]} up={[0, 1, 0]} zoom={zoom} near={c * 1e-3} far={c * 100} />
@@ -128,82 +168,40 @@ function Cross2D({ spec, data }: { spec: CoaxSpec; data: CoaxSnapshot | undefine
         <planeGeometry args={[4 * c, 4 * c]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
+      {/* Three distinct regions at true proportions, with their boundaries outlined. */}
       <mesh position={[0, 0, -c * 0.01]} renderOrder={-3}>
         <ringGeometry args={[b, c, 160]} />
         <meshBasicMaterial color={SHIELD} />
       </mesh>
       <mesh position={[0, 0, -c * 0.01]} renderOrder={-3}>
         <ringGeometry args={[a, b, 160]} />
-        <meshBasicMaterial color={DIELECTRIC} transparent opacity={0.55} />
+        <meshBasicMaterial color={DIELECTRIC} />
       </mesh>
       <mesh position={[0, 0, -c * 0.01]} renderOrder={-3}>
         <circleGeometry args={[a, 96]} />
         <meshBasicMaterial color={COPPER} />
       </mesh>
+      {[a, b, c].map((r) => <Line key={r} points={circle(r)} color="#e2e8f0" lineWidth={1} transparent opacity={0.55} />)}
       {dims.map(([text, r, ang]) => (
         <group key={text}>
           <Line points={[[0, 0, c * 0.003], labelAt(r, ang)]} color="#e2e8f0" lineWidth={1.2} />
-          <Line points={[labelAt(r, ang), labelAt(c * 1.12, ang)]} color="#94a3b8" lineWidth={0.8} dashed dashSize={c * 0.03} gapSize={c * 0.02} />
-          <Html position={labelAt(c * 1.2, ang)} center zIndexRange={[10, 0]} style={{ pointerEvents: 'none' }}>
-            <span className="select-none whitespace-nowrap rounded bg-bg/70 px-1 font-mono text-[10px] text-text">{text}</span>
+          <Line points={[labelAt(r, ang), labelAt(c * 1.18, ang)]} color="#94a3b8" lineWidth={0.8} dashed dashSize={c * 0.03} gapSize={c * 0.02} />
+          <Html position={labelAt(c * 1.3, ang)} center zIndexRange={[10, 0]} style={{ pointerEvents: 'none' }}>
+            <span className="select-none whitespace-nowrap rounded bg-bg/80 px-1 font-mono text-[11px] text-text">{text}</span>
           </Html>
         </group>
       ))}
-      <Html position={[0, c * 1.32, 0]} center zIndexRange={[10, 0]} style={{ pointerEvents: 'none' }}>
-        <span className="select-none whitespace-nowrap font-mono text-[10px] text-muted">{t('coax.view.section', { z: formatSI(data?.z_m ?? 0, 'm', 3) })}</span>
+      <Html position={[0, -c * 1.42, 0]} center zIndexRange={[10, 0]} style={{ pointerEvents: 'none' }}>
+        <span className="select-none whitespace-nowrap font-mono text-[11px] text-muted">{t('coax.view.section', { z: formatSI(data?.z_m ?? 0, 'm', 3) })}</span>
       </Html>
-      {data && cs && v.showFieldLines && alphaE > 1e-3 && (
-        <group>
-          {cs.e_line_angles_rad.map((ang) => {
-            const d = new THREE.Vector3(Math.cos(ang), Math.sin(ang), 0)
-            const rm = Math.sqrt(a * b)
-            return (
-              <group key={ang}>
-                <Line points={[d.clone().multiplyScalar(a).toArray() as Vec3, d.clone().multiplyScalar(b).toArray() as Vec3]} color={COAX_E_COLOR} lineWidth={1.4} transparent opacity={alphaE} />
-                <mesh position={d.clone().multiplyScalar(rm)} quaternion={new THREE.Quaternion().setFromUnitVectors(UP, d.clone().multiplyScalar(cs.e_sign))}>
-                  <coneGeometry args={[m * 0.45, m * 1.3, 10]} />
-                  <meshBasicMaterial color={COAX_E_COLOR} transparent opacity={alphaE} toneMapped={false} />
-                </mesh>
-              </group>
-            )
-          })}
-        </group>
-      )}
-      {data && cs && v.showBLines && alphaH > 1e-3 && (
-        <group>
-          {cs.h_line_radii_m.map((r, k) => {
-            const pts = Array.from({ length: 129 }, (_, i) => [r * Math.cos((2 * Math.PI * i) / 128), r * Math.sin((2 * Math.PI * i) / 128), c * 0.001] as Vec3)
-            const ang = (k * Math.PI) / 4 + Math.PI / 8
-            const tan = new THREE.Vector3(-Math.sin(ang), Math.cos(ang), 0).multiplyScalar(cs.h_sign)
-            return (
-              <group key={r}>
-                <Line points={pts} color={COAX_H_COLOR} lineWidth={1.2} transparent opacity={alphaH} />
-                <mesh position={[r * Math.cos(ang), r * Math.sin(ang), 0]} quaternion={new THREE.Quaternion().setFromUnitVectors(UP, tan)}>
-                  <coneGeometry args={[m * 0.4, m * 1.2, 10]} />
-                  <meshBasicMaterial color={COAX_H_COLOR} transparent opacity={alphaH} toneMapped={false} />
-                </mesh>
-              </group>
-            )
-          })}
-        </group>
-      )}
-      {arrows && v.showArrows && <ArrowField points={arrows.e.pts} vectors={arrows.e.vec} magnitudes={arrows.e.mag} scale={arrows.eScale} cell={arrows.cell} lengthMode="linear" sizeFactor={v.arrowScale} solidColor={COAX_E_COLOR} />}
-      {arrows && v.showBArrows && <ArrowField points={arrows.h.pts} vectors={arrows.h.vec} magnitudes={arrows.h.mag} scale={arrows.hScale} cell={arrows.cell} lengthMode="linear" sizeFactor={v.arrowScale} solidColor={COAX_H_COLOR} />}
-      {sMarks.map((p, i) =>
-        p.k > 1e-3 ? (
-          <group key={i} position={[p.x * 1.0, p.y * 1.0, c * 0.004]}>
-            <Line points={Array.from({ length: 33 }, (_, j) => [Math.cos((j * Math.PI) / 16) * m * (0.4 + 0.8 * p.k), Math.sin((j * Math.PI) / 16) * m * (0.4 + 0.8 * p.k), 0] as Vec3)} color={COAX_S_COLOR} lineWidth={1.3} />
-            {p.s > 0 ? (
-              <mesh>
-                <circleGeometry args={[m * 0.18 * (0.6 + p.k), 16]} />
-                <meshBasicMaterial color={COAX_S_COLOR} toneMapped={false} />
-              </mesh>
-            ) : (
-              <Line points={[[-1, -1, 0], [1, 1, 0], [0, 0, 0], [-1, 1, 0], [1, -1, 0]].map(([x, y]) => [x! * m * 0.3 * (0.4 + 0.8 * p.k), y! * m * 0.3 * (0.4 + 0.8 * p.k), 0] as Vec3)} color={COAX_S_COLOR} lineWidth={1.3} />
-            )}
-          </group>
-        ) : null,
-      )}
+      {data && cs && v.showFieldLines && alphaE > 1e-3 && cs.e_line_angles_rad.map((ang) => {
+        const d = new THREE.Vector3(Math.cos(ang), Math.sin(ang), 0)
+        return <Line key={ang} points={[d.clone().multiplyScalar(a).toArray() as Vec3, d.clone().multiplyScalar(b).toArray() as Vec3]} color={COAX_E_COLOR} lineWidth={1} transparent opacity={0.45 * alphaE} />
+      })}
+      {data && cs && v.showBLines && alphaH > 1e-3 && cs.h_line_radii_m.map((r) => (
+        <Line key={r} points={circle(r)} color={COAX_H_COLOR} lineWidth={1} transparent opacity={0.45 * alphaH} />
+      ))}
+      {data && <SectionFields data={data} place={place} dir={dir} unit={1} towardSign={1} />}
       {v.probePoint && (
         <mesh position={[v.probePoint[0], v.probePoint[1], c * 0.01]}>
           <circleGeometry args={[m * 0.35, 16]} />
@@ -216,14 +214,8 @@ function Cross2D({ spec, data }: { spec: CoaxSpec; data: CoaxSnapshot | undefine
 
 // ------------------------------------------------------------------------------- 3D view
 
-/** Physical (x, y, z) → display: the cable axis along world x (centred), radial × k. The map
- *  (x, y, z) → (z − L/2, k y, −k x) is a proper rotation (right-handed axes are kept). */
-function toDisplay(x: number, y: number, z: number, k: number, L: number): [number, number, number] {
-  return [z - L / 2, k * y, -k * x]
-}
-
-/** A cylindrical surface r = const, φ ∈ [φ0, φ1], z ∈ [0, L] (display coordinates), with
- *  optional per-z vertex colours. */
+/** A cylindrical surface r = const, φ ∈ [φ0, φ1], z ∈ zs (display coordinates), with optional
+ *  per-z vertex colours. */
 function cylinderPatch(r: number, phi0: number, phi1: number, zs: number[], k: number, L: number, colors?: THREE.Color[]) {
   const nPhi = 48
   const pos: number[] = []
@@ -251,7 +243,7 @@ function cylinderPatch(r: number, phi0: number, phi1: number, zs: number[], k: n
   return geo
 }
 
-/** A radial strip φ = const, r ∈ [r0, r1], z ∈ [0, L] (the faces of the cut-away). */
+/** A radial strip φ = const, r ∈ [r0, r1], z ∈ zs (the faces of the cut-away). */
 function radialStrip(r0: number, r1: number, phi: number, zs: number[], k: number, L: number, colors?: THREE.Color[]) {
   const pos: number[] = []
   const col: number[] = []
@@ -273,102 +265,117 @@ function radialStrip(r0: number, r1: number, phi: number, zs: number[], k: numbe
   return geo
 }
 
+/** Camera of each 3D preset. The camera is keyed by the preset and the reset token only, so
+ *  playback (new data every step) never moves it: the user's orbit/zoom is kept. */
+function Camera3D({ view, L, R, zSlice }: { view: CoaxCamera; L: number; R: number; zSlice: number }) {
+  const token = useViewStore((s) => s.cameraResetToken)
+  const size = useThree((s) => s.size)
+  // Fixed per preset (deliberately not updated while the inspected z changes).
+  const cfg = useMemo(() => {
+    if (view === 'side') return { target: [0, 0, 0] as Vec3, position: [0, -3 * L, 0] as Vec3 }
+    if (view === 'section') {
+      const tz = zSlice - L / 2
+      return { target: [tz, 0, 0] as Vec3, position: [tz + 6.5 * R, -3.4 * R, 2.6 * R] as Vec3 }
+    }
+    // Isometric: close enough that the arrows read, far enough to show both cable ends.
+    return { target: [0, 0, 0] as Vec3, position: [-0.12 * L, -1.22 * L, 0.66 * L] as Vec3 }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, L, R, token])
+  const key = `${view}-${token}`
+  if (view === 'side') {
+    const zoom = Math.min((0.9 * size.width) / (1.2 * L), (0.55 * size.height) / (2 * R))
+    return (
+      <group key={key}>
+        <OrthographicCamera makeDefault position={cfg.position} up={[0, 0, 1]} zoom={zoom} near={L * 1e-3} far={L * 20} />
+        <OrbitControls makeDefault target={cfg.target} enableDamping dampingFactor={0.12} />
+      </group>
+    )
+  }
+  return (
+    <group key={key}>
+      <PerspectiveCamera makeDefault position={cfg.position} up={[0, 0, 1]} fov={36} near={L * 1e-4} far={L * 30} />
+      <OrbitControls makeDefault target={cfg.target} enableDamping dampingFactor={0.12} />
+    </group>
+  )
+}
+
 function Cable3D({ spec, data, z }: { spec: CoaxSpec; data: CoaxSnapshot | undefined; z: number }) {
   const { t } = useT()
   const v = useViewStore()
+  const view = v.coaxCamera
   const g = spec.geometry
   const L = g.length_m
   const a = g.inner_radius_m
   const b = g.shield_inner_radius_m
   const c = g.shield_outer_radius_m
-  const k = radialScale(g)
-  const p0 = CUT_PHI + CUT_HALF
-  const p1 = CUT_PHI + 2 * Math.PI - CUT_HALF
+  const k = radialScale(g, view)
+  const section = view === 'section'
+  const zEnd = section ? Math.max(z, L * 1e-3) : L
+  const cut = CUT[view]
+  const p0 = section ? 0 : cut.phi + cut.half
+  const p1 = section ? 2 * Math.PI : cut.phi + 2 * Math.PI - cut.half
   const line = data?.line
-  // Static geometry (rebuilt only when the cable changes).
+  // Static geometry (rebuilt only when the cable, the view or the section end changes).
   const shell = useMemo(() => ({
-    inner: cylinderPatch(a, 0, 2 * Math.PI, [0, L], k, L),
-    shield: cylinderPatch(c, p0, p1, [0, L], k, L),
-    shieldIn: cylinderPatch(b, p0, p1, [0, L], k, L),
-    cut0: radialStrip(b, c, p0, [0, L], k, L),
-    cut1: radialStrip(b, c, p1, [0, L], k, L),
-  }), [a, b, c, L, k, p0, p1])
-  // The dielectric's cut faces and its back wall coloured by V(z, t) (diverging scale).
+    inner: cylinderPatch(a, 0, 2 * Math.PI, [0, zEnd], k, L),
+    shield: cylinderPatch(c, p0, p1, [0, zEnd], k, L),
+    shieldIn: cylinderPatch(b, p0, p1, [0, zEnd], k, L),
+    cuts: section ? [] : [radialStrip(b, c, p0, [0, zEnd], k, L), radialStrip(b, c, p1, [0, zEnd], k, L)],
+  }), [a, b, c, L, k, p0, p1, zEnd, section])
+  // The dielectric's cut faces and its back wall coloured by the line voltage V(z, t).
   const wave = useMemo(() => {
     if (!line || !data) return null
-    const cols = line.V.map((x) => divergingColor(x, data.scale_V))
+    const keep = line.z_m.map((zz, i) => ({ zz, i })).filter((q) => q.zz <= zEnd + 1e-12)
+    const zs = keep.map((q) => q.zz)
+    if (zs.length < 2) return null
+    const cols = keep.map((q) => divergingColor(line.V[q.i]!, data.scale_V))
     return {
-      wall: cylinderPatch(b * 0.995, p0, p1, line.z_m, k, L, cols),
-      f0: radialStrip(a, b, p0, line.z_m, k, L, cols),
-      f1: radialStrip(a, b, p1, line.z_m, k, L, cols),
+      wall: cylinderPatch(b * 0.995, p0, p1, zs, k, L, cols),
+      faces: section ? [] : [radialStrip(a, b, p0, zs, k, L, cols), radialStrip(a, b, p1, zs, k, L, cols)],
     }
-  }, [line, data, a, b, k, L, p0, p1])
-  const arrows = useMemo(() => {
-    const st = data?.stations
+  }, [line, data, a, b, k, L, p0, p1, zEnd, section])
+  const st = useMemo(() => (data && !section ? stationArrows(data, view, k, L) : null), [data, view, section, k, L])
+  const cells = useMemo(() => {
     if (!st || !data) return null
-    const n = st.z_m.length
-    const rm = st.r_m
-    const phE = CUT_PHI - 0.45
-    const phH = CUT_PHI + 0.45
-    const pe = new Float32Array(3 * n)
-    const ph = new Float32Array(3 * n)
-    const ps = new Float32Array(3 * n)
-    const ve = new Float32Array(3 * n)
-    const vh = new Float32Array(3 * n)
-    const vs = new Float32Array(3 * n)
-    const me = new Float32Array(n)
-    const mh = new Float32Array(n)
-    const ms = new Float32Array(n)
-    // Unit vectors r̂(φ) and φ̂(φ) mapped to display axes; components from the engine.
-    const rh = (p: number) => toDisplay(Math.cos(p), Math.sin(p), 0, 1, 0)
-    const fh = (p: number) => toDisplay(-Math.sin(p), Math.cos(p), 0, 1, 0)
-    st.z_m.forEach((zz, i) => {
-      pe.set(toDisplay(rm * Math.cos(phE), rm * Math.sin(phE), zz, k, L), 3 * i)
-      ph.set(toDisplay(rm * Math.cos(phH), rm * Math.sin(phH), zz, k, L), 3 * i)
-      ps.set(toDisplay(rm * Math.cos(CUT_PHI), rm * Math.sin(CUT_PHI), zz, k, L), 3 * i)
-      const er = st.E_r[i]!
-      const hp = st.H_phi[i]!
-      const sz = st.S_z[i]!
-      const [rx, ry, rz] = rh(phE)
-      ve.set([rx * er, ry * er, rz * er], 3 * i)
-      const [fx, fy, fz] = fh(phH)
-      vh.set([fx * hp, fy * hp, fz * hp], 3 * i)
-      vs.set([sz, 0, 0], 3 * i)
-      me[i] = Math.abs(er)
-      mh[i] = Math.abs(hp)
-      ms[i] = Math.abs(sz)
-    })
-    const lnba = data.params.ln_b_over_a
+    const seg = data.stations.segment_m ?? 0
+    const n = data.stations.z_m.length
+    const dz = L / Math.max(1, n - 1)
+    const r1 = st.rings[1] ?? st.rings[0]!
     return {
-      pe, ph, ps, ve, vh, vs, me, mh, ms,
-      eScale: { min: 0, max: data.scale_V / (rm * lnba) },
-      hScale: { min: 0, max: data.scale_I / (2 * Math.PI * rm) },
-      sScale: { min: 0, max: (data.scale_V * data.scale_I) / (2 * Math.PI * rm * rm * lnba) },
-      cellR: (b - a) * k * 0.95,
-      cellZ: (L / (n - 1)) * 1.9,
+      sc: fieldScales(data, st.rings[0]!),
+      E: ((0.95 * seg) / 0.85) * k,
+      H: (Math.min(0.95 * seg * k, 0.85 * 0.25 * r1 * k) / 0.85),
+      S: ((view === 'side' ? 1.7 : 0.9) * dz) / 0.85,
+      glyph: 0.3 * seg * k,
     }
-  }, [data, k, L, a, b])
-  const cut = data?.cross_section
-  const zLabel = (zz: number, text: string) => (
-    <Html position={toDisplay(c * 2.3, 0, zz, k, L)} center zIndexRange={[10, 0]} style={{ pointerEvents: 'none' }}>
-      <span className="select-none whitespace-nowrap rounded bg-bg/70 px-1 font-mono text-[10px] text-text">{text}</span>
+  }, [st, data, k, L, view])
+  // Section view: the inspected cross-section's samples placed at z in display coordinates.
+  const place = useMemo(() => (x: number, y: number): Vec3 => {
+    const p = toDisplay(x, y, z, k, L)
+    return [p[0] + c * k * 0.02, p[1], p[2]]
+  }, [z, k, L, c])
+  const dir = useMemo(() => (vx: number, vy: number): Vec3 => toDisplay(vx, vy, 0, 1, 0), [])
+  // End labels are anchored inward (left-aligned at z = 0, right-aligned at z = L) so they stay
+  // on screen; the label of the inspected cross-section is centred on it.
+  const zLabel = (zz: number, text: string, align: 'start' | 'center' | 'end' = 'center') => (
+    <Html position={toDisplay(c * 1.5, 0, zz, k, L)} zIndexRange={[10, 0]} style={{ pointerEvents: 'none', transform: `translate(${align === 'start' ? '0' : align === 'end' ? '-100%' : '-50%'}, -50%)` }}>
+      <span className="select-none whitespace-nowrap rounded bg-bg/80 px-1 font-mono text-[11px] text-text">{text}</span>
     </Html>
   )
-  const diag = L * 1.2
+  const sliceColor = data ? divergingColor(data.V, data.scale_V) : ZERO
   return (
     <>
-      <PerspectiveCamera key={`coax3d-${v.cameraResetToken}`} makeDefault position={[-0.1 * L, -1.45 * L, 0.8 * L]} up={[0, 0, 1]} fov={36} near={L * 1e-3} far={diag * 20} />
-      <OrbitControls key={`coax3dc-${v.cameraResetToken}`} makeDefault target={[0, 0, 0]} enableDamping dampingFactor={0.12} />
+      <Camera3D view={view} L={L} R={c * k} zSlice={z} />
       <mesh geometry={shell.inner}>
         <meshStandardMaterial color={COPPER} metalness={0.6} roughness={0.35} />
       </mesh>
       <mesh geometry={shell.shield}>
-        <meshStandardMaterial color={SHIELD} metalness={0.5} roughness={0.5} transparent opacity={0.28} side={THREE.DoubleSide} depthWrite={false} />
+        <meshStandardMaterial color={SHIELD} metalness={0.5} roughness={0.5} transparent opacity={view === 'side' ? 0.4 : 0.28} side={THREE.DoubleSide} depthWrite={false} />
       </mesh>
       <mesh geometry={shell.shieldIn}>
         <meshStandardMaterial color={SHIELD} metalness={0.5} roughness={0.5} transparent opacity={0.18} side={THREE.DoubleSide} depthWrite={false} />
       </mesh>
-      {[shell.cut0, shell.cut1].map((geo, i) => (
+      {shell.cuts.map((geo, i) => (
         <mesh key={i} geometry={geo}>
           <meshStandardMaterial color={SHIELD} side={THREE.DoubleSide} />
         </mesh>
@@ -376,34 +383,59 @@ function Cable3D({ spec, data, z }: { spec: CoaxSpec; data: CoaxSnapshot | undef
       {wave && (
         <>
           <mesh geometry={wave.wall}>
-            <meshBasicMaterial vertexColors side={THREE.DoubleSide} transparent opacity={0.6} depthWrite={false} />
+            <meshBasicMaterial vertexColors side={THREE.DoubleSide} transparent opacity={0.55} depthWrite={false} />
           </mesh>
-          {[wave.f0, wave.f1].map((geo, i) => (
+          {wave.faces.map((geo, i) => (
             <mesh key={i} geometry={geo}>
-              <meshBasicMaterial vertexColors side={THREE.DoubleSide} transparent opacity={0.85} />
+              <meshBasicMaterial vertexColors side={THREE.DoubleSide} transparent opacity={0.8} depthWrite={false} />
             </mesh>
           ))}
         </>
       )}
-      {/* The inspected cross-section (the 2D view) with its E rays and H circles. */}
-      <mesh position={toDisplay(0, 0, z, k, L)} rotation={[0, Math.PI / 2, 0]}>
-        <ringGeometry args={[a * k, b * k, 96]} />
-        <meshBasicMaterial color="#e2e8f0" transparent opacity={0.12} side={THREE.DoubleSide} depthWrite={false} />
-      </mesh>
-      {cut && data && v.showFieldLines && Math.abs(data.V) > 1e-3 * data.scale_V && cut.e_line_angles_rad.map((ang) => (
-        <Line key={ang} points={[toDisplay(a * Math.cos(ang), a * Math.sin(ang), z, k, L), toDisplay(b * Math.cos(ang), b * Math.sin(ang), z, k, L)]} color={COAX_E_COLOR} lineWidth={1.2} transparent opacity={Math.min(1, Math.abs(data.V) / data.scale_V)} />
+      {section ? (
+        <>
+          {/* The cable ends at the inspected cross-section: its three regions face the camera. */}
+          <mesh position={toDisplay(0, 0, zEnd, k, L)} rotation={[0, Math.PI / 2, 0]}>
+            <circleGeometry args={[a * k, 64]} />
+            <meshStandardMaterial color={COPPER} metalness={0.4} roughness={0.5} side={THREE.DoubleSide} />
+          </mesh>
+          <mesh position={toDisplay(0, 0, zEnd, k, L)} rotation={[0, Math.PI / 2, 0]}>
+            <ringGeometry args={[a * k, b * k, 96]} />
+            <meshBasicMaterial color={sliceColor} transparent opacity={0.4} side={THREE.DoubleSide} />
+          </mesh>
+          <mesh position={toDisplay(0, 0, zEnd, k, L)} rotation={[0, Math.PI / 2, 0]}>
+            <ringGeometry args={[b * k, c * k, 96]} />
+            <meshStandardMaterial color={SHIELD} side={THREE.DoubleSide} />
+          </mesh>
+          {data && <SectionFields data={data} place={place} dir={dir} unit={k} towardSign={1} glyphRotation={[0, Math.PI / 2, 0]} />}
+        </>
+      ) : (
+        <mesh position={toDisplay(0, 0, z, k, L)} rotation={[0, Math.PI / 2, 0]}>
+          <ringGeometry args={[a * k, b * k, 96]} />
+          <meshBasicMaterial color="#e2e8f0" transparent opacity={0.1} side={THREE.DoubleSide} depthWrite={false} />
+        </mesh>
+      )}
+      {!section && data && v.showFieldLines && Math.abs(data.V) > 1e-3 * data.scale_V && data.cross_section.e_line_angles_rad.map((ang) => (
+        <Line key={ang} points={[toDisplay(a * Math.cos(ang), a * Math.sin(ang), z, k, L), toDisplay(b * Math.cos(ang), b * Math.sin(ang), z, k, L)]} color={COAX_E_COLOR} lineWidth={1} transparent opacity={0.6 * Math.min(1, Math.abs(data.V) / data.scale_V)} />
       ))}
-      {cut && data && v.showBLines && Math.abs(data.I) > 1e-3 * data.scale_I && cut.h_line_radii_m.filter((_, i) => i % 2 === 1).map((r) => (
-        <Line key={r} points={Array.from({ length: 97 }, (_, i) => toDisplay(r * Math.cos((2 * Math.PI * i) / 96), r * Math.sin((2 * Math.PI * i) / 96), z, k, L))} color={COAX_H_COLOR} lineWidth={1.2} transparent opacity={Math.min(1, Math.abs(data.I) / data.scale_I)} />
+      {!section && data && v.showBLines && Math.abs(data.I) > 1e-3 * data.scale_I && data.cross_section.h_line_radii_m.filter((_, i) => i % 2 === 1).map((r) => (
+        <Line key={r} points={Array.from({ length: 97 }, (_, i) => toDisplay(r * Math.cos((2 * Math.PI * i) / 96), r * Math.sin((2 * Math.PI * i) / 96), z, k, L))} color={COAX_H_COLOR} lineWidth={1} transparent opacity={0.6 * Math.min(1, Math.abs(data.I) / data.scale_I)} />
       ))}
-      {arrows && v.showArrows && <ArrowField points={arrows.pe} vectors={arrows.ve} magnitudes={arrows.me} scale={arrows.eScale} cell={arrows.cellR} lengthMode="linear" sizeFactor={v.arrowScale} solidColor={COAX_E_COLOR} />}
-      {arrows && v.showBArrows && <ArrowField points={arrows.ph} vectors={arrows.vh} magnitudes={arrows.mh} scale={arrows.hScale} cell={arrows.cellR} lengthMode="linear" sizeFactor={v.arrowScale} solidColor={COAX_H_COLOR} />}
-      {arrows && v.coaxShowPoynting && <ArrowField points={arrows.ps} vectors={arrows.vs} magnitudes={arrows.ms} scale={arrows.sScale} cell={arrows.cellZ} lengthMode="linear" sizeFactor={v.arrowScale} solidColor={COAX_S_COLOR} />}
-      {zLabel(0, t('coax.view.source', { term: t(`coax.term.${spec.source ?? 'matched'}`) }))}
-      {zLabel(L, t('coax.view.load', { term: t(`coax.term.${spec.load ?? 'matched'}`) }))}
+      {st && cells && v.showArrows && <ArrowField points={st.E.points} vectors={st.E.vectors} magnitudes={st.E.magnitudes} scale={{ min: 0, max: cells.sc.E }} cell={cells.E} lengthMode="linear" sizeFactor={v.arrowScale} girth={GIRTH} solidColor={COAX_E_COLOR} />}
+      {st && cells && v.showBArrows && <ArrowField points={st.H.points} vectors={st.H.vectors} magnitudes={st.H.magnitudes} scale={{ min: 0, max: cells.sc.H }} cell={cells.H} lengthMode="linear" sizeFactor={v.arrowScale} girth={GIRTH} solidColor={COAX_H_COLOR} />}
+      {st && cells && v.showBArrows && st.Hglyphs.map((gl, i) => {
+        const kk = cells.sc.H > 0 ? Math.min(1, Math.abs(gl.value) / cells.sc.H) : 0
+        // Side view (camera at −y): H along +y points into the screen (⊗), along −y out (⊙).
+        return kk > 2e-3 ? <AxialGlyph key={i} p={[gl.p[0], gl.p[1] - c * k * 0.05, gl.p[2]]} toward={gl.value < 0} size={cells.glyph * (0.35 + 0.65 * kk)} color={COAX_H_COLOR} rotation={[Math.PI / 2, 0, 0]} /> : null
+      })}
+      {st && cells && v.coaxShowPoynting && <ArrowField points={st.S.points} vectors={st.S.vectors} magnitudes={st.S.magnitudes} scale={{ min: 0, max: cells.sc.S }} cell={cells.S} lengthMode="linear" sizeFactor={v.arrowScale} girth={GIRTH} solidColor={COAX_S_COLOR} />}
+      {!section && zLabel(0, t('coax.view.source', { term: t(`coax.term.${spec.source ?? 'matched'}`) }), 'start')}
+      {!section && zLabel(L, t('coax.view.load', { term: t(`coax.term.${spec.load ?? 'matched'}`) }), 'end')}
       {zLabel(z, `z = ${formatSI(z, 'm', 3)}`)}
-      <Html position={toDisplay(-c * 2.4, 0, L / 2, k, L)} center zIndexRange={[10, 0]} style={{ pointerEvents: 'none' }}>
-        <span className="select-none whitespace-nowrap font-mono text-[10px] text-muted">{t('coax.view.radial', { k: k.toFixed(0) })} · +z →</span>
+      <Html position={toDisplay(c * (section ? 1.9 : 2.2), 0, section ? zEnd : L / 2, k, L)} center zIndexRange={[10, 0]} style={{ pointerEvents: 'none' }}>
+        <span className="select-none whitespace-nowrap rounded bg-bg/80 px-1 font-mono text-[11px] text-muted">
+          a = {formatSI(a, 'm', 3)} · b = {formatSI(b, 'm', 3)} · c = {formatSI(c, 'm', 3)} · {t('coax.view.radial', { k: k.toFixed(0) })} · +z →
+        </span>
       </Html>
     </>
   )

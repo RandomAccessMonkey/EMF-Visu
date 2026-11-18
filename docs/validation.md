@@ -668,3 +668,28 @@ entries with 23 available (two assertions updated).
 | Frontend type-check, lint, unit tests, production build | clean; 88 passed (80 earlier, 8 new) |
 | End-to-end, native stack (`scripts/native.py`) with Redis and worker | 79 of 79 checks (74 earlier + 5 for the coaxial module: preset 30 parameters and power check, preset 31 open/short load signs, invalid geometry blocked, 2D probe and Maxwell checks, persistence and closing; plus the Hungarian Koax tab) |
 | Windows, Docker | not executed |
+
+## Verification record for the coaxial visualization refinement and looping playback
+
+**Rendering audit:** the display map (x, y, z) → (z − L/2, k y, −k x) is a proper rotation (det
++1) with equal radial magnification, so the analytical vectors keep their radial / azimuthal /
+axial character; E, H and S signs follow the engine values (also for V < 0, I < 0 and reflected
+waves). No defect in the field directions was found. Fixed: arrows centred on the innermost
+sample ring could reach the inner conductor (the rings now keep a 0.08 (b − a) margin and an
+arrow is at most one radial segment long), and the first option of a labelled button group took
+the row label as its accessible name (now a plain group row).
+
+| Check | Result |
+|---|---|
+| Engine: sample rings within [a + m, b − m]; E_r, H_φ, S_z at every ring equal V/(r ln(b/a)), I/(2πr) and their product; cross-section samples radial at their ring | pass (pytest) |
+| Frontend (12): E world vectors radial (zero axial and azimuthal part), H azimuthal, S axial with the sign of V·I, engine magnitude at each radius, one scale per field (1/r, 1/r² kept), Poynting samples inside the dielectric with the margin, camera presets leave the vectors unchanged, proper-rotation display map, disjoint E/H/S rays at every density | pass (vitest) |
+| Playback (10): loop time on the grid and drift-free after 1000 cycles, overflow carried for a non-integer range, sub-ns steps; Play, wrap to the start, three complete cycles while still playing; pause keeps the time, resume continues, stop only on request; repeated Play keeps one timer, released on dispose; waiting for a result; range change during playback stays in range; throttled (late) timers keep playing; time edit during playback | pass (vitest, fake timers) |
+| End-to-end: camera presets; Play over 0–25 ns with Δt = 1 ns for three complete cycles (each wrap lands exactly on 0), still playing; pause / resume / stop | pass |
+
+| Item | Result |
+|---|---|
+| Python tests | 667 passed, incl. 5 integration tests against PostgreSQL and Redis |
+| ruff, mypy (strict) | clean |
+| Frontend type-check, lint, unit tests, production build | clean; 110 passed (88 earlier, 22 new) |
+| End-to-end, native stack with Redis and worker | 80 of 80 checks (79 earlier + camera presets and multi-cycle looping) |
+| Windows, Docker | not executed |

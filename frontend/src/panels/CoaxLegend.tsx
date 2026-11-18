@@ -14,10 +14,10 @@ export function CoaxLegend({ coax }: { coax: CoaxData }) {
   const d = coax.data
   if (!coax.spec || coax.issues.length > 0) return null
   return (
-    <div className="pointer-events-none absolute bottom-2 left-2 max-w-[24rem] rounded-lg bg-panel/85 px-3 py-2 text-[10px] leading-snug text-muted shadow-lg" data-testid="coax-legend">
+    <div className="pointer-events-none absolute left-2 top-2 max-w-[24rem] rounded-lg bg-panel/85 px-3 py-2 text-[10px] leading-snug text-muted shadow-lg" data-testid="coax-legend">
       {d && (
         <div className="mb-1 font-mono text-[11px] text-text">
-          t = {formatSI(d.t_s, 's', 4)} · z = {formatSI(d.z_m, 'm', 3)} · V = {formatSI(d.V, 'V', 3)} · I = {formatSI(d.I, 'A', 3)} · P = {formatSI(d.V * d.I, 'W', 3)}
+          t = {formatSI(d.t_s, 's', 4)} · z = {formatSI(d.z_m, 'm', 3)} · V = {formatSI(d.V, 'V', 3)} · I = {formatSI(d.I, 'A', 3)} · {t('coax.pInstShort')} = {formatSI(d.V * d.I, 'W', 3)}
         </div>
       )}
       <div><Chip color={COAX_E_COLOR} />{t('coax.legend.E')}</div>
@@ -30,6 +30,7 @@ export function CoaxLegend({ coax }: { coax: CoaxData }) {
         </div>
       )}
       <div>{t('coax.legend.length')}</div>
+      <div>{t('coax.legend.scales')}</div>
       <div>{t('coax.legend.region')}</div>
     </div>
   )

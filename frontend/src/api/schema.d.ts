@@ -1160,6 +1160,21 @@ export interface components {
             e_sign: number;
             /** H Sign */
             h_sign: number;
+            /**
+             * Rings M
+             * @default []
+             */
+            rings_m: number[];
+            /**
+             * N Angles
+             * @default 0
+             */
+            n_angles: number;
+            /**
+             * Segment M
+             * @default 0
+             */
+            segment_m: number;
         };
         /** Crossing */
         Crossing: {
@@ -4477,6 +4492,31 @@ export interface components {
             H_phi: number[];
             /** S Z */
             S_z: number[];
+            /**
+             * Rings M
+             * @default []
+             */
+            rings_m: number[];
+            /**
+             * Segment M
+             * @default 0
+             */
+            segment_m: number;
+            /**
+             * E R Rings
+             * @default []
+             */
+            E_r_rings: number[][];
+            /**
+             * H Phi Rings
+             * @default []
+             */
+            H_phi_rings: number[][];
+            /**
+             * S Z Rings
+             * @default []
+             */
+            S_z_rings: number[][];
         };
         /**
          * SurfaceDisplay

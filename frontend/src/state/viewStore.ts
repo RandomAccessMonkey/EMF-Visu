@@ -63,6 +63,9 @@ export interface ViewSettings {
    *  showArrows / showBArrows / showFieldLines / showBLines). */
   coaxZFraction: number
   coaxShowPoynting: boolean
+  /** Coaxial 3D camera preset and the arrow sampling density (display only, never physics). */
+  coaxCamera: 'iso' | 'side' | 'section'
+  coaxDensity: 'low' | 'medium' | 'high'
 }
 
 export const DEFAULT_VIEW: ViewSettings = {
@@ -104,6 +107,8 @@ export const DEFAULT_VIEW: ViewSettings = {
   playbackSpeed: 1,
   coaxZFraction: 0.5,
   coaxShowPoynting: true,
+  coaxCamera: 'iso',
+  coaxDensity: 'medium',
 }
 
 interface ViewState extends ViewSettings {
@@ -182,6 +187,8 @@ export function sanitizeView(raw: Record<string, unknown>): Partial<ViewSettings
     delete out.timeStart
   }
   if (out.velocityConvention !== undefined && !['undefined', 'left', 'right'].includes(out.velocityConvention as string)) delete out.velocityConvention
+  if (out.coaxCamera !== undefined && !['iso', 'side', 'section'].includes(out.coaxCamera as string)) delete out.coaxCamera
+  if (out.coaxDensity !== undefined && !['low', 'medium', 'high'].includes(out.coaxDensity as string)) delete out.coaxDensity
   if (typeof out.coaxZFraction === 'number') out.coaxZFraction = Math.min(1, Math.max(0, out.coaxZFraction))
   if (out.heatmap !== undefined && !(SCALAR_MAPS as readonly string[]).includes(out.heatmap as string)) delete out.heatmap
   return out as Partial<ViewSettings>

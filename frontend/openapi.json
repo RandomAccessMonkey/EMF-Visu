@@ -3179,6 +3179,24 @@
           "h_sign": {
             "type": "integer",
             "title": "H Sign"
+          },
+          "rings_m": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Rings M",
+            "default": []
+          },
+          "n_angles": {
+            "type": "integer",
+            "title": "N Angles",
+            "default": 0
+          },
+          "segment_m": {
+            "type": "number",
+            "title": "Segment M",
+            "default": 0.0
           }
         },
         "type": "object",
@@ -11347,6 +11365,52 @@
             },
             "type": "array",
             "title": "S Z"
+          },
+          "rings_m": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Rings M",
+            "default": []
+          },
+          "segment_m": {
+            "type": "number",
+            "title": "Segment M",
+            "default": 0.0
+          },
+          "E_r_rings": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "E R Rings",
+            "default": []
+          },
+          "H_phi_rings": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "H Phi Rings",
+            "default": []
+          },
+          "S_z_rings": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "S Z Rings",
+            "default": []
           }
         },
         "type": "object",

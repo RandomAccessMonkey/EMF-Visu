@@ -1,11 +1,14 @@
 // Simulation-time controls (Phase 4A). The physics is evaluated at t = t_start + k·Δt exactly
 // (k an integer, never an accumulated sum), so playback is deterministic; wall-clock time only
-// paces the steps, and a step waits until the previous step's result has arrived.
+// paces the steps, and a step waits until the previous step's result has arrived. Play loops over
+// the range indefinitely (wrapping from the end to the start) until Pause or Stop; Stop returns
+// to the start time.
 import { Pause, Play, SkipBack, SkipForward, Square } from 'lucide-react'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { Button, NumberField, Select } from '@/components/ui/controls'
 import { useT, type MessageKey } from '@/i18n'
 import { useViewStore } from '@/state/viewStore'
+import { PlaybackLoop, type PlaybackState } from '@/sim/playback'
 
 const SPEEDS = ['0.25', '0.5', '1', '2', '4'] as const
 
@@ -35,17 +38,17 @@ export function TimeBar({ waiting, heading = 'time.mqs', timeUnit = SECONDS }: {
   const lastK = stepIndex(timeEnd, timeStart, timeStep)
   const go = (kk: number) => v.set({ timeS: gridTime(kk, timeStart, timeEnd, timeStep) })
 
+  // One looping playback controller per time bar (sim/playback.ts): Play runs until Pause or
+  // Stop, wrapping from the end of the range to its start.
+  const waitingRef = useRef(waiting)
   useEffect(() => {
-    if (!playing || waiting) return
-    if (k >= lastK) {
-      v.set({ playing: false })
-      return
-    }
-    const delay = Math.max(30, (timeStep / playbackSpeed) * 1000)
-    const id = setTimeout(() => useViewStore.getState().set({ timeS: gridTime(k + 1, timeStart, timeEnd, timeStep) }), delay)
-    return () => clearTimeout(id)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playing, waiting, k, lastK, timeStep, playbackSpeed, timeStart, timeEnd])
+    waitingRef.current = waiting
+  }, [waiting])
+  useEffect(() => {
+    const store = { getState: () => useViewStore.getState(), set: (p: Partial<PlaybackState>) => useViewStore.getState().set(p), subscribe: (f: () => void) => useViewStore.subscribe(f) }
+    const loop = new PlaybackLoop(store, () => waitingRef.current).attach()
+    return () => loop.dispose()
+  }, [])
 
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-border bg-panel px-3 py-1.5 text-xs" role="group" aria-label={t('time.controls')} data-testid="time-bar">
@@ -53,7 +56,7 @@ export function TimeBar({ waiting, heading = 'time.mqs', timeUnit = SECONDS }: {
       <Button variant="ghost" size="icon" aria-label={t('time.stepBack')} onClick={() => go(Math.max(0, k - 1))} disabled={playing || k <= 0}>
         <SkipBack size={13} />
       </Button>
-      <Button variant="primary" size="icon" aria-label={t(playing ? 'time.pause' : 'time.play')} onClick={() => v.set({ playing: !playing, ...(k >= lastK && !playing ? { timeS: timeStart } : {}) })}>
+      <Button variant="primary" size="icon" aria-label={t(playing ? 'time.pause' : 'time.play')} onClick={() => v.set({ playing: !playing })}>
         {playing ? <Pause size={13} /> : <Play size={13} />}
       </Button>
       <Button variant="ghost" size="icon" aria-label={t('time.stop')} onClick={() => v.set({ playing: false, timeS: timeStart })}>

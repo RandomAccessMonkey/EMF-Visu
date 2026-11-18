@@ -8,6 +8,7 @@ import type { CoaxSnapshot, CoaxSpec, CoaxTrace } from '@/api/types'
 import type { MessageKey } from '@/i18n'
 import { useSceneStore } from '@/state/sceneStore'
 import { useViewStore } from '@/state/viewStore'
+import { STATIONS } from '@/render/coaxSamples'
 
 /** Preset 30 geometry and material, 1 V Gaussian pulse, open load (a useful starting point). */
 export const DEFAULT_COAX: CoaxSpec = {
@@ -19,8 +20,6 @@ export const DEFAULT_COAX: CoaxSpec = {
 }
 
 export const TRACE_SAMPLES = 401
-/** Cross-sections sampled along the cable for the 3D arrows. */
-export const STATIONS = 65
 
 export interface CoaxIssue {
   key: MessageKey
@@ -64,14 +63,15 @@ export function useCoax() {
   const frac = useViewStore((s) => s.coaxZFraction)
   const mode = useViewStore((s) => s.mode)
   const probePoint = useViewStore((s) => s.probePoint)
+  const density = useViewStore((s) => s.coaxDensity)
   const issues = spec ? validateCoax(spec, start, end) : []
   const ok = !!spec && issues.length === 0
   const z = spec ? Math.min(1, Math.max(0, frac)) * spec.geometry.length_m : 0
   const probe = coaxProbe(mode, probePoint)
   const range = { start_s: start, end_s: end }
   const snapshot = useQuery({
-    queryKey: ['coax', spec, timeS, z, range, probe],
-    queryFn: ({ signal }): Promise<CoaxSnapshot> => api.coaxSnapshot({ spec: spec!, t_s: timeS, z_m: z, range, probe_m: probe, stations: STATIONS }, signal),
+    queryKey: ['coax', spec, timeS, z, range, probe, density],
+    queryFn: ({ signal }): Promise<CoaxSnapshot> => api.coaxSnapshot({ spec: spec!, t_s: timeS, z_m: z, range, probe_m: probe, stations: STATIONS[density] }, signal),
     enabled: ok,
     placeholderData: keepPreviousData,
     staleTime: Infinity,

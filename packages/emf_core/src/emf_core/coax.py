@@ -466,6 +466,12 @@ class CrossSection(BaseModel):
     h_line_radii_m: list[float]  # circular H lines, log-spaced: line density ∝ |H| ∝ 1/r
     e_sign: int  # +1: E points outward (V > 0), −1 inward, 0 none
     h_sign: int  # +1: H along +φ (I > 0), −1 along −φ, 0 none
+    # Sample layout: points_m is ring-major (ring i, angle j at index i·n_angles + j); each ring
+    # is the centre of one of len(rings_m) equal radial segments of length segment_m that keep a
+    # margin from both conductor surfaces (see sample_rings).
+    rings_m: list[float] = []
+    n_angles: int = 0
+    segment_m: float = 0.0
 
 
 class Stations(BaseModel):
@@ -478,6 +484,12 @@ class Stations(BaseModel):
     E_r: list[float]  # at r_m, per station
     H_phi: list[float]
     S_z: list[float]
+    # The same quantities at every sample ring (sample_rings), per station: [station][ring].
+    rings_m: list[float] = []
+    segment_m: float = 0.0
+    E_r_rings: list[list[float]] = []
+    H_phi_rings: list[list[float]] = []
+    S_z_rings: list[list[float]] = []
 
 
 class LineProfile(BaseModel):
@@ -546,21 +558,35 @@ def warnings(spec: CoaxSpec, p: LineParameters) -> list[str]:
     return out
 
 
+SAMPLE_RINGS = 4
+SAMPLE_MARGIN = 0.08  # fraction of b − a kept free next to each conductor surface
+SECTION_ANGLES = 48
+
+
+def sample_rings(g: CoaxGeometry, n: int = SAMPLE_RINGS, margin: float = SAMPLE_MARGIN
+                 ) -> tuple[list[float], float]:
+    """Display sample radii: [a + m, b − m] (m = margin·(b − a)) split into n equal segments;
+    returns the segment centres and the segment length. An arrow centred on a ring and no longer
+    than one segment never reaches a conductor surface, whatever its sign."""
+    a, b = g.inner_radius_m, g.shield_inner_radius_m
+    m = margin * (b - a)
+    seg = (b - a - 2 * m) / n
+    return [a + m + (i + 0.5) * seg for i in range(n)], seg
+
+
 def _cross_section(p: LineParameters, g: CoaxGeometry, V: float, I: float  # noqa: E741
                    ) -> CrossSection:
     a, b = g.inner_radius_m, g.shield_inner_radius_m
-    # Arrow rings at log-uniform radii strictly inside the dielectric.
-    radii = a * (b / a) ** ((np.arange(4) + 0.5) / 4)
+    radii, seg = sample_rings(g)
     pts: list[tuple[float, float]] = []
     E: list[tuple[float, float]] = []
     H: list[tuple[float, float]] = []
     S: list[float] = []
-    for k, r in enumerate(radii):
-        n = 16
-        off = 0.5 * (k % 2)
+    n = SECTION_ANGLES
+    for r in radii:
         f = radial_fields(p, r, V, I)
         for j in range(n):
-            ph = 2 * math.pi * (j + off) / n
+            ph = 2 * math.pi * j / n
             cx, cy = math.cos(ph), math.sin(ph)
             er, hp = float(f["E_r"]), float(f["H_phi"])
             pts.append((r * cx, r * cy))
@@ -572,7 +598,8 @@ def _cross_section(p: LineParameters, g: CoaxGeometry, V: float, I: float  # noq
         points_m=pts, E=E, H=H, S_z=S,
         e_line_angles_rad=[2 * math.pi * k / n_l for k in range(n_l)],
         h_line_radii_m=[float(a * (b / a) ** ((k + 0.5) / 8)) for k in range(8)],
-        e_sign=int(np.sign(V)), h_sign=int(np.sign(I)))
+        e_sign=int(np.sign(V)), h_sign=int(np.sign(I)), rings_m=radii, n_angles=n,
+        segment_m=seg)
 
 
 def _check(id_: str, comp: str, unit: str, lhs: tuple[float, float],
@@ -733,6 +760,8 @@ def snapshot(req: CoaxSnapshotRequest) -> CoaxSnapshot:
     a, b = g.inner_radius_m, g.shield_inner_radius_m
     rm = math.sqrt(a * b)
     fst = radial_fields(p, rm, sst["V"], sst["I"])
+    rings, seg = sample_rings(g)
+    frg = radial_fields(p, np.array(rings)[None, :], sst["V"][:, None], sst["I"][:, None])
     sv, si = _range_scale(spec, p, req.range)
     sv, si = max(sv, abs(V)), max(si, abs(I))
     pw = poynting_power(p, g, V, I)
@@ -756,7 +785,9 @@ def snapshot(req: CoaxSnapshotRequest) -> CoaxSnapshot:
         cross_section=_cross_section(p, g, V, I),
         stations=Stations(z_m=zst.tolist(), V=sst["V"].tolist(), I=sst["I"].tolist(),
                           r_m=rm, E_r=fst["E_r"].tolist(), H_phi=fst["H_phi"].tolist(),
-                          S_z=fst["S_z"].tolist()),
+                          S_z=fst["S_z"].tolist(), rings_m=rings, segment_m=seg,
+                          E_r_rings=frg["E_r"].tolist(), H_phi_rings=frg["H_phi"].tolist(),
+                          S_z_rings=frg["S_z"].tolist()),
         power=Power(P_poynting_W=pw, P_VI_W=vi, abs_error_W=err,
                     rel_error=err / ref if ref > 1e-300 else None, nodes=(48, 64)),
         calculus=calculus(spec, p, calc_point, t),
