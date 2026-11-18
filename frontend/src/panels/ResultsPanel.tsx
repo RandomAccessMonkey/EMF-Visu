@@ -8,6 +8,7 @@ import { useT, type MessageKey } from '@/i18n'
 import { formatNumber, formatSI, formatVector, prettyUnit } from '@/lib/format'
 import { isTimeDependent, scenePhysics } from '@/sim/request'
 import type { FluxData } from '@/sim/gauss'
+import { useCurrentPassive } from '@/sim/useCircuits'
 import type { Simulation } from '@/sim/useSimulation'
 import { AxisProfile } from './AxisProfile'
 import { FluxResults } from './FluxResults'
@@ -83,10 +84,13 @@ function Probe({ sim }: { sim: Simulation }) {
   // Phase 4A: the probe follows the simulation time of time-dependent scenes (0 otherwise, so
   // static scenes keep one cache entry).
   const timeS = useViewStore((s) => s.timeS)
-  const probeTime = isTimeDependent(scene) ? timeS : 0
+  // Phase 4C: the induced currents of passive circuits at this time (engine solution).
+  const passive = useCurrentPassive()
+  const probeTime = isTimeDependent(scene) || passive.length > 0 ? timeS : 0
+  const passiveKey = useMemo(() => JSON.stringify(passive), [passive])
   const probe = useQuery({
-    queryKey: ['probe', key, point, probeTime],
-    queryFn: ({ signal }) => api.probe(scene, point!, signal, probeTime),
+    queryKey: ['probe', key, point, probeTime, passiveKey],
+    queryFn: ({ signal }) => api.probe(scene, point!, signal, probeTime, passive),
     enabled: point !== null && !dragging,
     placeholderData: keepPreviousData,
     retry: false,
@@ -241,6 +245,36 @@ function loopPoint(c: Vec3, n: Vec3, a: number): Vec3 {
 
 /** Magnetic part of the probe: B and H (separate quantities, units and roles), B = μ₀H, ∇·B,
  *  the nearest current source, and each source's own field. */
+/** Phase 4C: prescribed and induced-current fields at the probe, per passive circuit. */
+function PassiveProbeView({ m }: { m: ProbeMagnetic }) {
+  const { t } = useT()
+  const p = m.passive
+  if (!p) return null
+  const vec = (v: number[] | null | undefined) => (v ? `(${v.map((x) => formatSI(x, '', 4)).join(', ')}) T` : t('probe.passiveSingular'))
+  return (
+    <div className="mt-1 rounded-md border border-[#f472b6]/40 p-2 text-[11px]" data-testid="passive-probe">
+      <h4 className="mb-1 font-semibold uppercase tracking-wider text-[#f472b6]">{t('probe.passiveTitle')}</h4>
+      <table className="w-full font-mono">
+        <tbody>
+          <tr><td className="pr-2 text-muted">B_prescribed</td><td>{vec(p.B_prescribed_T)}</td></tr>
+          <tr><td className="pr-2 text-muted">B_passive</td><td>{vec(p.B_passive_T)}</td></tr>
+          <tr><td className="pr-2 text-muted">B</td><td>{vec(p.B_total_T)}</td></tr>
+          {p.contributions.map((c) => (
+            <tr key={c.circuit_id} className="border-t border-border/60">
+              <td className="pr-2 font-sans text-muted">{c.circuit_id}</td>
+              <td>
+                I = {formatSI(c.current_A, 'A', 4)}, B = {vec(c.B_T)}
+                {c.inside_conductor && <span className="ml-1 font-sans text-warn">{t('probe.insideConductor')}</span>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {!p.rate_available && <p className="text-warn">{t('probe.passiveRateUnavailable')}</p>}
+    </div>
+  )
+}
+
 function MagneticProbe({ m }: { m: ProbeMagnetic }) {
   const { t } = useT()
   const vectors = m.values.filter((v) => !v.quantity.startsWith('div_'))
@@ -274,7 +308,8 @@ function MagneticProbe({ m }: { m: ProbeMagnetic }) {
           ))}
         </tbody>
       </table>
-      {m.time_dependent && <TimeProbe m={m} />}
+      {(m.time_dependent || m.passive) && <TimeProbe m={m} />}
+      <PassiveProbeView m={m} />
       <MaterialInfo m={m} />
       <p className="mt-1 font-mono text-[11px] text-muted">
         {m.constitutive === 'magnetization' ? 'H = B/μ₀ − M' : m.constitutive === 'linear_core' ? 'B = μ₀μᵣH' : 'B = μ₀H'}, μ₀ = {m.mu0_H_per_m.toExponential(10)} H/m

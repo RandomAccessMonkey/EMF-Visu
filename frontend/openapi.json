@@ -396,6 +396,68 @@
         }
       }
     },
+    "/api/v1/circuits": {
+      "post": {
+        "tags": [
+          "simulation"
+        ],
+        "summary": "Circuits",
+        "description": "Induced currents of passive circuits and eddy-current disks over the time range (Phase\n4C): the coupled RL equations L dI/dt = EMF_ext \u2212 RI \u2212 (dL/dt)I, forces, the dynamic\nsliding rod and the energy accounting. Every passive current shown anywhere comes from\nthis solution.",
+        "operationId": "circuits_api_v1_circuits_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CircuitBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CircuitResult"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request Entity Too Large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/lorentz": {
       "post": {
         "tags": [
@@ -1579,6 +1641,515 @@
         "type": "object",
         "title": "CirclePath"
       },
+      "CircuitBody": {
+        "properties": {
+          "scene": {
+            "$ref": "#/components/schemas/Scene"
+          },
+          "circuits": {
+            "$ref": "#/components/schemas/CircuitRequest"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scene",
+          "circuits"
+        ],
+        "title": "CircuitBody"
+      },
+      "CircuitDisplay": {
+        "properties": {
+          "visible": {
+            "type": "boolean",
+            "title": "Visible",
+            "default": true
+          },
+          "show_current": {
+            "type": "boolean",
+            "title": "Show Current",
+            "default": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "CircuitDisplay"
+      },
+      "CircuitRequest": {
+        "properties": {
+          "circuits": {
+            "items": {
+              "$ref": "#/components/schemas/PassiveCircuit"
+            },
+            "type": "array",
+            "maxItems": 8,
+            "title": "Circuits",
+            "default": []
+          },
+          "disks": {
+            "items": {
+              "$ref": "#/components/schemas/EddyDisk"
+            },
+            "type": "array",
+            "maxItems": 2,
+            "title": "Disks",
+            "default": []
+          },
+          "start_s": {
+            "type": "number",
+            "title": "Start S",
+            "default": 0.0
+          },
+          "end_s": {
+            "type": "number",
+            "title": "End S",
+            "default": 1.0
+          },
+          "step_s": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Step S",
+            "default": 0.01
+          },
+          "rtol": {
+            "type": "number",
+            "maximum": 0.001,
+            "minimum": 1e-10,
+            "title": "Rtol",
+            "default": 1e-07
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "CircuitRequest"
+      },
+      "CircuitResult": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "solved",
+              "stopped",
+              "invalid",
+              "singular",
+              "unsupported",
+              "nonphysical",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "status_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LocalizedText"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "problems": {
+            "items": {
+              "$ref": "#/components/schemas/LocalizedText"
+            },
+            "type": "array",
+            "title": "Problems",
+            "default": []
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/LocalizedText"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "default": []
+          },
+          "method": {
+            "$ref": "#/components/schemas/LocalizedText"
+          },
+          "elements": {
+            "items": {
+              "$ref": "#/components/schemas/ElementInfo"
+            },
+            "type": "array",
+            "title": "Elements",
+            "default": []
+          },
+          "matrix": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MatrixInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "series": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CircuitSeries"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "solver_steps": {
+            "type": "integer",
+            "title": "Solver Steps",
+            "default": 0
+          },
+          "rhs_evaluations": {
+            "type": "integer",
+            "title": "Rhs Evaluations",
+            "default": 0
+          },
+          "end_time_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time S"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "method"
+        ],
+        "title": "CircuitResult"
+      },
+      "CircuitSeries": {
+        "properties": {
+          "t_s": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "T S"
+          },
+          "current_A": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Current A"
+          },
+          "dI_dt_A_per_s": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Di Dt A Per S"
+          },
+          "flux_external_Wb": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Flux External Wb"
+          },
+          "flux_linkage_Wb": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Flux Linkage Wb"
+          },
+          "emf_transformer_V": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Emf Transformer V"
+          },
+          "emf_motional_V": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Emf Motional V"
+          },
+          "resistive_drop_V": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Resistive Drop V"
+          },
+          "joule_power_W": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Joule Power W"
+          },
+          "current_density_A_per_m2": {
+            "items": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "number"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Current Density A Per M2"
+          },
+          "force_N": {
+            "items": {
+              "anyOf": [
+                {
+                  "items": {
+                    "items": {
+                      "type": "number"
+                    },
+                    "type": "array"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Force N"
+          },
+          "torque_N_m": {
+            "items": {
+              "anyOf": [
+                {
+                  "items": {
+                    "items": {
+                      "type": "number"
+                    },
+                    "type": "array"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Torque N M"
+          },
+          "mechanical_power_W": {
+            "items": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "number"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Mechanical Power W"
+          },
+          "magnetic_energy_J": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Magnetic Energy J"
+          },
+          "joule_heat_J": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Joule Heat J"
+          },
+          "source_work_J": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Source Work J"
+          },
+          "motional_work_J": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Motional Work J"
+          },
+          "geometric_work_J": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Geometric Work J"
+          },
+          "kinetic_energy_J": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kinetic Energy J"
+          },
+          "damping_heat_J": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Damping Heat J"
+          },
+          "external_work_J": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Work J"
+          },
+          "rod_position_m": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rod Position M"
+          },
+          "rod_velocity_m_per_s": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rod Velocity M Per S"
+          },
+          "energy_residual_J": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Energy Residual J"
+          },
+          "power_residual_W": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Power Residual W"
+          },
+          "filaments": {
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/PassiveFilament"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Filaments"
+          }
+        },
+        "type": "object",
+        "required": [
+          "t_s",
+          "current_A",
+          "dI_dt_A_per_s",
+          "flux_external_Wb",
+          "flux_linkage_Wb",
+          "emf_transformer_V",
+          "emf_motional_V",
+          "resistive_drop_V",
+          "joule_power_W",
+          "current_density_A_per_m2",
+          "force_N",
+          "torque_N_m",
+          "mechanical_power_W",
+          "magnetic_energy_J",
+          "joule_heat_J",
+          "source_work_J",
+          "motional_work_J",
+          "geometric_work_J",
+          "energy_residual_J",
+          "power_residual_W",
+          "filaments"
+        ],
+        "title": "CircuitSeries",
+        "description": "Columnar time series on the output grid; per-element lists are indexed [element][k]."
+      },
       "CircularLoopSource": {
         "properties": {
           "current_A": {
@@ -2362,6 +2933,355 @@
         "title": "Domain",
         "description": "Axis-aligned region of interest. It bounds sampling and visualization; the Phase 1\nanalytical model itself is unbounded (potential reference at infinity)."
       },
+      "EddyDisk": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "default": ""
+          },
+          "center_m": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Center M",
+            "default": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          },
+          "rotation_euler_xyz_rad": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Rotation Euler Xyz Rad",
+            "default": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          },
+          "outer_radius_m": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Outer Radius M",
+            "default": 0.1
+          },
+          "inner_radius_m": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Inner Radius M",
+            "default": 0.0
+          },
+          "thickness_m": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Thickness M",
+            "default": 0.005
+          },
+          "material": {
+            "type": "string",
+            "enum": [
+              "copper",
+              "aluminium",
+              "silver",
+              "custom"
+            ],
+            "title": "Material",
+            "default": "copper"
+          },
+          "conductivity_S_per_m": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conductivity S Per M"
+          },
+          "bands": {
+            "type": "integer",
+            "maximum": 200.0,
+            "minimum": 2.0,
+            "title": "Bands",
+            "default": 20
+          },
+          "display": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CircuitDisplay"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "title": "EddyDisk",
+        "description": "Thin conducting disk in its local xy plane (normal +z), discretized into N_r concentric\nannular bands (reduced-order axisymmetric eddy-current approximation)."
+      },
+      "Electrical": {
+        "properties": {
+          "material": {
+            "type": "string",
+            "enum": [
+              "copper",
+              "aluminium",
+              "silver",
+              "custom"
+            ],
+            "title": "Material",
+            "default": "copper"
+          },
+          "conductivity_S_per_m": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conductivity S Per M"
+          },
+          "resistivity_ohm_m": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resistivity Ohm M"
+          },
+          "wire_radius_m": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wire Radius M",
+            "default": 0.001
+          },
+          "cross_section_m2": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cross Section M2"
+          },
+          "resistance_ohm": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resistance Ohm"
+          },
+          "self_inductance": {
+            "$ref": "#/components/schemas/SelfInductance"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Electrical",
+        "description": "Conductor of a passive circuit. Exactly one of conductivity / resistivity for a custom\nmaterial; exactly one of wire radius / cross-section; an explicit lumped resistance, if\ngiven, is authoritative (then \u03c3 and the cross-section only matter for \u2112)."
+      },
+      "ElementInfo": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "owner_id": {
+            "type": "string",
+            "title": "Owner Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "circuit",
+              "band"
+            ],
+            "title": "Kind"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "band_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Band Index"
+          },
+          "radius_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Radius M"
+          },
+          "width_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width M"
+          },
+          "thickness_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thickness M"
+          },
+          "turns": {
+            "type": "integer",
+            "title": "Turns",
+            "default": 1
+          },
+          "resistance_ohm": {
+            "type": "number",
+            "title": "Resistance Ohm"
+          },
+          "resistance_method": {
+            "$ref": "#/components/schemas/LocalizedText"
+          },
+          "length_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Length M"
+          },
+          "cross_section_m2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cross Section M2"
+          },
+          "self_inductance_H": {
+            "type": "number",
+            "title": "Self Inductance H"
+          },
+          "self_inductance_method": {
+            "$ref": "#/components/schemas/LocalizedText"
+          },
+          "self_inductance_approximate": {
+            "type": "boolean",
+            "title": "Self Inductance Approximate"
+          },
+          "moving": {
+            "type": "boolean",
+            "title": "Moving",
+            "default": false
+          },
+          "dynamic": {
+            "type": "boolean",
+            "title": "Dynamic",
+            "default": false
+          },
+          "time_constant_s": {
+            "type": "number",
+            "title": "Time Constant S"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "owner_id",
+          "kind",
+          "name",
+          "resistance_ohm",
+          "resistance_method",
+          "self_inductance_H",
+          "self_inductance_method",
+          "self_inductance_approximate",
+          "time_constant_s"
+        ],
+        "title": "ElementInfo",
+        "description": "One electrical branch: a passive circuit, or one band of an eddy-current disk."
+      },
       "Enclosure": {
         "properties": {
           "available": {
@@ -2462,6 +3382,7 @@
               "magnetostatics",
               "induction",
               "motion",
+              "circuits",
               "constitutive",
               "additional"
             ],
@@ -2637,6 +3558,24 @@
                 "type": "null"
               }
             ]
+          },
+          "circuits": {
+            "items": {
+              "$ref": "#/components/schemas/PassiveCircuit"
+            },
+            "type": "array",
+            "maxItems": 8,
+            "title": "Circuits",
+            "default": []
+          },
+          "eddy_disks": {
+            "items": {
+              "$ref": "#/components/schemas/EddyDisk"
+            },
+            "type": "array",
+            "maxItems": 2,
+            "title": "Eddy Disks",
+            "default": []
           }
         },
         "type": "object",
@@ -3583,6 +4522,19 @@
             "type": "number",
             "title": "Quasistatic Ratio",
             "default": 0.0
+          },
+          "passive_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Passive Ids",
+            "default": []
+          },
+          "passive_rate_available": {
+            "type": "boolean",
+            "title": "Passive Rate Available",
+            "default": true
           }
         },
         "type": "object",
@@ -3888,7 +4840,9 @@
                     "div_B",
                     "div_H",
                     "dB_dt",
-                    "E_ind"
+                    "E_ind",
+                    "B_prescribed",
+                    "B_passive"
                   ]
                 },
                 "type": "array",
@@ -4602,6 +5556,115 @@
         ],
         "title": "MaterialModel"
       },
+      "MatrixInfo": {
+        "properties": {
+          "ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Ids"
+          },
+          "values_H": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Values H"
+          },
+          "method": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Method"
+          },
+          "reciprocity_max_relative": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reciprocity Max Relative"
+          },
+          "positive_definite": {
+            "type": "boolean",
+            "title": "Positive Definite"
+          },
+          "min_eigenvalue_H": {
+            "type": "number",
+            "title": "Min Eigenvalue H"
+          },
+          "max_eigenvalue_H": {
+            "type": "number",
+            "title": "Max Eigenvalue H"
+          },
+          "time_dependent": {
+            "type": "boolean",
+            "title": "Time Dependent"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ids",
+          "values_H",
+          "method",
+          "reciprocity_max_relative",
+          "positive_definite",
+          "min_eigenvalue_H",
+          "max_eigenvalue_H",
+          "time_dependent"
+        ],
+        "title": "MatrixInfo"
+      },
+      "Mechanics": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "prescribed",
+              "dynamic"
+            ],
+            "title": "Mode",
+            "default": "prescribed"
+          },
+          "mass_kg": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Mass Kg",
+            "default": 0.02
+          },
+          "initial_velocity_m_per_s": {
+            "type": "number",
+            "title": "Initial Velocity M Per S",
+            "default": 0.5
+          },
+          "external_force_N": {
+            "type": "number",
+            "title": "External Force N",
+            "default": 0.0
+          },
+          "damping_N_s_per_m": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Damping N S Per M",
+            "default": 0.0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Mechanics",
+        "description": "Sliding rod only. 'prescribed': the rod follows its motion profile; 'dynamic': its\nposition obeys m d\u00b2x/dt\u00b2 = F_ext + F_em \u2212 b dx/dt (x along the rails)."
+      },
       "MeshShape": {
         "properties": {
           "type": {
@@ -4865,6 +5928,31 @@
           "trajectory": {
             "type": "boolean",
             "title": "Trajectory",
+            "default": false
+          },
+          "passive_circuits": {
+            "type": "integer",
+            "title": "Passive Circuits",
+            "default": 0
+          },
+          "moving_circuits": {
+            "type": "integer",
+            "title": "Moving Circuits",
+            "default": 0
+          },
+          "dynamic_circuits": {
+            "type": "integer",
+            "title": "Dynamic Circuits",
+            "default": 0
+          },
+          "eddy_disks": {
+            "type": "integer",
+            "title": "Eddy Disks",
+            "default": 0
+          },
+          "user_inductance": {
+            "type": "boolean",
+            "title": "User Inductance",
             "default": false
           },
           "checked_equation_ids": {
@@ -5467,6 +6555,366 @@
         ],
         "title": "ParticleRequest"
       },
+      "PassiveCircuit": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "default": ""
+          },
+          "path": {
+            "$ref": "#/components/schemas/FluxSurface"
+          },
+          "electrical": {
+            "$ref": "#/components/schemas/Electrical"
+          },
+          "initial_current_A": {
+            "type": "number",
+            "title": "Initial Current A",
+            "default": 0.0
+          },
+          "mechanics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Mechanics"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "display": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CircuitDisplay"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "path"
+        ],
+        "title": "PassiveCircuit",
+        "description": "A closed passive conductor: the geometry of a measurement surface's boundary (circle,\nrectangle, polygon, sliding rod; optional Phase 4B motion and N series turns) with\nelectrical properties. Measurement surfaces stay measurement surfaces; a circuit is only\ncreated explicitly."
+      },
+      "PassiveContribution": {
+        "properties": {
+          "circuit_id": {
+            "type": "string",
+            "title": "Circuit Id"
+          },
+          "current_A": {
+            "type": "number",
+            "title": "Current A"
+          },
+          "dI_dt_A_per_s": {
+            "type": "number",
+            "title": "Di Dt A Per S"
+          },
+          "turns": {
+            "type": "integer",
+            "title": "Turns"
+          },
+          "distance_m": {
+            "type": "number",
+            "title": "Distance M"
+          },
+          "inside_conductor": {
+            "type": "boolean",
+            "title": "Inside Conductor"
+          },
+          "B_T": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "B T"
+          },
+          "dB_dt_T_per_s": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Db Dt T Per S"
+          },
+          "E_ind_V_per_m": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "E Ind V Per M"
+          }
+        },
+        "type": "object",
+        "required": [
+          "circuit_id",
+          "current_A",
+          "dI_dt_A_per_s",
+          "turns",
+          "distance_m",
+          "inside_conductor",
+          "B_T",
+          "dB_dt_T_per_s",
+          "E_ind_V_per_m"
+        ],
+        "title": "PassiveContribution",
+        "description": "One passive circuit's induced-current field at the probe point (Phase 4C)."
+      },
+      "PassiveFilament": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "circle",
+              "polygon"
+            ],
+            "title": "Kind"
+          },
+          "center_m": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Center M"
+          },
+          "normal": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Normal",
+            "default": [
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "u": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "U",
+            "default": [
+              1.0,
+              0.0,
+              0.0
+            ]
+          },
+          "radius_m": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Radius M"
+          },
+          "vertices_m": {
+            "items": {
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array",
+              "maxItems": 3,
+              "minItems": 3
+            },
+            "type": "array",
+            "maxItems": 64,
+            "title": "Vertices M",
+            "default": []
+          },
+          "turns": {
+            "type": "integer",
+            "maximum": 100000.0,
+            "minimum": 1.0,
+            "title": "Turns",
+            "default": 1
+          },
+          "current_A": {
+            "type": "number",
+            "title": "Current A",
+            "default": 0.0
+          },
+          "rate_A_per_s": {
+            "type": "number",
+            "title": "Rate A Per S",
+            "default": 0.0
+          },
+          "moving": {
+            "type": "boolean",
+            "title": "Moving",
+            "default": false
+          },
+          "wire_radius_m": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wire Radius M"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "center_m"
+        ],
+        "title": "PassiveFilament"
+      },
+      "PassiveProbe": {
+        "properties": {
+          "B_prescribed_T": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "B Prescribed T"
+          },
+          "B_passive_T": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "B Passive T"
+          },
+          "B_total_T": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "B Total T"
+          },
+          "rate_available": {
+            "type": "boolean",
+            "title": "Rate Available"
+          },
+          "contributions": {
+            "items": {
+              "$ref": "#/components/schemas/PassiveContribution"
+            },
+            "type": "array",
+            "title": "Contributions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "B_prescribed_T",
+          "B_passive_T",
+          "B_total_T",
+          "rate_available",
+          "contributions"
+        ],
+        "title": "PassiveProbe",
+        "description": "Prescribed and induced-current fields separately (Phase 4C); B and H in ``values`` are\nthe totals."
+      },
       "PathDisplay": {
         "properties": {
           "visible": {
@@ -5825,7 +7273,9 @@
                     "div_B",
                     "div_H",
                     "dB_dt",
-                    "E_ind"
+                    "E_ind",
+                    "B_prescribed",
+                    "B_passive"
                   ]
                 },
                 "type": "array",
@@ -6082,7 +7532,9 @@
                     "div_B",
                     "div_H",
                     "dB_dt",
-                    "E_ind"
+                    "E_ind",
+                    "B_prescribed",
+                    "B_passive"
                   ]
                 },
                 "type": "array",
@@ -6287,6 +7739,22 @@
                 "type": "null"
               }
             ]
+          },
+          "circuits": {
+            "items": {
+              "$ref": "#/components/schemas/PassiveCircuit"
+            },
+            "type": "array",
+            "title": "Circuits",
+            "default": []
+          },
+          "eddy_disks": {
+            "items": {
+              "$ref": "#/components/schemas/EddyDisk"
+            },
+            "type": "array",
+            "title": "Eddy Disks",
+            "default": []
           }
         },
         "type": "object",
@@ -6354,6 +7822,15 @@
             "type": "number",
             "title": "Time S",
             "default": 0.0
+          },
+          "passive": {
+            "items": {
+              "$ref": "#/components/schemas/PassiveFilament"
+            },
+            "type": "array",
+            "maxItems": 256,
+            "title": "Passive",
+            "default": []
           }
         },
         "type": "object",
@@ -6879,6 +8356,16 @@
             "type": "boolean",
             "title": "Derivative Unique",
             "default": true
+          },
+          "passive": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PassiveProbe"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -7237,6 +8724,24 @@
                 "type": "null"
               }
             ]
+          },
+          "circuits": {
+            "items": {
+              "$ref": "#/components/schemas/PassiveCircuit"
+            },
+            "type": "array",
+            "maxItems": 8,
+            "title": "Circuits",
+            "default": []
+          },
+          "eddy_disks": {
+            "items": {
+              "$ref": "#/components/schemas/EddyDisk"
+            },
+            "type": "array",
+            "maxItems": 2,
+            "title": "Eddy Disks",
+            "default": []
           }
         },
         "type": "object",
@@ -7307,6 +8812,22 @@
                 "type": "null"
               }
             ]
+          },
+          "circuits": {
+            "items": {
+              "$ref": "#/components/schemas/PassiveCircuit"
+            },
+            "type": "array",
+            "title": "Circuits",
+            "default": []
+          },
+          "eddy_disks": {
+            "items": {
+              "$ref": "#/components/schemas/EddyDisk"
+            },
+            "type": "array",
+            "title": "Eddy Disks",
+            "default": []
           }
         },
         "type": "object",
@@ -7914,6 +9435,35 @@
         ],
         "title": "SceneObject"
       },
+      "SelfInductance": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "thin_loop",
+              "user"
+            ],
+            "title": "Mode",
+            "default": "thin_loop"
+          },
+          "value_H": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value H"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "SelfInductance",
+        "description": "'thin_loop': \u03bc\u2080a[ln(8a/r_w) \u2212 2] for a circular loop of round wire (r_w/a \u2264 0.1), times\nN\u00b2 for N coincident turns; 'user': the given value."
+      },
       "SimulationBody": {
         "properties": {
           "scene": {
@@ -8196,7 +9746,9 @@
                 "div_B",
                 "div_H",
                 "dB_dt",
-                "E_ind"
+                "E_ind",
+                "B_prescribed",
+                "B_passive"
               ]
             },
             "type": "array",
@@ -8259,6 +9811,15 @@
             "type": "number",
             "title": "Time S",
             "default": 0.0
+          },
+          "passive": {
+            "items": {
+              "$ref": "#/components/schemas/PassiveFilament"
+            },
+            "type": "array",
+            "maxItems": 256,
+            "title": "Passive",
+            "default": []
           }
         },
         "additionalProperties": false,

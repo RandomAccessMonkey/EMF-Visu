@@ -1243,3 +1243,10 @@ from .motion import SYMBOLS as _MOTION_SYMBOLS  # noqa: E402
 
 SYMBOLS.update(_MOTION_SYMBOLS)
 EQUATIONS += _MOTION_EQUATIONS
+
+# Phase 4C: passive circuits, induced currents, forces, energy, eddy-current bands.
+from .circuits import EQUATIONS as _CIRCUIT_EQUATIONS  # noqa: E402
+from .circuits import SYMBOLS as _CIRCUIT_SYMBOLS  # noqa: E402
+
+SYMBOLS.update(_CIRCUIT_SYMBOLS)
+EQUATIONS += _CIRCUIT_EQUATIONS

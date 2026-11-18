@@ -28,6 +28,7 @@ from ..sampling import (
     field_kind_of,
 )
 from ..scene.models import Scene, StrictModel
+from ..scene.passive import PassiveFilament
 
 SOLVER_INTERFACE_VERSION = 1
 RESULT_FORMAT_VERSION: Literal[1] = 1
@@ -91,6 +92,10 @@ class SolveRequest(StrictModel):
     # Phase 4A: simulation time (s) at which time-dependent source currents are evaluated
     # (magnetoquasistatic). Scenes without current profiles do not depend on it.
     time_s: Annotated[float, Field(allow_inf_nan=False)] = 0.0
+    # Phase 4C: the solved induced currents of passive circuits at time_s (from the circuit
+    # solver), added to the prescribed field; omitted = none.
+    passive: list[PassiveFilament] = Field(default=[], max_length=256,
+                                           exclude_if=lambda v: not v)
 
     @property
     def field_kind(self) -> FieldKind:
@@ -197,6 +202,13 @@ class ModelContext(BaseModel):
     multi_turn_surfaces: int = 0
     test_charge: bool = False
     trajectory: bool = False
+    # Phase 4C: passive circuits (eddy-disk bands counted individually), moving ones,
+    # dynamically moving ones, eddy-current disks, and user-given self-inductances.
+    passive_circuits: int = 0
+    moving_circuits: int = 0
+    dynamic_circuits: int = 0
+    eddy_disks: int = 0
+    user_inductance: bool = False
     # Equations whose two sides the application computes independently and compares.
     checked_equation_ids: list[str] = []
     solver_id: str
@@ -402,6 +414,11 @@ class InductionInfo(BaseModel):
     # Largest f L / c over sinusoidal sources (L: domain diagonal): the quasistatic
     # approximation needs it to be small (retardation across the region neglected).
     quasistatic_ratio: float = 0.0
+    # Phase 4C: passive circuits whose solved induced currents are included in B, H (and, where
+    # supported, ∂B/∂t and E_ind); False if a moving passive circuit carries current, whose
+    # ∂B/∂t and E_ind contribution (geometry changing in time) is not evaluated.
+    passive_ids: list[str] = []
+    passive_rate_available: bool = True
 
 
 class ResultHeader(BaseModel):

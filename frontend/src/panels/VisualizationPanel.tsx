@@ -68,6 +68,7 @@ export function VisualizationPanel({ sim }: { sim: Simulation }) {
   const currents = objects.filter((o) => o.role === 'current_source' && o.source && o.source.type !== 'point_charge')
   const hasMagnetic = sim.magnetic.active
   const timeDependent = useSceneStore((st) => isTimeDependent(st.scene))
+  const hasCircuits = useSceneStore((st) => st.circuits.length + st.eddyDisks.length > 0)
   const electricOn = v.showArrows || v.showFieldLines || v.showContours
   const magneticOn = v.showBArrows || v.showBLines
   const shown = electricOn && magneticOn ? 'both' : magneticOn ? 'magnetic' : electricOn ? 'electric' : 'both'
@@ -99,9 +100,13 @@ export function VisualizationPanel({ sim }: { sim: Simulation }) {
             <Select label={t('viz.magneticField')} value={v.magneticField} onChange={set('magneticField')} options={[
               { value: 'B', label: t('viz.vectorB') },
               { value: 'H', label: t('viz.vectorH') },
-              ...(timeDependent ? [
+              ...(timeDependent || hasCircuits ? [
                 { value: 'dB_dt' as const, label: t('viz.vectorDBdt') },
                 { value: 'E_ind' as const, label: t('viz.vectorEind') },
+              ] : []),
+              ...(hasCircuits ? [
+                { value: 'B_prescribed' as const, label: t('viz.vectorBPrescribed') },
+                { value: 'B_passive' as const, label: t('viz.vectorBPassive') },
               ] : []),
             ]} />
           </Row>
@@ -203,9 +208,13 @@ export function VisualizationPanel({ sim }: { sim: Simulation }) {
               { value: 'B' as const, label: t('viz.heatB') },
               { value: 'H' as const, label: t('viz.heatH') },
               { value: 'div_B' as const, label: t('viz.heatDivB') },
-              ...(timeDependent ? [
+              ...(timeDependent || hasCircuits ? [
                 { value: 'dB_dt' as const, label: t('viz.heatDBdt') },
                 { value: 'E_ind' as const, label: t('viz.heatEind') },
+              ] : []),
+              ...(hasCircuits ? [
+                { value: 'B_prescribed' as const, label: t('viz.heatBPrescribed') },
+                { value: 'B_passive' as const, label: t('viz.heatBPassive') },
               ] : []),
             ] : []),
             { value: 'none', label: t('viz.heatNone') },

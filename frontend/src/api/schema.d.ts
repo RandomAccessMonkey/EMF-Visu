@@ -170,6 +170,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/circuits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Circuits
+         * @description Induced currents of passive circuits and eddy-current disks over the time range (Phase
+         *     4C): the coupled RL equations L dI/dt = EMF_ext − RI − (dL/dt)I, forces, the dynamic
+         *     sliding rod and the energy accounting. Every passive current shown anywhere comes from
+         *     this solution.
+         */
+        post: operations["circuits_api_v1_circuits_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lorentz": {
         parameters: {
             query?: never;
@@ -570,6 +593,154 @@ export interface components {
              */
             radius_m: number;
         };
+        /** CircuitBody */
+        CircuitBody: {
+            scene: components["schemas"]["Scene"];
+            circuits: components["schemas"]["CircuitRequest"];
+        };
+        /** CircuitDisplay */
+        CircuitDisplay: {
+            /**
+             * Visible
+             * @default true
+             */
+            visible: boolean;
+            /**
+             * Show Current
+             * @default true
+             */
+            show_current: boolean;
+        };
+        /** CircuitRequest */
+        CircuitRequest: {
+            /**
+             * Circuits
+             * @default []
+             */
+            circuits: components["schemas"]["PassiveCircuit"][];
+            /**
+             * Disks
+             * @default []
+             */
+            disks: components["schemas"]["EddyDisk"][];
+            /**
+             * Start S
+             * @default 0
+             */
+            start_s: number;
+            /**
+             * End S
+             * @default 1
+             */
+            end_s: number;
+            /**
+             * Step S
+             * @default 0.01
+             */
+            step_s: number;
+            /**
+             * Rtol
+             * @default 1e-7
+             */
+            rtol: number;
+        };
+        /** CircuitResult */
+        CircuitResult: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "solved" | "stopped" | "invalid" | "singular" | "unsupported" | "nonphysical" | "failed";
+            status_reason?: components["schemas"]["LocalizedText"] | null;
+            /**
+             * Problems
+             * @default []
+             */
+            problems: components["schemas"]["LocalizedText"][];
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings: components["schemas"]["LocalizedText"][];
+            method: components["schemas"]["LocalizedText"];
+            /**
+             * Elements
+             * @default []
+             */
+            elements: components["schemas"]["ElementInfo"][];
+            matrix?: components["schemas"]["MatrixInfo"] | null;
+            series?: components["schemas"]["CircuitSeries"] | null;
+            /**
+             * Solver Steps
+             * @default 0
+             */
+            solver_steps: number;
+            /**
+             * Rhs Evaluations
+             * @default 0
+             */
+            rhs_evaluations: number;
+            /** End Time S */
+            end_time_s?: number | null;
+        };
+        /**
+         * CircuitSeries
+         * @description Columnar time series on the output grid; per-element lists are indexed [element][k].
+         */
+        CircuitSeries: {
+            /** T S */
+            t_s: number[];
+            /** Current A */
+            current_A: number[][];
+            /** Di Dt A Per S */
+            dI_dt_A_per_s: number[][];
+            /** Flux External Wb */
+            flux_external_Wb: number[][];
+            /** Flux Linkage Wb */
+            flux_linkage_Wb: number[][];
+            /** Emf Transformer V */
+            emf_transformer_V: number[][];
+            /** Emf Motional V */
+            emf_motional_V: number[][];
+            /** Resistive Drop V */
+            resistive_drop_V: number[][];
+            /** Joule Power W */
+            joule_power_W: number[][];
+            /** Current Density A Per M2 */
+            current_density_A_per_m2: (number[] | null)[];
+            /** Force N */
+            force_N: (number[][] | null)[];
+            /** Torque N M */
+            torque_N_m: (number[][] | null)[];
+            /** Mechanical Power W */
+            mechanical_power_W: (number[] | null)[];
+            /** Magnetic Energy J */
+            magnetic_energy_J: number[];
+            /** Joule Heat J */
+            joule_heat_J: number[];
+            /** Source Work J */
+            source_work_J: number[];
+            /** Motional Work J */
+            motional_work_J: number[];
+            /** Geometric Work J */
+            geometric_work_J: number[];
+            /** Kinetic Energy J */
+            kinetic_energy_J?: number[] | null;
+            /** Damping Heat J */
+            damping_heat_J?: number[] | null;
+            /** External Work J */
+            external_work_J?: number[] | null;
+            /** Rod Position M */
+            rod_position_m?: number[] | null;
+            /** Rod Velocity M Per S */
+            rod_velocity_m_per_s?: number[] | null;
+            /** Energy Residual J */
+            energy_residual_J: number[];
+            /** Power Residual W */
+            power_residual_W: (number | null)[];
+            /** Filaments */
+            filaments: components["schemas"]["PassiveFilament"][][];
+        };
         /**
          * CircularLoopSource
          * @description Ideal thin circular filament carrying a steady current (Phase 3A).
@@ -965,6 +1136,157 @@ export interface components {
              */
             potential_reference: "infinity";
         };
+        /**
+         * EddyDisk
+         * @description Thin conducting disk in its local xy plane (normal +z), discretized into N_r concentric
+         *     annular bands (reduced-order axisymmetric eddy-current approximation).
+         */
+        EddyDisk: {
+            /** Id */
+            id: string;
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            /**
+             * Center M
+             * @default [
+             *       0,
+             *       0,
+             *       0
+             *     ]
+             */
+            center_m: [
+                number,
+                number,
+                number
+            ];
+            /**
+             * Rotation Euler Xyz Rad
+             * @default [
+             *       0,
+             *       0,
+             *       0
+             *     ]
+             */
+            rotation_euler_xyz_rad: [
+                number,
+                number,
+                number
+            ];
+            /**
+             * Outer Radius M
+             * @default 0.1
+             */
+            outer_radius_m: number;
+            /**
+             * Inner Radius M
+             * @default 0
+             */
+            inner_radius_m: number;
+            /**
+             * Thickness M
+             * @default 0.005
+             */
+            thickness_m: number;
+            /**
+             * Material
+             * @default copper
+             * @enum {string}
+             */
+            material: "copper" | "aluminium" | "silver" | "custom";
+            /** Conductivity S Per M */
+            conductivity_S_per_m?: number | null;
+            /**
+             * Bands
+             * @default 20
+             */
+            bands: number;
+            display?: components["schemas"]["CircuitDisplay"] | null;
+        };
+        /**
+         * Electrical
+         * @description Conductor of a passive circuit. Exactly one of conductivity / resistivity for a custom
+         *     material; exactly one of wire radius / cross-section; an explicit lumped resistance, if
+         *     given, is authoritative (then σ and the cross-section only matter for ℒ).
+         */
+        Electrical: {
+            /**
+             * Material
+             * @default copper
+             * @enum {string}
+             */
+            material: "copper" | "aluminium" | "silver" | "custom";
+            /** Conductivity S Per M */
+            conductivity_S_per_m?: number | null;
+            /** Resistivity Ohm M */
+            resistivity_ohm_m?: number | null;
+            /**
+             * Wire Radius M
+             * @default 0.001
+             */
+            wire_radius_m: number | null;
+            /** Cross Section M2 */
+            cross_section_m2?: number | null;
+            /** Resistance Ohm */
+            resistance_ohm?: number | null;
+            self_inductance?: components["schemas"]["SelfInductance"];
+        };
+        /**
+         * ElementInfo
+         * @description One electrical branch: a passive circuit, or one band of an eddy-current disk.
+         */
+        ElementInfo: {
+            /** Id */
+            id: string;
+            /** Owner Id */
+            owner_id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "circuit" | "band";
+            /** Name */
+            name: string;
+            /** Band Index */
+            band_index?: number | null;
+            /** Radius M */
+            radius_m?: number | null;
+            /** Width M */
+            width_m?: number | null;
+            /** Thickness M */
+            thickness_m?: number | null;
+            /**
+             * Turns
+             * @default 1
+             */
+            turns: number;
+            /** Resistance Ohm */
+            resistance_ohm: number;
+            resistance_method: components["schemas"]["LocalizedText"];
+            /** Length M */
+            length_m?: number | null;
+            /** Cross Section M2 */
+            cross_section_m2?: number | null;
+            /** Self Inductance H */
+            self_inductance_H: number;
+            self_inductance_method: components["schemas"]["LocalizedText"];
+            /** Self Inductance Approximate */
+            self_inductance_approximate: boolean;
+            /**
+             * Moving
+             * @default false
+             */
+            moving: boolean;
+            /**
+             * Dynamic
+             * @default false
+             */
+            dynamic: boolean;
+            /** Time Constant S */
+            time_constant_s: number;
+        };
         /** Enclosure */
         Enclosure: {
             /** Available */
@@ -1006,7 +1328,7 @@ export interface components {
              * Category
              * @enum {string}
              */
-            category: "maxwell" | "electrostatics" | "magnetostatics" | "induction" | "motion" | "constitutive" | "additional";
+            category: "maxwell" | "electrostatics" | "magnetostatics" | "induction" | "motion" | "circuits" | "constitutive" | "additional";
             name: components["schemas"]["LocalizedText"];
             /** Latex */
             latex: string;
@@ -1060,6 +1382,16 @@ export interface components {
              */
             flux_surfaces: components["schemas"]["FluxSurface"][];
             test_charge?: components["schemas"]["TestCharge"] | null;
+            /**
+             * Circuits
+             * @default []
+             */
+            circuits: components["schemas"]["PassiveCircuit"][];
+            /**
+             * Eddy Disks
+             * @default []
+             */
+            eddy_disks: components["schemas"]["EddyDisk"][];
         };
         /** EquationsResponse */
         EquationsResponse: {
@@ -1481,6 +1813,16 @@ export interface components {
              * @default 0
              */
             quasistatic_ratio: number;
+            /**
+             * Passive Ids
+             * @default []
+             */
+            passive_ids: string[];
+            /**
+             * Passive Rate Available
+             * @default true
+             */
+            passive_rate_available: boolean;
         };
         /** InductionRequest */
         InductionRequest: {
@@ -1604,7 +1946,7 @@ export interface components {
             /** Id */
             id: string;
             /** Quantities */
-            quantities?: ("E" | "phi" | "D" | "div_E" | "curl_E" | "div_D" | "curl_D" | "B" | "H" | "div_B" | "div_H" | "dB_dt" | "E_ind")[] | null;
+            quantities?: ("E" | "phi" | "D" | "div_E" | "curl_E" | "div_D" | "curl_D" | "B" | "H" | "div_B" | "div_H" | "dB_dt" | "E_ind" | "B_prescribed" | "B_passive")[] | null;
             /** Min M */
             min_m: [
                 number,
@@ -1827,6 +2169,58 @@ export interface components {
          * @enum {string}
          */
         MaterialModel: "vacuum" | "linear_dielectric" | "linear_magnetic" | "ohmic_conductor" | "perfect_conductor";
+        /** MatrixInfo */
+        MatrixInfo: {
+            /** Ids */
+            ids: string[];
+            /** Values H */
+            values_H: number[][];
+            /** Method */
+            method: string[][];
+            /** Reciprocity Max Relative */
+            reciprocity_max_relative: number | null;
+            /** Positive Definite */
+            positive_definite: boolean;
+            /** Min Eigenvalue H */
+            min_eigenvalue_H: number;
+            /** Max Eigenvalue H */
+            max_eigenvalue_H: number;
+            /** Time Dependent */
+            time_dependent: boolean;
+        };
+        /**
+         * Mechanics
+         * @description Sliding rod only. 'prescribed': the rod follows its motion profile; 'dynamic': its
+         *     position obeys m d²x/dt² = F_ext + F_em − b dx/dt (x along the rails).
+         */
+        Mechanics: {
+            /**
+             * Mode
+             * @default prescribed
+             * @enum {string}
+             */
+            mode: "prescribed" | "dynamic";
+            /**
+             * Mass Kg
+             * @default 0.02
+             */
+            mass_kg: number;
+            /**
+             * Initial Velocity M Per S
+             * @default 0.5
+             */
+            initial_velocity_m_per_s: number;
+            /**
+             * External Force N
+             * @default 0
+             */
+            external_force_N: number;
+            /**
+             * Damping N S Per M
+             * @default 0
+             */
+            damping_N_s_per_m: number;
+        };
         /**
          * MeshShape
          * @description A custom closed triangulated surface in local coordinates (engine-level for now).
@@ -2008,6 +2402,31 @@ export interface components {
              */
             trajectory: boolean;
             /**
+             * Passive Circuits
+             * @default 0
+             */
+            passive_circuits: number;
+            /**
+             * Moving Circuits
+             * @default 0
+             */
+            moving_circuits: number;
+            /**
+             * Dynamic Circuits
+             * @default 0
+             */
+            dynamic_circuits: number;
+            /**
+             * Eddy Disks
+             * @default 0
+             */
+            eddy_disks: number;
+            /**
+             * User Inductance
+             * @default false
+             */
+            user_inductance: boolean;
+            /**
              * Checked Equation Ids
              * @default []
              */
@@ -2187,6 +2606,147 @@ export interface components {
             max_steps: number;
         };
         /**
+         * PassiveCircuit
+         * @description A closed passive conductor: the geometry of a measurement surface's boundary (circle,
+         *     rectangle, polygon, sliding rod; optional Phase 4B motion and N series turns) with
+         *     electrical properties. Measurement surfaces stay measurement surfaces; a circuit is only
+         *     created explicitly.
+         */
+        PassiveCircuit: {
+            /** Id */
+            id: string;
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            path: components["schemas"]["FluxSurface"];
+            electrical?: components["schemas"]["Electrical"];
+            /**
+             * Initial Current A
+             * @default 0
+             */
+            initial_current_A: number;
+            mechanics?: components["schemas"]["Mechanics"] | null;
+            display?: components["schemas"]["CircuitDisplay"] | null;
+        };
+        /**
+         * PassiveContribution
+         * @description One passive circuit's induced-current field at the probe point (Phase 4C).
+         */
+        PassiveContribution: {
+            /** Circuit Id */
+            circuit_id: string;
+            /** Current A */
+            current_A: number;
+            /** Di Dt A Per S */
+            dI_dt_A_per_s: number;
+            /** Turns */
+            turns: number;
+            /** Distance M */
+            distance_m: number;
+            /** Inside Conductor */
+            inside_conductor: boolean;
+            /** B T */
+            B_T: number[] | null;
+            /** Db Dt T Per S */
+            dB_dt_T_per_s: number[] | null;
+            /** E Ind V Per M */
+            E_ind_V_per_m: number[] | null;
+        };
+        /** PassiveFilament */
+        PassiveFilament: {
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "circle" | "polygon";
+            /** Center M */
+            center_m: [
+                number,
+                number,
+                number
+            ];
+            /**
+             * Normal
+             * @default [
+             *       0,
+             *       0,
+             *       1
+             *     ]
+             */
+            normal: [
+                number,
+                number,
+                number
+            ];
+            /**
+             * U
+             * @default [
+             *       1,
+             *       0,
+             *       0
+             *     ]
+             */
+            u: [
+                number,
+                number,
+                number
+            ];
+            /** Radius M */
+            radius_m?: number | null;
+            /**
+             * Vertices M
+             * @default []
+             */
+            vertices_m: [
+                number,
+                number,
+                number
+            ][];
+            /**
+             * Turns
+             * @default 1
+             */
+            turns: number;
+            /**
+             * Current A
+             * @default 0
+             */
+            current_A: number;
+            /**
+             * Rate A Per S
+             * @default 0
+             */
+            rate_A_per_s: number;
+            /**
+             * Moving
+             * @default false
+             */
+            moving: boolean;
+            /** Wire Radius M */
+            wire_radius_m?: number | null;
+        };
+        /**
+         * PassiveProbe
+         * @description Prescribed and induced-current fields separately (Phase 4C); B and H in ``values`` are
+         *     the totals.
+         */
+        PassiveProbe: {
+            /** B Prescribed T */
+            B_prescribed_T: number[] | null;
+            /** B Passive T */
+            B_passive_T: number[] | null;
+            /** B Total T */
+            B_total_T: number[] | null;
+            /** Rate Available */
+            rate_available: boolean;
+            /** Contributions */
+            contributions: components["schemas"]["PassiveContribution"][];
+        };
+        /**
          * PathDisplay
          * @description Visualization only: never part of a cache key.
          */
@@ -2321,7 +2881,7 @@ export interface components {
             /** Id */
             id: string;
             /** Quantities */
-            quantities?: ("E" | "phi" | "D" | "div_E" | "curl_E" | "div_D" | "curl_D" | "B" | "H" | "div_B" | "div_H" | "dB_dt" | "E_ind")[] | null;
+            quantities?: ("E" | "phi" | "D" | "div_E" | "curl_E" | "div_D" | "curl_D" | "B" | "H" | "div_B" | "div_H" | "dB_dt" | "E_ind" | "B_prescribed" | "B_passive")[] | null;
             /**
              * Center M
              * @default [
@@ -2459,7 +3019,7 @@ export interface components {
             /** Id */
             id: string;
             /** Quantities */
-            quantities?: ("E" | "phi" | "D" | "div_E" | "curl_E" | "div_D" | "curl_D" | "B" | "H" | "div_B" | "div_H" | "dB_dt" | "E_ind")[] | null;
+            quantities?: ("E" | "phi" | "D" | "div_E" | "curl_E" | "div_D" | "curl_D" | "B" | "H" | "div_B" | "div_H" | "dB_dt" | "E_ind" | "B_prescribed" | "B_passive")[] | null;
             /** Points M */
             points_m: [
                 number,
@@ -2523,6 +3083,16 @@ export interface components {
             flux_surfaces: components["schemas"]["FluxSurface"][];
             time?: components["schemas"]["TimeHint"] | null;
             test_charge?: components["schemas"]["TestCharge"] | null;
+            /**
+             * Circuits
+             * @default []
+             */
+            circuits: components["schemas"]["PassiveCircuit"][];
+            /**
+             * Eddy Disks
+             * @default []
+             */
+            eddy_disks: components["schemas"]["EddyDisk"][];
         };
         /**
          * PresetVariant
@@ -2550,6 +3120,11 @@ export interface components {
              * @default 0
              */
             time_s: number;
+            /**
+             * Passive
+             * @default []
+             */
+            passive: components["schemas"]["PassiveFilament"][];
         };
         /**
          * ProbeComparison
@@ -2742,6 +3317,7 @@ export interface components {
              * @default true
              */
             derivative_unique: boolean;
+            passive?: components["schemas"]["PassiveProbe"] | null;
         };
         /** ProbeResponse */
         ProbeResponse: {
@@ -2861,6 +3437,16 @@ export interface components {
              */
             flux_surfaces: components["schemas"]["FluxSurface"][];
             test_charge?: components["schemas"]["TestCharge"] | null;
+            /**
+             * Circuits
+             * @default []
+             */
+            circuits: components["schemas"]["PassiveCircuit"][];
+            /**
+             * Eddy Disks
+             * @default []
+             */
+            eddy_disks: components["schemas"]["EddyDisk"][];
         };
         /** ProjectOut */
         ProjectOut: {
@@ -2899,6 +3485,16 @@ export interface components {
              */
             flux_surfaces: components["schemas"]["FluxSurface"][];
             test_charge?: components["schemas"]["TestCharge"] | null;
+            /**
+             * Circuits
+             * @default []
+             */
+            circuits: components["schemas"]["PassiveCircuit"][];
+            /**
+             * Eddy Disks
+             * @default []
+             */
+            eddy_disks: components["schemas"]["EddyDisk"][];
         };
         /** ProjectSummary */
         ProjectSummary: {
@@ -3182,6 +3778,21 @@ export interface components {
              */
             enabled: boolean;
         };
+        /**
+         * SelfInductance
+         * @description 'thin_loop': μ₀a[ln(8a/r_w) − 2] for a circular loop of round wire (r_w/a ≤ 0.1), times
+         *     N² for N coincident turns; 'user': the given value.
+         */
+        SelfInductance: {
+            /**
+             * Mode
+             * @default thin_loop
+             * @enum {string}
+             */
+            mode: "thin_loop" | "user";
+            /** Value H */
+            value_H?: number | null;
+        };
         /** SimulationBody */
         SimulationBody: {
             scene: components["schemas"]["Scene"];
@@ -3310,7 +3921,7 @@ export interface components {
             /** Samplings */
             samplings: (components["schemas"]["PlaneGridSampling"] | components["schemas"]["LatticeSampling"] | components["schemas"]["PointsSampling"])[];
             /** Quantities */
-            quantities: ("E" | "phi" | "D" | "div_E" | "curl_E" | "div_D" | "curl_D" | "B" | "H" | "div_B" | "div_H" | "dB_dt" | "E_ind")[];
+            quantities: ("E" | "phi" | "D" | "div_E" | "curl_E" | "div_D" | "curl_D" | "B" | "H" | "div_B" | "div_H" | "dB_dt" | "E_ind" | "B_prescribed" | "B_passive")[];
             /**
              * Quality
              * @default normal
@@ -3330,6 +3941,11 @@ export interface components {
              * @default 0
              */
             time_s: number;
+            /**
+             * Passive
+             * @default []
+             */
+            passive: components["schemas"]["PassiveFilament"][];
         };
         /** SolverDescriptor */
         SolverDescriptor: {
@@ -4544,6 +5160,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InductionHeader"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    circuits_api_v1_circuits_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CircuitBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CircuitResult"];
                 };
             };
             /** @description Request Entity Too Large */

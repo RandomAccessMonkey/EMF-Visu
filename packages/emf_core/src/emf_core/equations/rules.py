@@ -522,3 +522,8 @@ RULES.update(_INDUCTION_RULES)
 from .motion import RULES as _MOTION_RULES  # noqa: E402
 
 RULES.update(_MOTION_RULES)
+
+# Phase 4C: rules of the passive-circuit equations (same registry).
+from .circuits import RULES as _CIRCUIT_RULES  # noqa: E402
+
+RULES.update(_CIRCUIT_RULES)

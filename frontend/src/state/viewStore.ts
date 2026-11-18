@@ -6,11 +6,11 @@ export type Lang = 'en' | 'hu'
 
 /** Scalar colour maps. 'E' is |E|; 'curl_E' and 'curl_D' are the curl magnitudes; 'B' and 'H'
  *  are |B| and |H| (magnetic result); 'div_B' is the divergence of B. */
-export const SCALAR_MAPS = ['phi', 'E', 'div_E', 'curl_E', 'div_D', 'curl_D', 'B', 'H', 'div_B', 'dB_dt', 'E_ind', 'none'] as const
-export const MAGNETIC_MAPS: readonly ScalarMap[] = ['B', 'H', 'div_B', 'dB_dt', 'E_ind']
+export const SCALAR_MAPS = ['phi', 'E', 'div_E', 'curl_E', 'div_D', 'curl_D', 'B', 'H', 'div_B', 'dB_dt', 'E_ind', 'B_prescribed', 'B_passive', 'none'] as const
+export const MAGNETIC_MAPS: readonly ScalarMap[] = ['B', 'H', 'div_B', 'dB_dt', 'E_ind', 'B_prescribed', 'B_passive']
 /** Magnetic vector layers: B, H, and (Phase 4A, time-dependent scenes) dB/dt and the induced
  *  electric field E_ind (never the electrostatic E). */
-export const MAGNETIC_VECTORS = ['B', 'H', 'dB_dt', 'E_ind'] as const
+export const MAGNETIC_VECTORS = ['B', 'H', 'dB_dt', 'E_ind', 'B_prescribed', 'B_passive'] as const
 export type MagneticVector = (typeof MAGNETIC_VECTORS)[number]
 export type ScalarMap = (typeof SCALAR_MAPS)[number]
 

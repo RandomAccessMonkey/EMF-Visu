@@ -26,7 +26,7 @@ export function effectiveContribution(choice: string, ids: string[]): string {
 /** Name of the vector array for the chosen field and contribution ('total' or a source id). */
 /** Per-source arrays exist for B and H only; dB/dt and E_ind are always the total. */
 export const magneticArrayName = (id: 'arrows' | 'vol', field: MagneticVector, contribution: string) =>
-  contribution === 'total' || contribution === 'all' || field === 'dB_dt' || field === 'E_ind' ? `${id}.${field}` : `${id}.${field}@${contribution}`
+  contribution === 'total' || contribution === 'all' || field === 'dB_dt' || field === 'E_ind' || field === 'B_prescribed' || field === 'B_passive' ? `${id}.${field}` : `${id}.${field}@${contribution}`
 
 export const contributionColor = (ids: string[], id: string) =>
   CONTRIBUTION_COLORS[Math.max(0, ids.indexOf(id)) % CONTRIBUTION_COLORS.length]!

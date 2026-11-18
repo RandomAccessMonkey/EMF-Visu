@@ -50,6 +50,7 @@ import numpy as np
 from numpy.typing import NDArray
 from scipy.special import ellipe, ellipkm1
 
+from ... import segments
 from ...i18n import L, LocalizedText
 from ...numerics.quadrature import adaptive_gk
 from ...postprocess import magnetic_lines as ml
@@ -63,6 +64,7 @@ from ...scene.currents import (
     current_sources,
 )
 from ...scene.models import GroupPrimitive, MaterialModel, Role, Scene, TimeDependentCurrent
+from ...scene.passive import PassiveFilament
 from ...scene.profiles import PiecewiseLinearProfile, RampProfile, SinusoidalProfile
 from ...scene.timedep import TimeState, at_time, rates, time_state
 from ...units import MU0, QUANTITIES
@@ -371,6 +373,67 @@ def loops_vector_potential(loops: list[LoopSource], points: Arr) -> tuple[Arr, M
     """Coulomb-gauge vector potential A (T·m) of circular loops, like ``loops_field``
     (Phase 4A). With currents dI/dt instead of I, -A of the same call is E_ind."""
     return _scaled_sum(loops, points, "A")
+
+
+# ------------------------------------------------- Phase 4C: passive (induced-current) circuits
+
+
+def _passive_loop(f: PassiveFilament, current: float) -> LoopSource:
+    n = np.asarray(f.normal, float)
+    return LoopSource(f.id, current, np.asarray(f.center_m, float), n / np.linalg.norm(n),
+                      float(f.radius_m or 0.0), np.asarray(f.u, float) / np.linalg.norm(f.u))
+
+
+def passive_unit(points: Arr, f: PassiveFilament, which: Literal["B", "A"] = "B"
+                 ) -> tuple[Arr, Mask]:
+    """Field (B or A) of one passive circuit carrying 1 A per turn, times its turns, and the
+    mask of points on its filament (singular; NaN there)."""
+    if f.kind == "circle":
+        lp = _passive_loop(f, 1.0)
+        val, sing, _ = (loops_field([lp], points) if which == "B"
+                        else loops_vector_potential([lp], points))
+    else:
+        verts = np.asarray(f.vertices_m, float)
+        val = (segments.segment_field(points, verts) if which == "B"
+               else segments.segment_vector_potential(points, verts))
+        scale = np.linalg.norm(points - verts.mean(axis=0), axis=1) + float(
+            np.ptp(verts, axis=0).max())
+        sing = segments.distance_to_polygon(points, verts) <= filament_tolerance(scale)
+        val = np.where(sing[:, None], np.nan, val)
+    out: Arr = val * f.turns
+    return out, sing
+
+
+def passive_distance(points: Arr, fils: list[PassiveFilament]) -> Arr:
+    out = np.full(points.shape[0], np.inf)
+    for f in fils:
+        if f.kind == "circle":
+            lp = _passive_loop(f, 1.0)
+            d = points - lp.center_m
+            z = d @ lp.normal
+            rho = np.linalg.norm(d - z[:, None] * lp.normal, axis=1)
+            out = np.minimum(out, np.hypot(rho - lp.radius_m, z))
+        else:
+            out = np.minimum(out, segments.distance_to_polygon(
+                points, np.asarray(f.vertices_m, float)))
+    return out
+
+
+def passive_fields(points: Arr, fils: list[PassiveFilament], which: Literal["B", "A"] = "B",
+                   rate: bool = False) -> tuple[Arr, Mask, list[Arr]]:
+    """Σ I_j (or dI_j/dt) × unit field of every passive circuit, the singular mask, and each
+    circuit's own contribution."""
+    total = np.zeros_like(points)
+    sing = np.zeros(points.shape[0], bool)
+    parts: list[Arr] = []
+    for f in fils:
+        unit, s = passive_unit(points, f, which)
+        part = unit * (f.rate_A_per_s if rate else f.current_A)
+        parts.append(part)
+        sing |= s
+        total = total + np.nan_to_num(part)
+    total[sing] = np.nan
+    return total, sing, parts
 
 
 def loop_field(points: Arr, lp: LoopSource) -> Arr:
@@ -1210,11 +1273,19 @@ class FilamentMagnetostaticSolver:
                 seeds[lv] = seeds[lv][idx]
                 owners[lv] = [owners[lv][i] for i in idx]
 
+        fils = request.passive
+
         def field_fn(p: Arr) -> Arr:
-            return evaluate(p, cs, r_min, MAGNET_RTOL["lines"])
+            out = evaluate(p, cs, r_min, MAGNET_RTOL["lines"])
+            if fils:  # Phase 4C: lines of the total field, induced currents included
+                out = out + passive_fields(p, fils)[0]
+            return out
 
         def dist_fn(p: Arr) -> Arr:
-            return distance_to_sources(p, cs)
+            out: Arr = distance_to_sources(p, cs)
+            if fils:
+                out = np.minimum(out, passive_distance(p, fils))
+            return out
 
         def region_fn(p: Arr) -> NDArray[np.int64]:
             return region_code(p, cs)
@@ -1334,7 +1405,11 @@ class FilamentMagnetostaticSolver:
         ts = time_state(scene, cs0, request.time_s)
         cs = at_time(cs0, ts)
         cs_rate = rates(cs0, ts)
-        e_ind_ok = not ts.unsupported_ids
+        fils = request.passive
+        # Phase 4C: a moving passive circuit carrying current has ∂A/∂t from its motion too,
+        # which is not evaluated: its ∂B/∂t and E_ind contribution is then unavailable.
+        passive_rate_ok = not any(f.moving and f.current_A != 0.0 for f in fils)
+        e_ind_ok = not ts.unsupported_ids and passive_rate_ok
         r_min = COINCIDENCE_FACTOR * scene.domain.diagonal_m
         total = sum(int(np.prod(s.shape)) for s in request.samplings)
         share = 1.0 if request.field_lines is None else 0.5
@@ -1370,6 +1445,13 @@ class FilamentMagnetostaticSolver:
                 done += pts[sl].shape[0]
                 if progress is not None:
                     progress(share * done / max(total, 1), s.id)
+            b_presc = b.copy()
+            b_pass = None
+            if fils:
+                b_pass, psing, _ = passive_fields(pts, fils)
+                b = b + b_pass
+                h = h + b_pass / MU0
+                status[psing] = ST_SINGULAR
             counts += np.bincount(status, minlength=5)
             wants = set(quantities_for(request, s))
             db_dt = e_ind = None
@@ -1380,6 +1462,10 @@ class FilamentMagnetostaticSolver:
                 for start in range(0, pts.shape[0], _CHUNK):
                     sl = slice(start, start + _CHUNK)
                     db_dt[sl] = evaluate_bh(pts[sl], cs_rate, r_min).b
+                if fils:
+                    db_dt = db_dt + passive_fields(pts, fils, "B", rate=True)[0]
+                    if not passive_rate_ok:
+                        db_dt[:] = np.nan
                 db_dt[status == ST_SINGULAR] = np.nan
             if "E_ind" in wants:
                 e_ind = np.full_like(pts, np.nan)
@@ -1388,6 +1474,8 @@ class FilamentMagnetostaticSolver:
                     for start in range(0, pts.shape[0], _CHUNK):
                         sl = slice(start, start + _CHUNK)
                         e_ind[sl] = -loops_vector_potential(cs_rate.loops, pts[sl])[0]
+                    if fils:  # −dI_j/dt A_j of the passive circuits (solved currents)
+                        e_ind = e_ind - passive_fields(pts, fils, "A", rate=True)[0]
                     e_ind[status == ST_SINGULAR] = np.nan
             # Exact zeros where the field is defined: every source is divergence-free there
             # (Biot–Savart fields of filaments and sheets; the ideal core field is azimuthal and
@@ -1399,6 +1487,8 @@ class FilamentMagnetostaticSolver:
                 data_by_q["dB_dt"] = db_dt
             if e_ind is not None:
                 data_by_q["E_ind"] = e_ind
+            data_by_q["B_prescribed"] = b_presc
+            data_by_q["B_passive"] = b_pass if b_pass is not None else np.zeros_like(b)
             for qty in quantities_for(request, s):
                 info = QUANTITIES[qty]
                 name = f"{s.id}.{qty}"
@@ -1535,7 +1625,8 @@ class FilamentMagnetostaticSolver:
             induction=InductionInfo(
                 time_s=ts.t_s, time_dependent=ts.time_dependent,
                 derivative_unique=ts.derivative_unique, e_ind_available=e_ind_ok,
-                unsupported_object_ids=ts.unsupported_ids, quasistatic_ratio=quasi_ratio),
+                unsupported_object_ids=ts.unsupported_ids, quasistatic_ratio=quasi_ratio,
+                passive_ids=[f.id for f in fils], passive_rate_available=passive_rate_ok),
             model_context=ModelContext(
                 regime="quasi_static" if ts.time_dependent else "magnetostatic",
                 dimensionality="3d", medium="vacuum", time_varying=ts.time_dependent,

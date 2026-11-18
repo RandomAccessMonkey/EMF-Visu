@@ -25,9 +25,16 @@ function loadPreset(p: Preset, scene: NonNullable<Preset['scene']>) {
   if (p.ampere_paths.length > 0) useSceneStore.getState().setPaths(p.ampere_paths)
   // Phase 4A: a preset's measurement surfaces replace the current ones, and its time range sets
   // the playback (identical initial parameters reproduce identical results).
-  if (p.flux_surfaces.length > 0) useSceneStore.getState().setFluxSurfaces(p.flux_surfaces)
-  // Phase 4B: a preset's test charge replaces the current one (presets without one keep it).
-  if (p.test_charge) useSceneStore.getState().setTestCharge(p.test_charge as TestCharge)
+  // Phase 4B/4C experiment presets (a test charge or passive circuits) define the complete
+  // setup: their measurement surfaces replace the current ones even when they have none.
+  const experiment = !!p.test_charge || p.circuits.length > 0 || p.eddy_disks.length > 0
+  if (p.flux_surfaces.length > 0 || experiment) useSceneStore.getState().setFluxSurfaces(p.flux_surfaces)
+  // Phase 4B/4C: the test charge, passive circuits and eddy disks belong to the preset's
+  // physical setup: they are replaced (and cleared when the preset has none), so a heavy
+  // trajectory or circuit solve of one preset never runs against another preset's sources.
+  useSceneStore.getState().setTestCharge((p.test_charge as TestCharge | null | undefined) ?? null)
+  useSceneStore.getState().setCircuits(p.circuits)
+  useSceneStore.getState().setDisks(p.eddy_disks)
   const hint = p.view_hint
   const time = p.time
   useViewStore.getState().set({

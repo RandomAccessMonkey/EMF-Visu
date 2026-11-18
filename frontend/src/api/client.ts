@@ -2,7 +2,9 @@ import { decodeContainer, type SimulationResult } from './container'
 import type {
   AmpereHeader,
   AmperePath,
+  CircuitResult,
   CurrentProfile,
+  EddyDisk,
   EquationsResponse,
   ErrorBody,
   FluxSurface,
@@ -15,6 +17,8 @@ import type {
   LorentzRequest,
   LorentzResult,
   ParticleRequest,
+  PassiveCircuit,
+  PassiveFilament,
   Preset,
   ProbeResponse,
   ProfileSamples,
@@ -103,13 +107,13 @@ export const api = {
     return { ...result, cache, roundTripMs: performance.now() - t0 }
   },
 
-  async probe(scene: Scene, point: Vec3, signal?: AbortSignal, timeS = 0): Promise<ProbeResponse> {
-    const res = await request('/probe', json({ scene, point_m: point, time_s: timeS }, 'POST', signal))
+  async probe(scene: Scene, point: Vec3, signal?: AbortSignal, timeS = 0, passive: PassiveFilament[] = []): Promise<ProbeResponse> {
+    const res = await request('/probe', json({ scene, point_m: point, time_s: timeS, passive }, 'POST', signal))
     return (await res.json()) as ProbeResponse
   },
 
-  async equations(scene: Scene, signal?: AbortSignal, surfaces: GaussSurface[] = [], paths: AmperePath[] = [], fluxSurfaces: FluxSurface[] = [], testCharge: TestCharge | null = null): Promise<EquationsResponse> {
-    const res = await request('/equations/evaluate', json({ scene, surfaces, paths, flux_surfaces: fluxSurfaces, test_charge: testCharge }, 'POST', signal))
+  async equations(scene: Scene, signal?: AbortSignal, surfaces: GaussSurface[] = [], paths: AmperePath[] = [], fluxSurfaces: FluxSurface[] = [], testCharge: TestCharge | null = null, circuits: PassiveCircuit[] = [], eddyDisks: EddyDisk[] = []): Promise<EquationsResponse> {
+    const res = await request('/equations/evaluate', json({ scene, surfaces, paths, flux_surfaces: fluxSurfaces, test_charge: testCharge, circuits, eddy_disks: eddyDisks }, 'POST', signal))
     return (await res.json()) as EquationsResponse
   },
 
@@ -128,6 +132,12 @@ export const api = {
   async induction(scene: Scene, surfaces: FluxSurface[], timeS: number, signal?: AbortSignal, convention: VelocityConvention = 'undefined'): Promise<InductionHeader & { cache: 'hit' | 'miss' }> {
     const res = await request('/induction', json({ scene, induction: { surfaces, time_s: timeS, mutual: true, velocity_convention: convention } }, 'POST', signal))
     const body = (await res.json()) as InductionHeader
+    return { ...body, cache: res.headers.get('X-EMF-Cache') === 'hit' ? 'hit' : 'miss' }
+  },
+  /** Induced currents of passive circuits and eddy-current disks over the time grid (Phase 4C). */
+  async circuits(scene: Scene, req: { circuits: PassiveCircuit[]; disks: EddyDisk[]; start_s: number; end_s: number; step_s: number }, signal?: AbortSignal): Promise<CircuitResult & { cache: 'hit' | 'miss' }> {
+    const res = await request('/circuits', json({ scene, circuits: req }, 'POST', signal))
+    const body = (await res.json()) as CircuitResult
     return { ...body, cache: res.headers.get('X-EMF-Cache') === 'hit' ? 'hit' : 'miss' }
   },
   /** Lorentz force on a test charge at one point and time (Phase 4B). */
@@ -195,8 +205,10 @@ export const api = {
     paths: AmperePath[] = [],
     fluxSurfaces: FluxSurface[] = [],
     testCharge: TestCharge | null = null,
+    circuits: PassiveCircuit[] = [],
+    eddyDisks: EddyDisk[] = [],
   ): Promise<ProjectOut> {
-    const init = json({ name, scene, view, surfaces, paths, flux_surfaces: fluxSurfaces, test_charge: testCharge }, id ? 'PUT' : 'POST')
+    const init = json({ name, scene, view, surfaces, paths, flux_surfaces: fluxSurfaces, test_charge: testCharge, circuits, eddy_disks: eddyDisks }, id ? 'PUT' : 'POST')
     return (await (await request(id ? `/projects/${id}` : '/projects', init)).json()) as ProjectOut
   },
   async deleteProject(id: string): Promise<void> {

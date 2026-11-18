@@ -576,3 +576,57 @@ with 17 available (`tests/api/test_api.py`, `tests/core/test_scene_and_solver_su
 | Frontend type-check, lint, unit tests, production build | clean; 76 passed (70 earlier, 6 new) |
 | End-to-end, native stack (`scripts/native.py`) with Redis and worker | 69 of 69 checks (63 earlier + 6 for Phase 4B: sliding rod verified with BLv reference, velocity jump undefined/left, rotating coil waveform, combined preset, Lorentz force and proton trajectory with species change, persistence of the test charge; plus the Hungarian Lorentz tab) |
 | Windows, Docker | not executed in this phase |
+
+## Verification record for Phase 4C (passive circuits, induced currents, braking, eddy disk)
+
+Development environment: Linux x86_64, Python 3.12, PostgreSQL 16 (native cluster), Node 22,
+Redis 7 with the solver worker.
+
+**Independent references:** the closed-form RL response I(t) = −(1/R)(dΦ/dt)(1 − e^{−Rt/ℒ}) and
+the decay e^{−t/τ}; the matrix exponential of the coupled 2 × 2 RL system; Maxwell's
+coaxial-circle mutual inductance (against the Phase 4A surface quadrature and, as M(a, a, r_w),
+against the thin-loop self-inductance, error O((r_w/a)²)); finite differences of the solved
+flux linkage (R I + dλ/dt = 0); the curl of the polygon vector potential against the exact
+segment Biot–Savart field; the circuit-independent loop field for B_passive.
+
+| Check | Reference | Tolerance | Result |
+|---|---|---|---|
+| R = ℓ/(σA), from resistivity, aluminium = custom 1/ρ, N turns (×N in R, ×N² in ℒ) | closed form | 1e-12 | pass |
+| Thin-loop ℒ vs M(a, a, r_w), r_w/a = 0.1, 0.01, 0.001 (second-order convergence); vs flux inside the wire | Maxwell | 0.4 (r_w/a)²; 0.8 r_w/a | pass |
+| Maxwell M vs surface quadrature (3 configurations) | quadrature | 1e-8 | pass |
+| Invalid conductors rejected (both σ and ρ, preset + σ, no σ, both radius and section, negative σ, user ℒ without value); rectangle/thick loop/ideal filament need a user ℒ | | | pass |
+| Single loop, ramp: transient and decay | closed form | 1e-6 of the peak | pass |
+| Lenz sign; R I + dλ/dt = 0 on the solution; zero flux change → zero current; initial-current decay and Q_R = ΔW_m; source and orientation reversal | | 1e-3 (finite differences), 1e-6 | pass |
+| Coupled loops: closed-form M, symmetric PD matrix; response vs expm at 4 times; > 1 % difference without coupling; tilted loops numerical, reciprocity < 1e-7; linked loops singular; nonphysical matrix rejected | expm, Maxwell | 1e-6 | pass |
+| Braking (large source loop): force opposes motion at every sample, K decreases, P_mech < 0, Lenz, energy residual < 1e-6 Q_R, ΔK = Q_R + W_m; field reversal flips I not the braking; motion reversal; v = 0 → I = 0; larger R smaller I; larger ℒ delays | | 1e-6, 1e-7 | pass |
+| Prescribed rod motion: motion unchanged; R I + dλ/dt = 0 (motional EMF counted once); power residual with the independent force integral < 1e-9 P_R | | 1e-3; 1e-9 | pass |
+| Moving loop relative to a passive loop: R I + dλ/dt = 0 for both (dL/dt) | finite differences | 2e-3 | pass |
+| Preset 27: stops when the rod leaves the rails (t ≈ 0.4006 s); braking force; residual; motional EMF of the order of BLv | | | pass |
+| Eddy disk: R_k, J = I/(tΔr), PD matrix; Lenz sign of all bands; J at r = 0.03/0.05/0.07 m changes < 2 % (10 → 20) and < 1 % (20 → 40), decreasing; off-axis source unsupported; Δr < t/2 refused; source in the disk plane singular | | | pass |
+| Energy: P_R = RI², W_m = ½IᵀLI, Q_R vs trapezoid of P_R, residual decreases from rtol 1e-5 to 1e-9 and < 1e-9 W_src; W_src = Q_R + ΔW_m | | 2e-3; 1e-12; 1e-6 | pass |
+| Field feedback: B = B_prescribed + B_passive; B_passive = loop field of the solved current; Lenz on the axis; filament singular; curl A_polygon = B_segment | | 1e-14; 1e-12; 1e-5 | pass |
+| API (6 tests): presets 26–29 solve and cache, preset 27 stops with braking, invalid/422 requests, field and probe with induced currents, equation statuses, persistence and old projects | | | pass |
+
+**Changes to existing tests (intended, nothing weakened):** the preset catalog now has 29 entries
+with 21 available. The end-to-end Ampère reversal check now waits for the expected enclosed
+current instead of reading the previous (also "verified") result immediately after the click
+(a race; the asserted value is unchanged).
+
+**Fixed during this phase:** experiment presets (22–29) left the previous preset's test charge,
+measurement surfaces and circuits in place, so a heavy trajectory or moving-surface solve of
+one preset ran against another preset's sources; such presets now replace them. The magnetic
+field waits for the circuit solution, so the displayed field always contains the induced
+currents of the same solution.
+
+The end-to-end Phase 4B species-change check now switches the trajectory off before changing
+the species (it tests the force probe): otherwise the electron trajectory (20 000 steps) kept
+the API busy into the following checks. Trajectories of scenes without time-dependent currents
+now reuse the source set at every step.
+
+| Item | Result |
+|---|---|
+| Python tests | 607 passed, 0 skipped (568 earlier; 39 new: 33 physics, 6 API), incl. 5 integration tests against PostgreSQL and Redis |
+| ruff, mypy (strict) | clean |
+| Frontend type-check, lint, unit tests, production build | clean; 80 passed (76 earlier, 4 new) |
+| End-to-end, native stack (`scripts/native.py`) with Redis and worker | 74 of 74 checks (69 earlier + 5 for Phase 4C: shorted loop with induced-current probe, braking rod, eddy disk, coupled loops with positive-definite matrix and induced-field display, persistence of circuits; plus the Hungarian Circuits tab) |
+| Windows, Docker | not executed in this phase |

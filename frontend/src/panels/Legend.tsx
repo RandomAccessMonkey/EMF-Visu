@@ -54,7 +54,7 @@ const Swatch = ({ color, dashed }: { color: string; dashed?: boolean }) => (
 )
 
 /** Separate legend for magnetic quantities: own palette, own units, never shared with E. */
-const MAGNETIC_VECTOR_SYMBOL = { B: 'B', H: 'H', dB_dt: '∂B/∂t', E_ind: 'E_ind' } as const
+const MAGNETIC_VECTOR_SYMBOL = { B: 'B', H: 'H', dB_dt: '∂B/∂t', E_ind: 'E_ind', B_prescribed: 'B_prescribed', B_passive: 'B_passive' } as const
 
 function MagneticLegend({ result, arrows }: { result: SimulationResult; arrows: LogScale | null }) {
   const { t } = useT()
@@ -66,13 +66,14 @@ function MagneticLegend({ result, arrows }: { result: SimulationResult; arrows: 
   const closed = shown.filter((l) => l.end_reason === 'closed_loop').length
   const truncated = shown.filter((l) => !isNumericalBEnd(l) && l.end_reason !== 'closed_loop').length
   const numerical = shown.filter(isNumericalBEnd).length
-  const unit = { B: 'T', H: 'A/m', dB_dt: 'T/s', E_ind: 'V/m' }[v.magneticField]
+  const unit = { B: 'T', H: 'A/m', dB_dt: 'T/s', E_ind: 'V/m', B_prescribed: 'T', B_passive: 'T' }[v.magneticField]
   const ids = result.header.current_sources.map((c) => c.object_id)
   const kinds = new Set(result.header.current_sources.map((c) => c.kind))
   const paths = useSceneStore((s) => s.paths)
   const fluxCount = useSceneStore((s) => s.fluxSurfaces.length)
   const moving = useSceneStore((s) => s.fluxSurfaces.some(isMovingSurface))
   const charge = useSceneStore((s) => !!s.testCharge?.enabled)
+  const circuitCount = useSceneStore((s) => s.circuits.length + s.eddyDisks.length)
   const contribution = effectiveContribution(v.contribution, ids)
   const which = contribution === 'total' ? t('legend.mTotal') : contribution === 'all' ? t('legend.mAll') : t('legend.mSingle', { name: names[contribution] ?? contribution })
   return (
@@ -140,6 +141,13 @@ function MagneticLegend({ result, arrows }: { result: SimulationResult; arrows: 
           {t('legend.trajectory')}
           <br />
           {t('legend.forceScale')}
+        </p>
+      )}
+      {circuitCount > 0 && (
+        <p className="max-w-56 text-[10px] leading-snug text-muted" data-testid="legend-circuits">
+          <Swatch color="#f472b6" />
+          {t('legend.inducedPos')} <Swatch color="#38bdf8" />
+          {t('legend.inducedNeg')}
         </p>
       )}
       {fluxCount > 0 && (

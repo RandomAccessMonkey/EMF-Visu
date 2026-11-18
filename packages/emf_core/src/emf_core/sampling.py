@@ -12,14 +12,14 @@ from .scene.models import StrictModel, Vec3
 
 MAX_POINTS_PER_REQUEST = 2_000_000
 Quantity = Literal["E", "phi", "D", "div_E", "curl_E", "div_D", "curl_D",
-                   "B", "H", "div_B", "div_H", "dB_dt", "E_ind"]
+                   "B", "H", "div_B", "div_H", "dB_dt", "E_ind", "B_prescribed", "B_passive"]
 # Electric and magnetic quantities are solved separately (Phase 3A): a request asks for one kind.
 ELECTRIC_QUANTITIES: frozenset[str] = frozenset(
     {"E", "phi", "D", "div_E", "curl_E", "div_D", "curl_D"})
 # Phase 4A: dB/dt and the induced electric field E_ind = -dA/dt come from the (time-dependent)
 # current sources, so they belong to the magnetic request, never to the electrostatic one.
 MAGNETIC_QUANTITIES: frozenset[str] = frozenset(
-    {"B", "H", "div_B", "div_H", "dB_dt", "E_ind"})
+    {"B", "H", "div_B", "div_H", "dB_dt", "E_ind", "B_prescribed", "B_passive"})
 FieldKind = Literal["electric", "magnetic"]
 
 

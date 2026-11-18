@@ -964,6 +964,77 @@ and enabled trajectories as well.
 ω = 2π rad/s about x), proton in the Helmholtz field (helix, r_c ≈ 17 mm), combined
 transformer and motional induction (sinusoidal loop, axially oscillating measurement loop).
 
+## 9i. Phase 4C: passive circuits, induced currents, magnetic braking, eddy-current disk
+
+**Scope.** Prescribed sources (all earlier models, stationary, static or Phase 4A profiles) and
+*passive* closed conductors driven only by flux change: circles, rectangles, polygons, N-turn
+series coils, the sliding-rod circuit (optionally with Phase 4B motion), coupled loops, and an
+axisymmetric eddy-current disk of annular bands. Out of scope: applied voltages, networks,
+capacitors, RLC, nonlinear elements, skin effect, temperature, general 3D eddy currents (FEM),
+radiation, rotational dynamics (rotation stays prescribed; its torque is reported).
+
+**Circuit model** (`circuits.py`). `PassiveCircuit` = a `FluxSurface` geometry (+ motion, turns)
+with `Electrical` (preset copper / aluminium / silver or custom σ or ρ_e — never both; wire
+radius or cross-section; optional authoritative lumped resistance; self-inductance `thin_loop`
+or `user`), an initial current and, for the sliding rod, `Mechanics` (prescribed | dynamic).
+R = ℓ/(σA) with ℓ = perimeter × N; ℒ = N² μ₀a[ln(8a/r_w) − 2] for circles with r_w/a ≤ 0.1
+(the external, surface-current form; the internal μ₀a/4 of a uniform current is not included),
+otherwise a user value is required; an ideal filament never gets an automatic ℒ.
+Measurement surfaces stay measurement surfaces: the UI converts one explicitly.
+
+**Coupled equations.** λ_i = Φ_i,ext + Σ L_ij I_j, R_i I_i + dλ_i/dt = 0, solved as
+L(t) İ = EMF_ext − RI − L̇ I with EMF_ext = EMF_tr + EMF_mot: EMF_tr = −Σ_s İ_s Φ_is (analytical
+source rates × unit fluxes: Maxwell's coaxial formula where every source is a coaxial circle,
+else Phase 4A surface quadrature); EMF_mot = N∮(u × B_prescribed)·dl (Phase 4B). Motion
+relative to other passive circuits enters only through L̇ (central differences of the
+geometric L(t)). Each contribution is counted once — tested by R I + dλ/dt = 0 on the
+solution. SciPy Radau (implicit, adaptive; analytic Jacobian for fixed geometry), split at
+every profile corner, events when a sliding rod leaves its rails or reaches the fixed end.
+Output on the playback grid; the frontend shows the sample at or before the simulation time.
+
+**Mutual inductance and matrix checks.** Coaxial circles: Maxwell's closed form (series for
+small k). Otherwise the flux of one circuit's 1 A field (loop field / exact segment
+Biot–Savart) through the other's surface; computed both ways when neither pierces the other
+(reciprocity ≤ 1e-6 required), one way when one does, rejected when the circuits are linked or
+their conductors touch. L must be positive definite (smallest eigenvalue > 1e-12 × largest);
+a nonphysical matrix is rejected with an explanation, never adjusted.
+
+**Field feedback.** `SolveRequest.passive` (and `ProbeBody.passive`) carries the solution sample
+(geometry, I, dI/dt). The magnetostatic solver adds Σ I_j B_j,unit to B and H (arrays
+`B_prescribed`, `B_passive`), Σ İ_j B_j to ∂B/∂t, −Σ İ_j A_j to E_ind (segment vector potential
+`segments.py`, its curl tested against the segment field); points on a passive filament are
+singular. ∂B/∂t and E_ind of a moving current-carrying circuit (∂A/∂t from motion) are reported
+unavailable. Field lines follow the total field. Phase 4A/4B measurement surfaces see the
+prescribed sources only.
+
+**Forces and braking.** F = I N∮dl × B_ext and τ about the centre, B_ext = prescribed + other
+passive circuits (own singular field excluded); for the rod only the rod segment (rails fixed).
+Dynamic rod: m ẍ = F_ext + F_em − b ẋ solved with the currents; its static-field integrals
+(∮dl × B_k and dΦ_k/dx per source column) are tabulated as piecewise Chebyshev series in x
+verified against direct quadrature to 1e-9 (Φ_k(x) by exact integration of the series). The
+braking statement is derived from the computed force and velocity.
+
+**Eddy-current disk.** N_r equal bands; R_k = 2πr_k/(σtΔr_k); ℒ_k from an equivalent round wire
+r_eq = √(tΔr/π) where r_eq/r_k ≤ 0.1, else the geometric-mean-distance method
+M(r, r, 0.2235(t + Δr)); mutuals by Maxwell, averaged over 6×6 Gauss points per cross-section
+for bands closer than 3t + Δr. Validity: Δr ≥ t/2 (finer bands make the matrix unreliable and
+are refused); axisymmetry required (every source and other circuit coaxial, no finite toroid,
+no moving circuit). J_φ ≈ I_k/(tΔr_k). Refinement 10 → 20 → 40 bands changes J by ≈ 1 % in
+preset 28.
+
+**Energy.** States integrated with the currents: Q_R = ∫ΣRI², W_src = ∫I·EMF_tr,
+W_mot = ∫I·EMF_mot, W_geom = ∫½IᵀL̇I, kinetic energy from the rod's velocity, damping heat and
+external work. Residual (reported as computed): without rod dynamics ΔW_m + Q_R + W_geom −
+W_src − W_mot; with it ΔK + W_damp − W_ext + ΔW_m + Q_R − W_src. Instantaneous power residual
+with the independently integrated force: F·u + P_R + dW_m/dt − P_src.
+
+**API, UI, presets.** `POST /circuits` (cached), probe and simulation `passive`, equation body
+`circuits`/`eddy_disks`, project `circuits`/`eddy_disks`. Circuits tab (create, convert a
+measurement surface, edit electrical/mechanical/disk parameters, results at the sample, energy
+table, inductance matrix, I(t)/EMF/velocity/energy plots, per-band table and J(r)); viewport
+circuits coloured by current sign with direction cones; B_prescribed / B_passive as vector
+fields and maps; probe sections. Equation category `circuits` (25 equations). Presets 26–29.
+
 ## 10. Implementation status and roadmap
 
 | Area | Phase 1 state |
@@ -975,7 +1046,7 @@ transformer and motional induction (sinusoidal loop, axially oscillating measure
 | Analytical solver | point charges in vacuum |
 | Probe | E, φ, D, ∇·E, ∇×E, ∇·D, ∇×D at a point, per-charge contributions, singular state with the distributional statement, finite-difference check (advanced). Energy density: later milestone |
 | Equation registry | all required equations plus superposition, with computed statuses and usage; derivations are empty |
-| Presets | 1–4, 9–16 and 21–25 available (22–25: moving conductors and a test particle, Phase 4B) (10 with three variants, 13 with two, view hints incl. a default probe point, 12–14 with default Ampère paths, 15, 16, 21 with measurement surfaces and a time range); 5–8 and 17–20 listed as unavailable |
+| Presets | 1–4, 9–16 and 21–29 available (22–25: moving conductors and a test particle, Phase 4B; 26–29: passive circuits, Phase 4C) (10 with three variants, 13 with two, view hints incl. a default probe point, 12–14 with default Ampère paths, 15, 16, 21 with measurement surfaces and a time range); 5–8 and 17–20 listed as unavailable |
 | Persistence | projects (scene incl. current profiles + view settings incl. simulation time and range + Gaussian surfaces + Ampère paths + Faraday measurement surfaces) in PostgreSQL |
 | Job queue | analytical worker, progress, cancellation |
 | Time-dependent currents, timeline | implemented (Phase 4A): constant, sinusoidal, ramp and piecewise-linear profiles with analytical dI/dt, deterministic playback |
@@ -989,7 +1060,8 @@ transformer and motional induction (sinusoidal loop, axially oscillating measure
 | Magnetostatics (later) | not started: nonlinear or field-dependent materials, demagnetization, magnetic flux through open surfaces, general magnetic materials |
 | Induction (Phase 4A, magnetoquasistatic, stationary geometry) | B(t), ∂B/∂t, Coulomb-gauge vector potential of closed circular currents, E_ind = −∂A/∂t, magnetic flux through stationary surfaces, Faraday's law verified independently, Lenz signs, mutual inductance with reciprocity |
 | Moving conductors (Phase 4B) | rigid motion profiles, sliding-rod circuit, N-turn measurement coils, motional EMF ∮(u×B)·dl, generalized Faraday law verified against finite differences of the moving-surface flux, Lorentz force probe, Boris test-particle trajectories |
-| Induction (later) | not started: induced currents and circuits, back-reaction, moving sources, eddy currents, full-wave fields |
+| Passive circuits (Phase 4C) | induced currents of passive loops, coils and the sliding rod, coupled RL dynamics with mutual inductance, induced-current fields, forces, dynamic magnetic braking, axisymmetric annular-band eddy-current disk, energy accounting |
+| Induction (later) | not started: applied voltages and networks (Phase 5), moving sources, rotational dynamics, general 3D eddy currents (FEM), full-wave fields |
 | FEM (DOLFINx, Gmsh), FDTD (Meep) | not started (Phase 5); reported as unavailable |
 | Circuit subsystem (MNA) | not started; reported as unavailable |
 
@@ -1009,6 +1081,15 @@ Acceptance criteria per phase are unchanged from the approved plan:
 - **Circuits:** MNA DC, transient and AC against RC, RL and RLC closed forms; labelled uncoupled.
 
 ## 11. Known limitations
+
+- Phase 4C: passive circuits only (no applied voltage, networks or capacitors); constant
+  conductivity; thin-conductor (uniform current, no skin effect) model; the thin-loop ℒ omits
+  the internal inductance; rectangles/polygons/rods need a given ℒ (constant, also for the rod
+  whose area changes). Rotational dynamics is not solved. Prescribed sources are not affected
+  by induced currents. Moving rigid circuits are slower (line integrals at every solver step).
+  The eddy disk is an axisymmetric reduced-order approximation valid for Δr ≥ t/2. Phase 4A/4B
+  measurement surfaces do not include passive-circuit fields. With the specified parameters of
+  preset 27 the braking is weak (≈ 0.2 % speed loss) and the rod leaves the rails at t ≈ 0.40 s.
 
 - Phase 4B: only measurement conductors move (rigidly, or the sliding rod's rod); sources stay
   fixed. The EMF is an open-circuit EMF: no current, resistance, back-reaction or force on the

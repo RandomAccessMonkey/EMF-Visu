@@ -14,6 +14,8 @@ import { Contours, FieldLines, Isosurfaces } from './FieldProducts'
 import { AmpereLayer } from './AmpereLayer'
 import { FluxLayer } from './FluxLayer'
 import { LorentzLayer } from './LorentzLayer'
+import { CircuitLayer } from './CircuitLayer'
+import type { CircuitsData } from '@/sim/useCircuits'
 import type { LorentzData } from '@/sim/useLorentz'
 import { GaussLayer } from './GaussLayer'
 import type { AmpereData } from '@/sim/useAmpere'
@@ -252,9 +254,11 @@ interface Props {
   induction?: InductionData | undefined
   /** Test charge and trajectory (Phase 4B). */
   lorentz?: LorentzData
+  /** Passive circuits (Phase 4C). */
+  circuits?: CircuitsData
 }
 
-export function Viewport({ result, magnetic, image, arrowScale, magneticArrowScale, flux, ampere, induction, lorentz }: Props) {
+export function Viewport({ result, magnetic, image, arrowScale, magneticArrowScale, flux, ampere, induction, lorentz, circuits }: Props) {
   const fluxSurfaces = useSceneStore((s) => s.fluxSurfaces)
   const testCharge = useSceneStore((s) => s.testCharge)
   const surfaces = useSceneStore((s) => s.surfaces)
@@ -294,7 +298,7 @@ export function Viewport({ result, magnetic, image, arrowScale, magneticArrowSca
       <ambientLight intensity={1.4} />
       <directionalLight position={[3, -4, 6]} intensity={1.6} />
       <Cameras domain={domain} />
-      <Invalidator deps={[scene, selectedId, v.mode, v.plane, v.offset, v.probePoint, v.showGrid, v.tool, result, v.showFieldLines, v.lineDensity, v.showContours, v.showIsosurfaces, v.showCurl, v.curlField, v.showSources, v.showVolumeScalars, v.heatmap, flux, surfaces, selectedSurfaceId, patch, cell, magnetic, v.showBArrows, v.magneticField, v.showBLines, v.showCurrents, v.showCurrentDirection, v.contribution, paths, ampere, selectedPathId, fluxSurfaces, induction, lorentz?.probe, lorentz?.trajectory, lorentz?.current, v.showMotionVectors, testCharge]} />
+      <Invalidator deps={[scene, selectedId, v.mode, v.plane, v.offset, v.probePoint, v.showGrid, v.tool, result, v.showFieldLines, v.lineDensity, v.showContours, v.showIsosurfaces, v.showCurl, v.curlField, v.showSources, v.showVolumeScalars, v.heatmap, flux, surfaces, selectedSurfaceId, patch, cell, magnetic, v.showBArrows, v.magneticField, v.showBLines, v.showCurrents, v.showCurrentDirection, v.contribution, paths, ampere, selectedPathId, fluxSurfaces, induction, lorentz?.probe, lorentz?.trajectory, lorentz?.current, v.showMotionVectors, testCharge, circuits?.data, circuits?.k]} />
       {v.mode === '3d' && <DomainFrame domain={domain} />}
       {v.showGrid && <GridAxes domain={domain} />}
       {grid && <SlicePlane image={image} grid={grid} visible={sliceVisible && v.heatmap !== 'none'} />}
@@ -321,6 +325,7 @@ export function Viewport({ result, magnetic, image, arrowScale, magneticArrowSca
       <AmpereLayer ampere={ampere} marker={marker} />
       <FluxLayer induction={induction} marker={marker} />
       {lorentz && <LorentzLayer data={lorentz} marker={marker} />}
+      {circuits && <CircuitLayer data={circuits} marker={marker} />}
       <SceneObjects marker={marker} offSlice={offSlice} wireLength={diag} />
       <ProbeMarker size={marker} />
     </Canvas>

@@ -9,6 +9,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 from .ampere import AmperePath
+from .circuits import EddyDisk, PassiveCircuit
 from .i18n import L, LocalizedText
 from .induction import FluxSurface
 from .lorentz import TestCharge
@@ -81,6 +82,9 @@ class Preset(BaseModel):
     time: TimeHint | None = None
     # Phase 4B: a test charge (Lorentz-force probe and optional trajectory).
     test_charge: TestCharge | None = None
+    # Phase 4C: passive circuits and eddy-current disks.
+    circuits: list[PassiveCircuit] = []
+    eddy_disks: list[EddyDisk] = []
 
 
 def _charge(oid: str, name: str, q: float, pos: tuple[float, float, float],
@@ -718,7 +722,192 @@ _MOTION = [
     ),
 ]
 
-PRESETS: list[Preset] = sorted(_AVAILABLE + _MAGNETIC + _COILS_AND_MAGNETS + _INDUCTION + _MOTION + [
+# ------------------------------------------------------- Phase 4C: passive circuits
+
+_EQ_CIRC = ["passive_loop_equation", "flux_linkage", "circuit_voltage_equation",
+            "resistance_sigma", "joule_heating", "self_magnetic_energy", "lenz_passive",
+            "transformer_induced_current", "loop_field_elliptic"]
+
+
+def _src_loop(oid: str, name: str, radius: float, z: float, profile: dict[str, object]
+              ) -> SceneObject:
+    return SceneObject(id=oid, name=name, role=Role.CURRENT_SOURCE,
+                       primitive=RingPrimitive(radius_m=radius),
+                       source=CircularLoopSource.model_validate({"current_A": 0.0,
+                                                                 "profile": profile}),
+                       transform=Transform(position_m=(0.0, 0.0, z)))
+
+
+def _copper_loop(cid: str, name: str, radius: float, z: float) -> PassiveCircuit:
+    return PassiveCircuit.model_validate({
+        "id": cid, "name": name,
+        "path": {"id": cid, "shape": {"type": "circle", "radius_m": radius},
+                 "center_m": (0.0, 0.0, z)},
+        "electrical": {"material": "copper", "wire_radius_m": 0.001,
+                       "self_inductance": {"mode": "thin_loop"}}})
+
+
+_CIRCUITS = [
+    Preset(
+        id="shorted_loop_induction", number=26, available=True,
+        equation_ids=[*_EQ_CIRC, "fixed_rl_equation", "thin_loop_inductance"],
+        name=L("Shorted loop induction", "Rövidre zárt hurok indukciója"),
+        description=L("A circular source loop (radius 0.05 m, at the origin, axis +z) whose current "
+                      "ramps from 0 to 5 A in 0.1 s and is then held. A shorted copper loop "
+                      "(radius 0.04 m, wire radius 1 mm, 0.04 m above) is a passive circuit: "
+                      "R = ℓ/(σA) ≈ 1.38 mΩ, ℒ ≈ 0.19 µH from the thin-loop formula, "
+                      "τ = ℒ/R ≈ 0.14 ms.",
+                      "Egy kör alakú forráshurok (sugár 0,05 m, az origóban, tengely +z), árama "
+                      "0,1 s alatt 0-ról 5 A-re nő, majd állandó. Egy rövidre zárt rézhurok "
+                      "(sugár 0,04 m, huzalsugár 1 mm, 0,04 m-rel fölötte) passzív áramkör: "
+                      "R = ℓ/(σA) ≈ 1,38 mΩ, ℒ ≈ 0,19 µH a vékony hurok képletéből, "
+                      "τ = ℒ/R ≈ 0,14 ms."),
+        expected_behavior=L("While the source current rises, the shorted loop carries a current "
+                            "of opposite sense, I ≈ −(1/R) dΦ/dt after the very short RL "
+                            "transient (τ ≈ 0.14 ms, faster than one 1 ms step). When the source "
+                            "current becomes constant at t = 0.1 s the induced current decays "
+                            "with τ. The loop's own field, its Joule heating and magnetic energy "
+                            "are shown.",
+                            "Amíg a forrásáram nő, a rövidre zárt hurokban ellentétes irányú áram "
+                            "folyik, I ≈ −(1/R) dΦ/dt a nagyon rövid RL tranziens után (τ ≈ 0,14 "
+                            "ms, rövidebb egy 1 ms-os lépésnél). Amikor t = 0,1 s-kor a forrásáram "
+                            "állandó lesz, az indukált áram τ időállandóval lecseng. Látható a "
+                            "hurok saját tere, Joule-hője és mágneses energiája."),
+        scene=Scene(objects=[_src_loop("src", "Source loop", 0.05, 0.0, {
+            "type": "ramp", "start_A": 0.0, "slope_A_per_s": 50.0, "t_start_s": 0.0,
+            "t_end_s": 0.1})], domain=Domain(min_m=(-0.1, -0.1, -0.1), max_m=(0.1, 0.1, 0.1))),
+        view_hint=ViewHint(mode="2d", plane="xz", probe_m=(0.0, 0.0, 0.02)),
+        circuits=[_copper_loop("P1", "Shorted loop", 0.04, 0.04)],
+        time=TimeHint(start_s=0.0, end_s=0.5, step_s=0.001, initial_s=0.05),
+    ),
+    Preset(
+        id="magnetic_braking_rod", number=27, available=True,
+        equation_ids=["motional_induced_current", "magnetic_force_loop", "translational_dynamics",
+                      "electromagnetic_power", "energy_exchange", "joule_heating",
+                      "passive_loop_equation", "motional_emf", "sliding_rod_emf",
+                      "finite_solenoid_superposition"],
+        name=L("Magnetic braking: sliding rod", "Mágneses fékezés: csúszó rúd"),
+        description=L("A finite solenoid (200 turns, radius 0.05 m, length 0.10 m, 10 A, axis +z, "
+                      "centred at the origin) provides the field; its actual finite-turn field is "
+                      "used. Rails 0.10 m apart and 0.30 m long lie in the plane z = 0.06 m "
+                      "(1 cm above the top turn), centred on y = 0 and running from x = −0.15 m "
+                      "to +0.15 m. The rod (mass 20 g) starts at x = −0.05 m with +0.50 m/s; "
+                      "the circuit has R = 2 mΩ and ℒ = 5 µH; no external force or damping.",
+                      "Egy véges szolenoid (200 menet, sugár 0,05 m, hossz 0,10 m, 10 A, tengely "
+                      "+z, az origó körül) adja a teret; a tényleges véges menetszámú tér "
+                      "számít. A 0,10 m-re lévő, 0,30 m hosszú sínek a z = 0,06 m síkban "
+                      "(1 cm-rel a felső menet fölött) fekszenek, y = 0 körül, x = −0,15 m-től "
+                      "+0,15 m-ig. A rúd (20 g) x = −0,05 m-ről +0,50 m/s sebességgel indul; az "
+                      "áramkör R = 2 mΩ, ℒ = 5 µH; nincs külső erő vagy csillapítás."),
+        expected_behavior=L("The moving rod has a motional EMF; the closed circuit carries an "
+                            "induced current, and the force I L × B on the rod opposes its "
+                            "motion: the rod slows down while kinetic energy turns into Joule "
+                            "heat and magnetic energy. With these parameters the braking is "
+                            "weak (the speed drops by about 0.2 % before the rod reaches the end "
+                            "of the rails at t ≈ 0.40 s, where the circuit opens and the "
+                            "simulation stops). Lower R or m, or a stronger field, brakes more. "
+                            "BLv is shown only as a comparison with the local field.",
+                            "A mozgó rúdban mozgási EMF keletkezik; a zárt áramkörben indukált "
+                            "áram folyik, és a rúdra ható I L × B erő a mozgással ellentétes: a "
+                            "rúd lassul, mozgási energiája Joule-hővé és mágneses energiává "
+                            "alakul. Ezekkel a paraméterekkel a fékezés gyenge (a sebesség kb. "
+                            "0,2 %-kal csökken, mielőtt a rúd t ≈ 0,40 s-kor a sínek végére ér, "
+                            "ahol az áramkör megszakad és a szimuláció leáll). Kisebb R vagy m, "
+                            "illetve erősebb tér jobban fékez. A BLv csak a helyi térrel való "
+                            "összehasonlítás."),
+        scene=Scene(objects=[SceneObject(
+            id="solenoid1", name="Solenoid", role=Role.CURRENT_SOURCE,
+            primitive=CoilPrimitive(radius_m=0.05, length_m=0.1, turns=200),
+            source=SolenoidSource(current_A=10.0))],
+            domain=Domain(min_m=(-0.2, -0.2, -0.1), max_m=(0.2, 0.2, 0.15))),
+        view_hint=ViewHint(mode="3d", plane="xy", probe_m=(0.0, 0.0, 0.06)),
+        circuits=[PassiveCircuit.model_validate({
+            "id": "R1", "name": "Rod circuit",
+            "path": {"id": "R1", "center_m": (-0.15, 0.0, 0.06),
+                     "shape": {"type": "sliding_rod", "rail_separation_m": 0.1,
+                               "rail_length_m": 0.3, "rod_position_m": 0.1,
+                               "rod_motion": {"type": "stationary"}}},
+            "electrical": {"resistance_ohm": 0.002,
+                           "self_inductance": {"mode": "user", "value_H": 5e-6}},
+            "mechanics": {"mode": "dynamic", "mass_kg": 0.02, "initial_velocity_m_per_s": 0.5,
+                          "external_force_N": 0.0, "damping_N_s_per_m": 0.0}})],
+        time=TimeHint(start_s=0.0, end_s=2.0, step_s=0.005, initial_s=0.1),
+    ),
+    Preset(
+        id="eddy_current_disk", number=28, available=True,
+        equation_ids=["annular_resistance", "annular_current_density", "coupled_band_dynamics",
+                      "transformer_induced_current", "lenz_passive", "joule_heating",
+                      "inductance_matrix", "current_sinusoidal", "loop_field_elliptic"],
+        name=L("Axisymmetric eddy-current disk (annular-band approximation)",
+               "Tengelyszimmetrikus örvényáramú korong (körgyűrű-sávos közelítés)"),
+        description=L("A copper disk (radius 0.10 m, thickness 5 mm, normal +z, at the origin) "
+                      "divided into 20 concentric annular bands, each a coupled passive loop. "
+                      "A coaxial source loop (radius 0.07 m, 0.02 m above) carries "
+                      "I(t) = 10 sin(2π·10 Hz·t) A. Reduced-order axisymmetric approximation, "
+                      "not a continuous eddy-current solution.",
+                      "Egy rézkorong (sugár 0,10 m, vastagság 5 mm, normális +z, az origóban) "
+                      "20 koncentrikus körgyűrű-sávra osztva, mindegyik csatolt passzív hurok. "
+                      "Egy koaxiális forráshurok (sugár 0,07 m, 0,02 m-rel fölötte) árama "
+                      "I(t) = 10 sin(2π·10 Hz·t) A. Redukált rendű, tengelyszimmetrikus "
+                      "közelítés, nem folytonos örvényáram-megoldás."),
+        expected_behavior=L("The changing flux induces azimuthal currents that differ from band "
+                            "to band (largest near the source loop's radius), opposing the "
+                            "change of flux; the coupled currents create their own field. The "
+                            "current density, Joule heating per band and the total magnetic "
+                            "energy are shown. Refining the bands (10 → 20 → 40) changes the "
+                            "current density by about 1 %.",
+                            "A változó fluxus sávonként eltérő azimutális áramokat indukál (a "
+                            "forráshurok sugara közelében a legnagyobbat), a fluxusváltozással "
+                            "szemben; a csatolt áramok saját teret keltenek. Látható az "
+                            "áramsűrűség, a sávonkénti Joule-hő és a teljes mágneses energia. A "
+                            "sávok finomítása (10 → 20 → 40) kb. 1 %-kal változtatja az "
+                            "áramsűrűséget."),
+        scene=Scene(objects=[_src_loop("src", "Source loop", 0.07, 0.02, {
+            "type": "sinusoidal", "dc_A": 0.0, "peak_A": 10.0, "frequency_Hz": 10.0,
+            "phase_rad": 0.0})], domain=Domain(min_m=(-0.15, -0.15, -0.1),
+                                               max_m=(0.15, 0.15, 0.1))),
+        view_hint=ViewHint(mode="2d", plane="xz", probe_m=(0.05, 0.0, 0.01)),
+        eddy_disks=[EddyDisk.model_validate({
+            "id": "D1", "name": "Copper disk", "outer_radius_m": 0.1, "inner_radius_m": 0.0,
+            "thickness_m": 0.005, "material": "copper", "bands": 20})],
+        time=TimeHint(start_s=0.0, end_s=0.3, step_s=0.001, initial_s=0.0),
+    ),
+    Preset(
+        id="coupled_passive_circuits", number=29, available=True,
+        equation_ids=[*_EQ_CIRC, "mutual_inductance_passive", "inductance_matrix",
+                      "coupled_magnetic_energy", "thin_loop_inductance", "current_sinusoidal"],
+        name=L("Coupled passive circuits", "Csatolt passzív áramkörök"),
+        description=L("One circular source loop (radius 0.05 m, at the origin, axis +z) with "
+                      "I(t) = 2 sin(2π·1 kHz·t) A. Two shorted copper loops (wire radius 1 mm): "
+                      "radius 0.04 m at z = +0.03 m and radius 0.06 m at z = −0.03 m, both "
+                      "axis +z. At 1 kHz ωℒ ≈ R, so inductive coupling matters.",
+                      "Egy kör alakú forráshurok (sugár 0,05 m, az origóban, tengely +z), árama "
+                      "I(t) = 2 sin(2π·1 kHz·t) A. Két rövidre zárt rézhurok (huzalsugár 1 mm): "
+                      "0,04 m sugarú z = +0,03 m-en és 0,06 m sugarú z = −0,03 m-en, mindkettő "
+                      "tengelye +z. 1 kHz-en ωℒ ≈ R, így az induktív csatolás számít."),
+        expected_behavior=L("Both loops develop induced currents whose transients are coupled "
+                            "through their mutual inductance; each contributes to the other's "
+                            "flux and generates its own field. The 2 × 2 inductance matrix "
+                            "(symmetric, positive definite) is shown; magnetic energy and Joule "
+                            "heating are tracked. Move or tilt the loops to change the coupling.",
+                            "Mindkét hurokban indukált áram alakul ki, tranzienseik a kölcsönös "
+                            "induktivitáson át csatoltak; mindegyik hozzájárul a másik "
+                            "fluxusához és saját teret kelt. Látható a 2 × 2-es (szimmetrikus, "
+                            "pozitív definit) induktivitásmátrix; a mágneses energia és a Joule-hő "
+                            "követve. A hurkok mozgatásával vagy döntésével a csatolás "
+                            "változtatható."),
+        scene=Scene(objects=[_src_loop("src", "Source loop", 0.05, 0.0, {
+            "type": "sinusoidal", "dc_A": 0.0, "peak_A": 2.0, "frequency_Hz": 1000.0,
+            "phase_rad": 0.0})], domain=Domain(min_m=(-0.1, -0.1, -0.1), max_m=(0.1, 0.1, 0.1))),
+        view_hint=ViewHint(mode="2d", plane="xz", probe_m=(0.0, 0.0, 0.0)),
+        circuits=[_copper_loop("P1", "Upper loop", 0.04, 0.03),
+                  _copper_loop("P2", "Lower loop", 0.06, -0.03)],
+        time=TimeHint(start_s=0.0, end_s=0.005, step_s=1e-5, initial_s=0.0),
+    ),
+]
+
+PRESETS: list[Preset] = sorted(_AVAILABLE + _MAGNETIC + _COILS_AND_MAGNETS + _INDUCTION + _MOTION
+                               + _CIRCUITS + [
     Preset(id=pid, number=n, name=L(en, hu), available=False, planned_phase=phase)
     for n, pid, en, hu, phase in _PLANNED
 ], key=lambda p: p.number)

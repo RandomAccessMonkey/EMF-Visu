@@ -25,6 +25,7 @@ from emf_core.scene.currents import (
     toroid_turn_angles,
 )
 from emf_core.scene.models import Scene, TorusPrimitive
+from emf_core.scene.passive import PassiveFilament
 from emf_core.scene.timedep import at_time, rates, time_state
 from emf_core.solvers import SolveRequest
 from emf_core.solvers.analytical import magnetostatics as ms
@@ -35,6 +36,8 @@ from .orchestrator import Orchestrator
 from .schemas import (
     MagneticContribution,
     OneSidedValue,
+    PassiveContribution,
+    PassiveProbe,
     ProbeComparison,
     ProbeMagnetic,
     ProbeValue,
@@ -189,8 +192,42 @@ def _comparisons(scene: Scene, cs: CurrentSources, p: Arr, r_min: float
     return out
 
 
+def _passive(p: Arr, fils: list[PassiveFilament], b_presc: Arr) -> tuple[PassiveProbe, Arr, bool]:
+    """Phase 4C: each passive circuit's field at the point from its solved current."""
+    pts = p[None, :]
+    rate_ok = not any(f.moving and f.current_A != 0.0 for f in fils)
+    contribs: list[PassiveContribution] = []
+    total = np.zeros(3)
+    sing = False
+    for f in fils:
+        ub, s = ms.passive_unit(pts, f, "B")
+        ua, _ = ms.passive_unit(pts, f, "A")
+        d = float(ms.passive_distance(pts, [f])[0])
+        ok = not bool(s[0])
+        sing |= not ok
+        b = ub[0] * f.current_A
+        if ok:
+            total = total + b
+        contribs.append(PassiveContribution(
+            circuit_id=f.id, current_A=f.current_A, dI_dt_A_per_s=f.rate_A_per_s, turns=f.turns,
+            distance_m=d, inside_conductor=f.wire_radius_m is not None and d < f.wire_radius_m,
+            B_T=[float(x) for x in b] if ok else None,
+            dB_dt_T_per_s=[float(x) for x in ub[0] * f.rate_A_per_s] if ok and (
+                not f.moving or f.current_A == 0.0) else None,
+            E_ind_V_per_m=[float(x) for x in -ua[0] * f.rate_A_per_s] if ok and (
+                not f.moving or f.current_A == 0.0) else None))
+    presc_ok = bool(np.all(np.isfinite(b_presc)))
+    tot = b_presc + total if presc_ok and not sing else None
+    return PassiveProbe(
+        B_prescribed_T=[float(x) for x in b_presc] if presc_ok else None,
+        B_passive_T=None if sing else [float(x) for x in total],
+        B_total_T=None if tot is None else [float(x) for x in tot], rate_available=rate_ok,
+        contributions=contribs), total, sing
+
+
 def magnetic_probe(scene: Scene, point_m: tuple[float, float, float],
-                   orch: Orchestrator, time_s: float = 0.0) -> ProbeMagnetic:
+                   orch: Orchestrator, time_s: float = 0.0,
+                   passive: list[PassiveFilament] | None = None) -> ProbeMagnetic:
     sub = engine.field_subscene(scene, "magnetic")
     request = SolveRequest.model_validate({
         "samplings": [{"kind": "points", "id": "probe", "points_m": [point_m]}],
@@ -272,8 +309,28 @@ def magnetic_probe(scene: Scene, point_m: tuple[float, float, float],
     db = ms.evaluate_bh(p[None, :], cs_rate, r_min, RTOL).b[0]
     e_ok = not ts.unsupported_ids
     e_ind = -ms.loops_vector_potential(cs_rate.loops, p[None, :])[0][0] if e_ok else None
+    passive_info = None
+    if passive:
+        passive_info, b_pass, psing = _passive(p, passive, b.copy())
+        if psing:
+            status = "singular"
+            b, h = np.full(3, np.nan), np.full(3, np.nan)
+        else:
+            b, h = b + b_pass, h + b_pass / MU0
+        rate_parts = [c for c in passive_info.contributions]
+        if passive_info.rate_available and not psing:
+            db = db + sum((np.asarray(c.dB_dt_T_per_s) for c in rate_parts if c.dB_dt_T_per_s),
+                          np.zeros(3))
+            if e_ind is not None:
+                e_ind = e_ind + sum((np.asarray(c.E_ind_V_per_m) for c in rate_parts
+                                     if c.E_ind_V_per_m), np.zeros(3))
+        else:
+            e_ok = False
+            db = np.full(3, np.nan)
+            e_ind = None
     time_values = [
-        _vector_value("dB_dt", "∂B/∂t", "T/s", db, status == "singular", False),
+        _vector_value("dB_dt", "∂B/∂t", "T/s", db, status == "singular",
+                      passive_info is not None and not passive_info.rate_available),
         _vector_value("E_ind", "E_ind", "V/m", e_ind, status == "singular", not e_ok)]
     fil_d, fil_scale = ms.nearest_filament(p[None, :], cs)
     sing_tol = (float(ms.filament_tolerance(fil_scale)[0]) if math.isfinite(float(fil_d[0]))
@@ -303,7 +360,7 @@ def magnetic_probe(scene: Scene, point_m: tuple[float, float, float],
             object_id=x.object_id, kind=x.kind, profile_type=x.profile_type,
             current_A=x.current_A, dI_dt_A_per_s=x.rate.right, dI_dt_left_A_per_s=x.rate.left,
             derivative_unique=x.rate.unique, induction_supported=x.induction_supported)
-            for x in ts.sources])
+            for x in ts.sources], passive=passive_info)
 
 
 def _boundary_normal(p: Arr, cs: CurrentSources, status: str) -> tuple[Arr, float]:

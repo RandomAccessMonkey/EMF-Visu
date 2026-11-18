@@ -10,7 +10,7 @@ from threading import Lock
 
 import numpy as np
 
-from emf_core import ampere, engine, induction, lorentz, wire
+from emf_core import ampere, circuits, engine, induction, lorentz, wire
 from emf_core.ampere import AmperePath, AmpereRequest
 from emf_core.equations import EquationRegistry, EquationView, default_registry
 from emf_core.geometry.surfaces import GaussSurface
@@ -152,6 +152,24 @@ class Orchestrator:
                 self._cache.popitem(last=False)
         return blob, False
 
+    def solve_circuits(self, scene: Scene, request: circuits.CircuitRequest
+                       ) -> tuple[bytes, bool]:
+        """Passive-circuit solution over the whole time range (JSON bytes; Phase 4C), cached by
+        the magnetic subscene and the circuits' physics."""
+        sub = engine.field_subscene(scene, "magnetic")
+        key = circuits.fingerprint(sub, request)
+        with self._lock:
+            hit = self._cache.get(key)
+            if hit is not None:
+                self._cache.move_to_end(key)
+                return hit, True
+        blob = circuits.compute(sub, request).model_dump_json().encode()
+        with self._lock:
+            self._cache[key] = blob
+            while len(self._cache) > self._cache_entries:
+                self._cache.popitem(last=False)
+        return blob, False
+
     def solve_particle(self, scene: Scene, request: lorentz.ParticleRequest
                        ) -> tuple[bytes, bool]:
         """Test-particle trajectory (JSON bytes; Phase 4B), cached by scene and request."""
@@ -176,7 +194,9 @@ class Orchestrator:
     def equations(self, scene: Scene, surfaces: list[GaussSurface] | None = None,
                   paths: list[AmperePath] | None = None,
                   flux_surfaces: list[FluxSurface] | None = None,
-                  test_charge: lorentz.TestCharge | None = None
+                  test_charge: lorentz.TestCharge | None = None,
+                  passive: list[circuits.PassiveCircuit] | None = None,
+                  disks: list[circuits.EddyDisk] | None = None
                   ) -> tuple[list[EquationView], list[LocalizedText], list[str]]:
         """Equation views for the model(s) that would be used for this scene: the electric
         and/or magnetic sub-model, merged (see EquationRegistry.evaluate_merged). If a needed
@@ -233,6 +253,21 @@ class Orchestrator:
             if kind == "magnetic" and flux_surfaces:
                 ctx = ctx.model_copy(update={"multi_turn_surfaces": sum(
                     f.turns > 1 for f in flux_surfaces)})
+            if kind == "magnetic" and (passive or disks):
+                pc = passive or []
+                ctx = ctx.model_copy(update={
+                    "passive_circuits": len(pc) + sum(d.bands for d in disks or []),
+                    "moving_circuits": sum(c.path.moving for c in pc),
+                    "dynamic_circuits": sum(c.mechanics is not None
+                                            and c.mechanics.mode == "dynamic" for c in pc),
+                    "eddy_disks": len(disks or []),
+                    "user_inductance": any(c.electrical.self_inductance.mode == "user"
+                                           for c in pc),
+                    "evaluated_equation_ids": [*ctx.evaluated_equation_ids, "resistance_sigma",
+                                               "passive_loop_equation", "flux_linkage",
+                                               "joule_heating", "coupled_magnetic_energy",
+                                               "magnetic_force_filament"],
+                })
             if test_charge is not None and test_charge.enabled:
                 ctx = ctx.model_copy(update={
                     "test_charge": True, "trajectory": test_charge.trajectory.enabled,

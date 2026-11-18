@@ -1,6 +1,6 @@
 // Builds the sampling request sent to the physics engine. This file decides *where* fields are
 // sampled (geometry of the view); it contains no physics.
-import type { Domain, FieldKind, LatticeSampling, PlaneGridSampling, Scene, SceneObject, SolveRequest, Vec3 } from '@/api/types'
+import type { Domain, FieldKind, LatticeSampling, PassiveFilament, PlaneGridSampling, Scene, SceneObject, SolveRequest, Vec3 } from '@/api/types'
 
 export type SlicePlane = 'xy' | 'xz' | 'yz'
 
@@ -134,8 +134,10 @@ export interface TimeSettings {
 
 const STATIC_TIME: TimeSettings = { timeS: 0, timeDependent: false, playing: false }
 
-export function buildMagneticRequest(domain: Domain, s: SamplingSettings, quality: Quality, time: TimeSettings = STATIC_TIME): SolveRequest {
-  const extra: SolveRequest['quantities'] = time.timeDependent ? ['dB_dt', 'E_ind'] : []
+export function buildMagneticRequest(domain: Domain, s: SamplingSettings, quality: Quality, time: TimeSettings = STATIC_TIME, passive: PassiveFilament[] = []): SolveRequest {
+  const timed = time.timeDependent || passive.length > 0
+  // Phase 4C: with passive circuits, the prescribed and induced-current fields separately too.
+  const extra: SolveRequest['quantities'] = [...(timed ? (['dB_dt', 'E_ind'] as const) : []), ...(passive.length ? (['B_prescribed', 'B_passive'] as const) : [])]
   const samplings: SolveRequest['samplings'] = [
     { ...sliceGrid('heat', domain, s, HEAT_RESOLUTION[quality]), quantities: ['B', 'H', ...extra] },
     { ...inset(sliceGrid('arrows', domain, s, ARROW_BASE), ARROW_BASE), quantities: [...MAGNETIC_GRID_QUANTITIES, ...extra] },
@@ -146,9 +148,10 @@ export function buildMagneticRequest(domain: Domain, s: SamplingSettings, qualit
     quantities: ['B'],
     quality,
     source_contributions: ['arrows'],
-    time_s: time.timeDependent ? time.timeS : 0,
+    time_s: timed ? time.timeS : 0,
   }
-  if (!(time.timeDependent && time.playing)) {
+  if (passive.length) request.passive = passive
+  if (!(timed && time.playing)) {
     request.field_lines = {
       seeding: s.mode === '2d' ? 'planar' : 'spherical',
       sampling_id: 'heat',
@@ -168,7 +171,7 @@ export function isTimeDependent(scene: Scene): boolean {
 
 /** The kind of field a request asks for (requests never mix the two). */
 export function requestKind(request: SolveRequest): FieldKind {
-  return (request.quantities as string[]).some((q) => q === 'B' || q === 'H' || q === 'div_B' || q === 'div_H' || q === 'dB_dt' || q === 'E_ind') ? 'magnetic' : 'electric'
+  return (request.quantities as string[]).some((q) => q === 'B' || q === 'H' || q === 'div_B' || q === 'div_H' || q === 'dB_dt' || q === 'E_ind' || q === 'B_prescribed' || q === 'B_passive') ? 'magnetic' : 'electric'
 }
 
 const rigid = (o: SceneObject) => o.transform.scale.every((v) => v === 1)

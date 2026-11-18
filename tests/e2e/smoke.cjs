@@ -697,6 +697,9 @@ async function main() {
     await page.getByRole('tab', { name: 'Ampère' }).click()
     const result = page.getByTestId('ampere-result')
     await result.getByText('verified', { exact: true }).waitFor({ timeout: 20000 })
+    // Wait for the expected value: right after a change the previous (also verified) result
+    // may still be shown until the new evaluation arrives.
+    await result.getByText(enclosed).first().waitFor({ timeout: 20000 }).catch(() => undefined)
     assert.ok(await result.getByText(enclosed).first().isVisible(), `enclosed current ${enclosed}`)
   }
 
@@ -965,6 +968,10 @@ async function main() {
   assert.ok(dK < 1e-10, `kinetic energy changed in a magnetic-only field: ${dK}`)
   await page.getByTestId('legend-lorentz').waitFor()
   await shot('31-proton-helix')
+  // The force probe does not need the trajectory: switch it off first, so the species changes
+  // below do not start long trajectory solves (an electron needs far more steps) that would
+  // keep the server busy during the following checks.
+  await page.getByRole('switch', { name: 'Compute trajectory' }).click()
   // An alpha particle (2e) doubles |F|; an electron (−e) keeps |F| but reverses F.
   await page.getByRole('button', { name: 'Alpha' }).click()
   await page.waitForFunction((b) => {
@@ -995,12 +1002,86 @@ async function main() {
   await page.keyboard.press('Escape')
   step('the test charge (electron) and its trajectory settings are saved and restored with the project')
 
+  // ---------------------------------------------------- Phase 4C: passive circuits and braking
+  // The field waits for the circuit solution (it includes the induced currents), so these
+  // presets settle after the circuit solve plus the field solve.
+  const settledCircuits = async () => {
+    try {
+      await page.getByText('Field is up to date').waitFor({ timeout: 60000 })
+    } catch (e) {
+      if (process.env.EMF_E2E_DEBUG) {
+        await page.screenshot({ path: process.env.EMF_E2E_DEBUG })
+        console.log('DEBUG', (await page.locator('footer').allInnerTexts()).join(' | '))
+        console.log('DEBUG circuits tab', (await page.getByRole('tab', { name: 'Circuits' }).count()))
+      }
+      throw e
+    }
+  }
+  await page.getByRole('button', { name: /^26\s*Shorted loop induction/ }).click()
+  await settledCircuits()
+  await page.getByRole('tab', { name: 'Circuits' }).click()
+  const cres = page.getByTestId('circuit-result')
+  await cres.getByText('solved', { exact: true }).waitFor({ timeout: 30000 })
+  assert.match(await page.getByTestId('circuit-current').first().innerText(), /−|-/)
+  await page.getByTestId('legend-circuits').waitFor()
+  await page.getByRole('tab', { name: 'Results' }).click()
+  await page.getByTestId('passive-probe').waitFor({ timeout: 20000 })
+  await shot('32-shorted-loop')
+  step('preset 26: shorted loop solved; induced current opposes the rising flux; probe shows prescribed and induced B')
+
+  await page.getByRole('button', { name: /^27\s*Magnetic braking/ }).click()
+  await settledCircuits()
+  await page.getByRole('tab', { name: 'Circuits' }).click()
+  await cres.getByText('stopped', { exact: true }).waitFor({ timeout: 60000 })
+  await page.getByTestId('braking').getByText(/opposes the motion/).waitFor()
+  await page.getByTestId('energy-table').waitFor()
+  await shot('33-braking-rod')
+  step('preset 27: dynamic rod; the computed force opposes the motion (braking); energy table shown')
+
+  await page.getByRole('button', { name: /^28\s*Axisymmetric eddy-current disk/ }).click()
+  await settledCircuits()
+  await page.getByRole('tab', { name: 'Circuits' }).click()
+  await cres.getByText('solved', { exact: true }).waitFor({ timeout: 60000 })
+  await page.getByTestId('band-results').waitFor()
+  await page.getByText(/Reduced-order axisymmetric approximation/).first().waitFor()
+  await shot('34-eddy-disk')
+  step('preset 28: eddy-current disk solved; per-band currents and J(r), labelled as an approximation')
+
+  await page.getByRole('button', { name: /^29\s*Coupled passive circuits/ }).click()
+  await settledCircuits()
+  await page.getByRole('tab', { name: 'Circuits' }).click()
+  await cres.getByText('solved', { exact: true }).waitFor({ timeout: 60000 })
+  await page.getByTestId('inductance-matrix').waitFor()
+  await cres.getByText(/Positive definite/).waitFor()
+  await page.getByRole('tab', { name: 'Display' }).click()
+  await quiet('passive B arrows', () => page.getByRole('combobox', { name: 'Magnetic vector field' }).selectOption('B_passive'))
+  await page.getByRole('combobox', { name: 'Magnetic vector field' }).selectOption('B')
+  step('preset 29: coupled loops solved; inductance matrix positive definite; induced-current field is a display choice')
+
+  const cname = `e2e 4C ${Date.now()}`
+  await page.getByRole('button', { name: 'Projects' }).click()
+  await page.getByLabel('Project name').fill(cname)
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await page.getByText(cname).first().waitFor()
+  await page.reload()
+  await page.getByRole('button', { name: 'Projects' }).click()
+  await page.locator('li', { hasText: cname }).getByRole('button', { name: 'Load' }).click()
+  await page.getByRole('tab', { name: 'Circuits' }).click()
+  await cres.getByText('solved', { exact: true }).waitFor({ timeout: 60000 })
+  assert.equal(await page.getByRole('list', { name: 'Passive circuits' }).locator('li').count(), 2)
+  await page.getByRole('button', { name: 'Projects' }).click()
+  await page.locator('li', { hasText: cname }).getByRole('button', { name: 'Delete' }).click()
+  await page.keyboard.press('Escape')
+  step('passive circuits are saved and restored with the project')
+
   // Hungarian Faraday labels.
   await page.getByRole('radio', { name: 'HU' }).click()
   await page.getByRole('tab', { name: 'Faraday' }).click()
   await page.getByText('Faraday-törvény és mágneses fluxus').waitFor()
   await page.getByRole('tab', { name: 'Lorentz' }).click()
   await page.getByText('Próbatöltés', { exact: true }).first().waitFor()
+  await page.getByRole('tab', { name: 'Áramkörök' }).click()
+  await page.getByText('Passzív áramkörök', { exact: true }).first().waitFor()
   await page.getByRole('radio', { name: 'EN' }).click()
   step('Faraday panel in Hungarian')
 

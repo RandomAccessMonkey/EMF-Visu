@@ -20,6 +20,8 @@ import { Viewport } from '@/render/Viewport'
 import { useAmpere } from '@/sim/useAmpere'
 import { useInduction } from '@/sim/useInduction'
 import { useLorentz } from '@/sim/useLorentz'
+import { useCircuits } from '@/sim/useCircuits'
+import { CircuitsPanel } from '@/panels/CircuitsPanel'
 import { LorentzPanel } from '@/panels/LorentzPanel'
 import { isTimeDependent } from '@/sim/request'
 import { useFlux } from '@/sim/useFlux'
@@ -27,7 +29,7 @@ import { useSimulation } from '@/sim/useSimulation'
 import { useSceneStore } from '@/state/sceneStore'
 import { useViewStore } from '@/state/viewStore'
 
-const TABS = ['parameters', 'visualization', 'gauss', 'ampere', 'faraday', 'lorentz', 'equations', 'results'] as const
+const TABS = ['parameters', 'visualization', 'gauss', 'ampere', 'faraday', 'lorentz', 'circuits', 'equations', 'results'] as const
 
 function useKeyboardShortcuts() {
   useEffect(() => {
@@ -65,6 +67,8 @@ export default function App() {
   const ampere = useAmpere()
   const induction = useInduction()
   const lorentz = useLorentz()
+  const circuits = useCircuits()
+  const hasCircuits = useSceneStore((s) => s.circuits.length + s.eddyDisks.length > 0)
   const trajectoryOn = useSceneStore((s) => !!s.testCharge?.enabled && !!s.testCharge.trajectory.enabled)
   const timeDependent = useSceneStore((s) => isTimeDependent(s.scene))
   const hasFluxSurfaces = useSceneStore((s) => s.fluxSurfaces.length > 0)
@@ -106,7 +110,7 @@ export default function App() {
         </aside>
         <main className="order-1 flex min-h-[45vh] min-w-0 flex-1 flex-col lg:order-2">
           <ViewStatement />
-          {(timeDependent || hasFluxSurfaces || trajectoryOn) && <TimeBar waiting={sim.magnetic.isFetching || sim.magnetic.isStale || induction.isFetching || lorentz.trajectoryFetching} />}
+          {(timeDependent || hasFluxSurfaces || trajectoryOn || hasCircuits) && <TimeBar waiting={sim.magnetic.isFetching || sim.magnetic.isStale || induction.isFetching || lorentz.trajectoryFetching || circuits.isFetching} />}
           <div className="relative min-h-0 flex-1">
           <Viewport
             flux={sim.error ? undefined : flux.data}
@@ -118,6 +122,7 @@ export default function App() {
             ampere={ampere.data}
             induction={induction.data}
             lorentz={lorentz}
+            circuits={circuits}
           />
           <Legend
             heat={(isMagneticKind(heatKind) ? sim.magnetic.error : sim.error) ? null : (image?.legend ?? null)}
@@ -160,6 +165,7 @@ export default function App() {
             <Tabs.Content value="ampere"><AmperePanel ampere={ampere.data} stale={ampere.isStale} error={ampere.error} /></Tabs.Content>
             <Tabs.Content value="faraday"><FaradayPanel induction={induction.data} stale={induction.isStale} error={induction.error} /></Tabs.Content>
             <Tabs.Content value="lorentz"><LorentzPanel data={lorentz} /></Tabs.Content>
+            <Tabs.Content value="circuits"><CircuitsPanel data={circuits} /></Tabs.Content>
             <Tabs.Content value="equations"><EquationsPanel /></Tabs.Content>
             <Tabs.Content value="results"><ResultsPanel sim={sim} flux={flux.data} /></Tabs.Content>
           </div>

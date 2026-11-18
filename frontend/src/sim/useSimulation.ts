@@ -5,6 +5,7 @@ import { api, ApiError, type SimulationResponse } from '@/api/client'
 import type { FieldKind, JobStatus, Scene, SolveRequest } from '@/api/types'
 import { useSceneStore } from '@/state/sceneStore'
 import { useViewStore } from '@/state/viewStore'
+import { useCurrentPassive, usePassiveReady } from './useCircuits'
 import { buildMagneticRequest, buildRequest, fieldKinds, isTimeDependent, physicsKey, type Quality } from './request'
 
 function useDebounced<T>(value: T, delayMs: number): T {
@@ -30,12 +31,14 @@ function useBundle(kind: FieldKind, quality: Quality): Bundle {
   const mode = useViewStore((s) => s.mode)
   const timeS = useViewStore((s) => s.timeS)
   const playing = useViewStore((s) => s.playing)
+  // Phase 4C: the solved induced currents at this time (from the circuit solution).
+  const passive = useCurrentPassive()
   return useMemo(() => {
     const settings = { plane, offset, mode }
     const time = { timeS, timeDependent: isTimeDependent(scene), playing }
-    const request = kind === 'electric' ? buildRequest(scene.domain, settings, quality) : buildMagneticRequest(scene.domain, settings, quality, time)
+    const request = kind === 'electric' ? buildRequest(scene.domain, settings, quality) : buildMagneticRequest(scene.domain, settings, quality, time, passive)
     return { kind, key: physicsKey(scene, request), scene, request }
-  }, [kind, scene, plane, offset, mode, quality, timeS, playing])
+  }, [kind, scene, plane, offset, mode, quality, timeS, playing, passive])
 }
 
 // --- High-accuracy solves run as cancellable jobs on the solver's worker service -------------
@@ -114,6 +117,10 @@ function useField(kind: FieldKind, active: boolean): FieldSimulation & { highBun
   const live = useBundle(kind, dragging ? 'preview' : 'normal')
   const highBundle = useBundle(kind, 'high')
   const bundle = useDebounced(live, dragging ? 25 : 90)
+  // Phase 4C: with passive circuits, the magnetic field waits for their solution, so the field
+  // shown always includes the induced currents of the same authoritative solution.
+  const passiveReady = usePassiveReady()
+  const waiting = kind === 'magnetic' && !passiveReady
   const query = useQuery({
     queryKey: ['simulation', kind, bundle.key],
     queryFn: ({ signal }) => api.simulate(bundle.scene, bundle.request, signal),
@@ -121,7 +128,7 @@ function useField(kind: FieldKind, active: boolean): FieldSimulation & { highBun
     staleTime: Infinity,
     gcTime: 5 * 60_000,
     retry: false,
-    enabled: active,
+    enabled: active && !waiting,
   })
   const high = useHighAccuracy((s) => s.jobs[kind])
   const useHigh = !dragging && !!high?.result && high.key === highBundle.key
@@ -129,8 +136,8 @@ function useField(kind: FieldKind, active: boolean): FieldSimulation & { highBun
     result: !active ? undefined : useHigh ? high.result! : query.data,
     source: useHigh ? 'high' : 'interactive',
     error: active ? query.error : null,
-    isFetching: active && query.isFetching,
-    isStale: active && (query.isPlaceholderData || bundle.key !== live.key),
+    isFetching: active && (query.isFetching || waiting),
+    isStale: active && (query.isPlaceholderData || bundle.key !== live.key || waiting),
     active,
     highBundle,
   }

@@ -100,10 +100,15 @@ function TranslationRows({ tr, onChange, alongX = false }: { tr: Translation; on
 }
 
 /** Rigid motion of a circle / rectangle / polygon measurement surface. */
-export function MotionEditor({ f }: { f: FluxSurface }) {
+type Up = (patch: Partial<FluxSurface>) => void
+
+/** Rigid motion of a measurement surface, or (Phase 4C) of a passive circuit's path through
+ *  ``onUpdate``. */
+export function MotionEditor({ f, onUpdate }: { f: FluxSurface; onUpdate?: Up }) {
   const { t } = useT()
+  const up: Up = onUpdate ?? ((p) => update(f.id, p))
   const m: MotionProfile | null | undefined = f.motion
-  const setMotion = (motion: MotionProfile | null) => update(f.id, { motion })
+  const setMotion = (motion: MotionProfile | null) => up({ motion })
   const rot: Rotation = m?.rotation ?? { type: 'none' }
   return (
     <Section title={t('motion.title')}>
@@ -134,45 +139,46 @@ export function MotionEditor({ f }: { f: FluxSurface }) {
           )}
         </div>
       )}
-      <TurnsRow f={f} />
+      <TurnsRow f={f} up={up} />
     </Section>
   )
 }
 
-function TurnsRow({ f }: { f: FluxSurface }) {
+function TurnsRow({ f, up }: { f: FluxSurface; up: Up }) {
   const { t } = useT()
   return (
     <Row label={t('motion.turns')} hint={t('motion.turnsHint')}>
-      <NumberField label={t('motion.turns')} value={f.turns ?? 1} min={1} max={100000} step={1} onChange={(n) => Number.isInteger(n) && update(f.id, { turns: n })} />
+      <NumberField label={t('motion.turns')} value={f.turns ?? 1} min={1} max={100000} step={1} onChange={(n) => Number.isInteger(n) && up({ turns: n })} />
     </Row>
   )
 }
 
 /** The sliding-rod circuit: rails, connecting segment and the moving rod. */
-export function RodEditor({ f }: { f: FluxSurface }) {
+export function RodEditor({ f, onUpdate, title }: { f: FluxSurface; onUpdate?: Up; title?: string }) {
   const { t } = useT()
+  const up: Up = onUpdate ?? ((p) => update(f.id, p))
   const sh = f.shape as SlidingRodShape
-  const set = (patch: Partial<SlidingRodShape>) => update(f.id, { shape: { ...sh, ...patch } })
+  const set = (patch: Partial<SlidingRodShape>) => up({ shape: { ...sh, ...patch } })
   const num = (label: string, value: number, unit: string, apply: (v: number) => Partial<SlidingRodShape>) => (
     <Row key={label} label={label}>
       <NumberField label={label} value={value} unit={unit} min={1e-6} step={0.01} onChange={(v) => set(apply(v))} />
     </Row>
   )
   return (
-    <Section title={t('rod.title', { name: f.name || f.id })}>
+    <Section title={title ?? t('rod.title', { name: f.name || f.id })}>
       <p className="text-[11px] leading-snug text-muted">{t('rod.intro')}</p>
       <div className="flex flex-col gap-1.5" data-testid="rod-editor">
         <Row label={t('params.name')}>
-          <input aria-label={t('params.name')} value={f.name} onChange={(e) => update(f.id, { name: e.target.value })} className="h-7 w-36 rounded-md border border-border bg-bg px-1.5 text-xs" />
+          <input aria-label={t('params.name')} value={f.name} onChange={(e) => up({ name: e.target.value })} className="h-7 w-36 rounded-md border border-border bg-bg px-1.5 text-xs" />
         </Row>
         {num(`${t('rod.separation')} L`, sh.rail_separation_m ?? 0.1, 'm', (v) => ({ rail_separation_m: v }))}
         {num(t('rod.railLength'), sh.rail_length_m ?? 0.3, 'm', (v) => ({ rail_length_m: v }))}
         {num(`${t('rod.position')} x₀`, sh.rod_position_m ?? 0.05, 'm', (v) => ({ rod_position_m: v }))}
         <TranslationRows tr={sh.rod_motion ?? { type: 'stationary' }} alongX onChange={(tr) => set({ rod_motion: tr })} />
-        <VecRows label={t('params.position')} value={f.center_m as Vec3} unit="m" step={0.01} onChange={(v) => update(f.id, { center_m: v })} />
-        <VecRows label={t('params.rotation')} value={f.rotation_euler_xyz_rad as Vec3} unit="°" factor={DEG} step={15} onChange={(v) => update(f.id, { rotation_euler_xyz_rad: v })} />
+        <VecRows label={t('params.position')} value={f.center_m as Vec3} unit="m" step={0.01} onChange={(v) => up({ center_m: v })} />
+        <VecRows label={t('params.rotation')} value={f.rotation_euler_xyz_rad as Vec3} unit="°" factor={DEG} step={15} onChange={(v) => up({ rotation_euler_xyz_rad: v })} />
         <Row label={t('ampere.orientation')} hint={t('ampere.orientationHint')}>
-          <Button aria-label={t(f.reversed ? 'ampere.reversed' : 'ampere.forward')} onClick={() => update(f.id, { reversed: !f.reversed })}>
+          <Button aria-label={t(f.reversed ? 'ampere.reversed' : 'ampere.forward')} onClick={() => up({ reversed: !f.reversed })}>
             {t(f.reversed ? 'ampere.reversed' : 'ampere.forward')}
           </Button>
         </Row>

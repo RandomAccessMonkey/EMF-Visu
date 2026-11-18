@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { AmperePath, CurrentProfile, Domain, FluxSurface, GaussSurface, PathDisplay, PrimitiveType, Scene, SceneObject, Source, SurfaceDisplay, TestCharge, Transform, Vec3 } from '@/api/types'
+import type { AmperePath, CurrentProfile, Domain, EddyDisk, Electrical, FluxSurface, GaussSurface, PassiveCircuit, PathDisplay, PrimitiveType, Scene, SceneObject, Source, SurfaceDisplay, TestCharge, Transform, Vec3 } from '@/api/types'
 
 export const EMPTY_SCENE: Scene = {
   schema_version: 1,
@@ -245,6 +245,52 @@ export function makeSlidingRod(existing: FluxSurface[], name: string, domain: Do
   }
 }
 
+/** Phase 4C: a passive circuit made from a measurement-surface geometry. Circles get the
+ *  thin-loop self-inductance of a 1 mm copper wire; other shapes need a user self-inductance,
+ *  and the sliding rod an explicit lumped resistance (its length changes). */
+export function electricalFor(path: FluxSurface): Electrical {
+  if (path.shape.type === 'circle') return { material: 'copper', wire_radius_m: 0.001, self_inductance: { mode: 'thin_loop' } }
+  if (path.shape.type === 'sliding_rod') return { material: 'copper', wire_radius_m: 0.001, resistance_ohm: 0.002, self_inductance: { mode: 'user', value_H: 5e-6 } }
+  return { material: 'copper', wire_radius_m: 0.001, self_inductance: { mode: 'user', value_H: 2e-7 } }
+}
+
+export function circuitFrom(path: FluxSurface, existing: PassiveCircuit[], name: string): PassiveCircuit {
+  const used = new Set(existing.map((c) => c.id))
+  let n = existing.length + 1
+  while (used.has(`C${n}`)) n++
+  const id = `C${n}`
+  const rod = path.shape.type === 'sliding_rod'
+  return {
+    id,
+    name,
+    path: { ...path, id, display: null },
+    electrical: electricalFor(path),
+    initial_current_A: 0,
+    mechanics: rod ? { mode: 'dynamic', mass_kg: 0.02, initial_velocity_m_per_s: 0.5, external_force_N: 0, damping_N_s_per_m: 0 } : null,
+    display: { visible: true, show_current: true },
+  }
+}
+
+export function makeDisk(existing: EddyDisk[], name: string, domain: Domain): EddyDisk {
+  const used = new Set(existing.map((d) => d.id))
+  let n = existing.length + 1
+  while (used.has(`D${n}`)) n++
+  const span = Math.min(...[0, 1, 2].map((a) => domain.max_m[a]! - domain.min_m[a]!))
+  const r = Math.round(span * 0.3 * 1000) / 1000
+  return {
+    id: `D${n}`,
+    name,
+    center_m: [0, 0, 0],
+    rotation_euler_xyz_rad: [0, 0, 0],
+    outer_radius_m: r,
+    inner_radius_m: 0,
+    thickness_m: Math.max(1e-4, Math.round(r * 0.05 * 1e5) / 1e5),
+    material: 'copper',
+    bands: 10,
+    display: { visible: true, show_current: true },
+  }
+}
+
 /** Default test charge: a proton at the origin moving along +x (Phase 4B). */
 export const DEFAULT_TEST_CHARGE: TestCharge = {
   enabled: true,
@@ -313,6 +359,20 @@ interface SceneState {
    *  none is defined. */
   testCharge: TestCharge | null
   setTestCharge: (tc: TestCharge | null) => void
+  /** Passive conducting circuits and eddy-current disks (Phase 4C). */
+  circuits: PassiveCircuit[]
+  eddyDisks: EddyDisk[]
+  selectedCircuitId: string | null
+  selectCircuit: (id: string | null) => void
+  addCircuit: (kind: FluxKind, name: string) => void
+  convertFluxToCircuit: (fluxId: string, name: string) => void
+  updateCircuit: (id: string, patch: Partial<PassiveCircuit>) => void
+  removeCircuit: (id: string) => void
+  setCircuits: (c: PassiveCircuit[]) => void
+  addDisk: (name: string) => void
+  updateDisk: (id: string, patch: Partial<EddyDisk>) => void
+  removeDisk: (id: string) => void
+  setDisks: (d: EddyDisk[]) => void
   /** Set or clear a current source's time profile (Phase 4A). The engine derives the source's
    *  current at t = 0 from the profile; the client never evaluates it. */
   setProfile: (id: string, profile: CurrentProfile | null) => void
@@ -387,6 +447,31 @@ export const useSceneStore = create<SceneState>((set) => ({
   setFluxSurfaces: (fluxSurfaces) => set({ fluxSurfaces, selectedFluxId: fluxSurfaces[0]?.id ?? null }),
   testCharge: null,
   setTestCharge: (testCharge) => set({ testCharge }),
+  circuits: [],
+  eddyDisks: [],
+  selectedCircuitId: null,
+  selectCircuit: (id) => set({ selectedCircuitId: id }),
+  addCircuit: (kind, name) =>
+    set((s) => {
+      const base = kind === 'sliding_rod' ? makeSlidingRod([], name, s.scene.domain) : makePath([], kind, name, s.scene.domain)
+      const path: FluxSurface = { turns: 1, ...base }
+      const c = circuitFrom(path, s.circuits, name)
+      return { circuits: [...s.circuits, c], selectedCircuitId: c.id }
+    }),
+  convertFluxToCircuit: (fluxId, name) =>
+    set((s) => {
+      const f = s.fluxSurfaces.find((x) => x.id === fluxId)
+      if (!f) return {}
+      const c = circuitFrom(f, s.circuits, name)
+      return { circuits: [...s.circuits, c], selectedCircuitId: c.id }
+    }),
+  updateCircuit: (id, patch) => set((s) => ({ circuits: s.circuits.map((c) => (c.id === id ? { ...c, ...patch } : c)) })),
+  removeCircuit: (id) => set((s) => ({ circuits: s.circuits.filter((c) => c.id !== id), selectedCircuitId: s.selectedCircuitId === id ? null : s.selectedCircuitId })),
+  setCircuits: (circuits) => set({ circuits, selectedCircuitId: circuits[0]?.id ?? null }),
+  addDisk: (name) => set((s) => ({ eddyDisks: [...s.eddyDisks, makeDisk(s.eddyDisks, name, s.scene.domain)] })),
+  updateDisk: (id, patch) => set((s) => ({ eddyDisks: s.eddyDisks.map((d) => (d.id === id ? { ...d, ...patch } : d)) })),
+  removeDisk: (id) => set((s) => ({ eddyDisks: s.eddyDisks.filter((d) => d.id !== id) })),
+  setDisks: (eddyDisks) => set({ eddyDisks }),
   setProfile: (id, profile) =>
     set((s) => ({
       scene: mapObject(s.scene, id, (o) =>

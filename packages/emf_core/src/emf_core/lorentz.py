@@ -131,6 +131,7 @@ class SceneFields:
         self.es_r_min = es.COINCIDENCE_FACTOR * scene.domain.diagonal_m
         _, self.q_pos, self.q_val = es.point_charge_table(scene)
         self._t: float | None = None
+        self._static = False
         by_id = {o.id: o for o in scene.objects}
         corner_set: set[float] = set()
         scale = math.inf
@@ -145,9 +146,11 @@ class SceneFields:
         self.time_scale = scale
 
     def _at(self, t: float) -> None:
-        if self._t == t:
+        # Scenes without time-dependent currents: the source set is the same at every time.
+        if self._t == t or (self._t is not None and self._static):
             return
         ts = time_state(self.scene, self.cs, t)
+        self._static = not ts.time_dependent
         self._cs_t = at_time(self.cs, ts)
         self._cs_rate = rates(self.cs, ts)
         self._varying = any(s.varying for s in ts.sources)

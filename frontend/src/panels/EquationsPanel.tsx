@@ -17,7 +17,7 @@ const TONE: Record<EquationStatus, 'ok' | 'accent' | 'muted' | 'warn'> = {
   not_applicable: 'muted',
   not_evaluated: 'warn',
 }
-const ORDER: EquationView['category'][] = ['electrostatics', 'maxwell', 'constitutive', 'magnetostatics', 'induction', 'motion', 'additional']
+const ORDER: EquationView['category'][] = ['electrostatics', 'maxwell', 'constitutive', 'magnetostatics', 'induction', 'motion', 'circuits', 'additional']
 
 function Details({ eq }: { eq: EquationView }) {
   const { t, loc } = useT()
@@ -85,16 +85,18 @@ export function EquationsPanel() {
   const paths = useSceneStore((s) => s.paths)
   const fluxSurfaces = useSceneStore((s) => s.fluxSurfaces)
   const testCharge = useSceneStore((s) => s.testCharge)
+  const circuits = useSceneStore((s) => s.circuits)
+  const disks = useSceneStore((s) => s.eddyDisks)
   const dragging = useViewStore((s) => s.dragging)
   const beginner = useViewStore((s) => s.level === 'beginner')
   // Statuses depend on the physical model, not on where objects are: key on the physics subset.
   const key = useMemo(
-    () => JSON.stringify({ scene: scenePhysics(scene), surfaces: surfaces.map(surfacePhysics), paths: paths.map(pathPhysics), flux: fluxSurfaces.map(pathPhysics), tc: testCharge ? { on: testCharge.enabled, traj: testCharge.trajectory.enabled } : null }),
-    [scene, surfaces, paths, fluxSurfaces, testCharge],
+    () => JSON.stringify({ scene: scenePhysics(scene), surfaces: surfaces.map(surfacePhysics), paths: paths.map(pathPhysics), flux: fluxSurfaces.map(pathPhysics), tc: testCharge ? { on: testCharge.enabled, traj: testCharge.trajectory.enabled } : null, c: circuits, d: disks }),
+    [scene, surfaces, paths, fluxSurfaces, testCharge, circuits, disks],
   )
   const query = useQuery({
     queryKey: ['equations', key],
-    queryFn: ({ signal }) => api.equations(scene, signal, surfaces.map(surfacePhysics), paths, fluxSurfaces, testCharge),
+    queryFn: ({ signal }) => api.equations(scene, signal, surfaces.map(surfacePhysics), paths, fluxSurfaces, testCharge, circuits, disks),
     enabled: !dragging,
     placeholderData: keepPreviousData,
     staleTime: Infinity,

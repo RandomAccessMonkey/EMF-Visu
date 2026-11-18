@@ -40,6 +40,10 @@ QUANTITIES: dict[str, QuantityInfo] = {
         # electric field E_ind = -dA/dt in the Coulomb gauge. Never the electrostatic E.
         QuantityInfo("dB_dt", "∂B/∂t", "T/s", 1),
         QuantityInfo("E_ind", "E_ind", "V/m", 1),
+        # Phase 4C: the field of the prescribed sources alone and of the solved induced currents
+        # of passive circuits alone (B = B_prescribed + B_passive).
+        QuantityInfo("B_prescribed", "B_prescribed", "T", 1),
+        QuantityInfo("B_passive", "B_passive", "T", 1),
         QuantityInfo("J", "J", "A/m^2", 1),
         QuantityInfo("S", "S", "W/m^2", 1),
         QuantityInfo("u", "u", "J/m^3", 0),

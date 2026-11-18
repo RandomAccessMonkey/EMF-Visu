@@ -18,7 +18,7 @@ export function ProjectsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
   const refresh = () => client.invalidateQueries({ queryKey: ['projects'] })
   const save = useMutation({
     mutationFn: (asNew: boolean) =>
-      api.saveProject(effectiveName.trim(), useSceneStore.getState().scene, { ...useViewStore.getState().settings() }, asNew ? undefined : (projectId ?? undefined), useSceneStore.getState().surfaces, useSceneStore.getState().paths, useSceneStore.getState().fluxSurfaces, useSceneStore.getState().testCharge),
+      api.saveProject(effectiveName.trim(), useSceneStore.getState().scene, { ...useViewStore.getState().settings() }, asNew ? undefined : (projectId ?? undefined), useSceneStore.getState().surfaces, useSceneStore.getState().paths, useSceneStore.getState().fluxSurfaces, useSceneStore.getState().testCharge, useSceneStore.getState().circuits, useSceneStore.getState().eddyDisks),
     onSuccess: (p) => {
       useSceneStore.setState({ projectId: p.id, projectName: p.name })
       setName('')
@@ -33,6 +33,8 @@ export function ProjectsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
       useSceneStore.getState().setPaths(p.paths ?? [])
       useSceneStore.getState().setFluxSurfaces(p.flux_surfaces ?? [])
       useSceneStore.getState().setTestCharge((p.test_charge as TestCharge | null | undefined) ?? null)
+      useSceneStore.getState().setCircuits(p.circuits ?? [])
+      useSceneStore.getState().setDisks(p.eddy_disks ?? [])
       useViewStore.getState().set({ ...sanitizeView(p.view), probePoint: null })
       onOpenChange(false)
     },

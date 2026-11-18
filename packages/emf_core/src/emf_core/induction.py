@@ -56,8 +56,8 @@ from .scene.currents import CurrentSources, LoopSource, current_sources
 from .scene.models import PositiveFloat, Scene, StrictModel
 from .scene.motion import MotionProfile, Translation, VelocityConvention
 from .scene.timedep import TimeState, time_state, with_currents
+from .segments import segment_field
 from .solvers.analytical import magnetostatics as ms
-from .units import MU0
 
 Arr = NDArray[np.float64]
 
@@ -692,23 +692,6 @@ def _circulations(geo: _Geo, cs: CurrentSources, ids: list[str], rtol: float,
 
 
 # -------------------------------------------------------------------- mutual (reciprocal)
-
-
-def segment_field(points: Arr, verts: Arr, current: float = 1.0) -> Arr:
-    """B of a closed polygonal filament (vertices in traversal order) at points, exact
-    Biot–Savart for straight segments: for R1 = P1 - r, R2 = P2 - r,
-    B = mu0 I/(4 pi) (R1 × R2)(|R1| + |R2|) / (|R1||R2|(|R1||R2| + R1·R2))."""
-    out = np.zeros_like(points)
-    for i in range(len(verts)):
-        p1, p2 = verts[i], verts[(i + 1) % len(verts)]
-        r1, r2 = p1[None, :] - points, p2[None, :] - points
-        n1, n2 = np.linalg.norm(r1, axis=1), np.linalg.norm(r2, axis=1)
-        cr = np.cross(r1, r2)
-        den = n1 * n2 * (n1 * n2 + np.einsum("ij,ij->i", r1, r2))
-        with np.errstate(divide="ignore", invalid="ignore"):
-            out += (cr * ((n1 + n2) / den)[:, None])
-    result: Arr = MU0 * current / (4 * np.pi) * out
-    return result
 
 
 def _measurement_field(geo: _Geo) -> Callable[[Arr], Arr]:

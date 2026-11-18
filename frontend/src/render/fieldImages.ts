@@ -25,8 +25,8 @@ export interface HeatImage {
   nearest: boolean
 }
 
-export type ScalarKind = 'phi' | 'E' | 'div_E' | 'curl_E' | 'div_D' | 'curl_D' | 'B' | 'H' | 'div_B' | 'dB_dt' | 'E_ind'
-export const isMagneticKind = (k: string) => k === 'B' || k === 'H' || k === 'div_B' || k === 'dB_dt' || k === 'E_ind'
+export type ScalarKind = 'phi' | 'E' | 'div_E' | 'curl_E' | 'div_D' | 'curl_D' | 'B' | 'H' | 'div_B' | 'dB_dt' | 'E_ind' | 'B_prescribed' | 'B_passive'
+export const isMagneticKind = (k: string) => k === 'B' || k === 'H' || k === 'div_B' || k === 'dB_dt' || k === 'E_ind' || k === 'B_prescribed' || k === 'B_passive'
 
 export function sampling<T>(result: SimulationResult, id: string): T | undefined {
   return result.header.samplings.find((s) => s['id'] === id) as T | undefined
@@ -58,6 +58,7 @@ export const ZERO_CSS = `rgb(${ZERO_COLOR.join(',')})`
 const SYMBOLS: Record<ScalarKind, string> = {
   phi: 'φ', E: '|E|', div_E: '∇·E', curl_E: '|∇×E|', div_D: '∇·D', curl_D: '|∇×D|',
   B: '|B|', H: '|H|', div_B: '∇·B', dB_dt: '|∂B/∂t|', E_ind: '|E_ind|',
+  B_prescribed: '|B_prescribed|', B_passive: '|B_passive|',
 }
 
 /** Per-sample scalar values of a map, read from the engine's arrays (never derived from E):
@@ -67,7 +68,7 @@ const SYMBOLS: Record<ScalarKind, string> = {
 export function scalarSamples(result: SimulationResult, kind: ScalarKind, samplingId?: string, contribution?: string): { values: Float32Array; unit: string; samplingId: string } | null {
   // 'all' shows the arrows of every source; a colour map can only show the total there.
   const single = contribution && contribution !== 'total' && contribution !== 'all' && (kind === 'B' || kind === 'H')
-  const fine = kind === 'phi' || kind === 'E' || kind === 'B' || kind === 'H' || kind === 'dB_dt' || kind === 'E_ind'
+  const fine = kind === 'phi' || kind === 'E' || kind === 'B' || kind === 'H' || kind === 'dB_dt' || kind === 'E_ind' || kind === 'B_prescribed' || kind === 'B_passive'
   const id = samplingId ?? (single ? 'arrows' : fine ? 'heat' : 'arrows')
   const field = result.arrays[single ? `${id}.${kind}@${contribution}` : `${id}.${kind}`]
   if (!field) return null
@@ -97,7 +98,7 @@ export function scalarColoring(kind: ScalarKind, values: Float32Array, unit: str
       colorAt: finiteAction((v, out, o) => diverging(symlogT(v, limit), out, o)),
     }
   }
-  if (kind === 'B' || kind === 'H' || kind === 'dB_dt' || kind === 'E_ind') {
+  if (kind === 'B' || kind === 'H' || kind === 'dB_dt' || kind === 'E_ind' || kind === 'B_prescribed' || kind === 'B_passive') {
     const scale = magnitudeScale(values)
     return {
       legend: { kind: 'magnetic', symbol: SYMBOLS[kind], unit, ...scale, scale: 'log', samplingId },

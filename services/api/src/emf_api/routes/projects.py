@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from emf_core.ampere import AmperePath
+from emf_core.circuits import EddyDisk, PassiveCircuit
 from emf_core.geometry.surfaces import GaussSurface
 from emf_core.induction import FluxSurface
 from emf_core.lorentz import TestCharge
@@ -33,6 +34,8 @@ SURFACES_KEY = "gauss_surfaces"
 PATHS_KEY = "ampere_paths"
 FLUX_KEY = "flux_surfaces"
 CHARGE_KEY = "test_charge"
+CIRCUITS_KEY = "circuits"
+DISKS_KEY = "eddy_disks"
 
 
 def _out(row: ProjectRow) -> ProjectOut:
@@ -41,12 +44,16 @@ def _out(row: ProjectRow) -> ProjectOut:
     paths = view.pop(PATHS_KEY, [])
     flux = view.pop(FLUX_KEY, [])
     charge = view.pop(CHARGE_KEY, None)
+    circuits = view.pop(CIRCUITS_KEY, [])
+    disks = view.pop(DISKS_KEY, [])
     return ProjectOut(id=row.id, name=row.name, created_at=row.created_at,
                       updated_at=row.updated_at, scene=Scene.model_validate(row.scene), view=view,
                       surfaces=[GaussSurface.model_validate(s) for s in surfaces],
                       paths=[AmperePath.model_validate(p) for p in paths],
                       flux_surfaces=[FluxSurface.model_validate(f) for f in flux],
-                      test_charge=TestCharge.model_validate(charge) if charge else None)
+                      test_charge=TestCharge.model_validate(charge) if charge else None,
+                      circuits=[PassiveCircuit.model_validate(c) for c in circuits],
+                      eddy_disks=[EddyDisk.model_validate(d) for d in disks])
 
 
 def _view(body: ProjectIn) -> dict[str, object]:
@@ -54,7 +61,11 @@ def _view(body: ProjectIn) -> dict[str, object]:
             PATHS_KEY: [p.model_dump(mode="json") for p in body.paths],
             FLUX_KEY: [f.model_dump(mode="json") for f in body.flux_surfaces],
             **({CHARGE_KEY: body.test_charge.model_dump(mode="json")}
-               if body.test_charge is not None else {})}
+               if body.test_charge is not None else {}),
+            **({CIRCUITS_KEY: [c.model_dump(mode="json") for c in body.circuits]}
+               if body.circuits else {}),
+            **({DISKS_KEY: [d.model_dump(mode="json") for d in body.eddy_disks]}
+               if body.eddy_disks else {})}
 
 
 @router.get("", responses=_ERR)

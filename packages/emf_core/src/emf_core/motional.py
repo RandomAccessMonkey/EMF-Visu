@@ -187,14 +187,21 @@ def _path(surface: FluxSurface, shape: dict[str, object], center: Arr) -> Ampere
         "reversed": surface.reversed, "rtol": surface.rtol})
 
 
-def posed(surface: FluxSurface, t: float, tol: float) -> Posed:
+def posed(surface: FluxSurface, t: float, tol: float,
+          rod_state: tuple[float, float] | None = None) -> Posed:
+    """The conductor at time t. ``rod_state`` (x, v) overrides the sliding rod's prescribed
+    motion (Phase 4C: the rod's position and velocity come from its equation of motion)."""
     c0, r0 = _reference_frame(surface)
     shape = surface.shape
     if isinstance(shape, SlidingRodShape):
         tr = shape.rod_motion
-        x = shape.rod_position_m + float(mo.displacement(tr, t)[0])
-        vl = float(mo.velocity(tr, t, "left")[0])
-        vr = float(mo.velocity(tr, t, "right")[0])
+        if rod_state is not None:
+            x, vl = rod_state
+            vr = vl
+        else:
+            x = shape.rod_position_m + float(mo.displacement(tr, t)[0])
+            vl = float(mo.velocity(tr, t, "left")[0])
+            vr = float(mo.velocity(tr, t, "right")[0])
         invalid: list[LocalizedText] = []
         if not x > tol:
             invalid.append(L("The rod has reached the connecting segment: the circuit encloses "

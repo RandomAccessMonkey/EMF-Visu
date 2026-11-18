@@ -6,12 +6,14 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from emf_core.ampere import AmperePath, AmpereRequest
+from emf_core.circuits import CircuitRequest, EddyDisk, PassiveCircuit
 from emf_core.equations import EquationView
 from emf_core.geometry.surfaces import GaussSurface
 from emf_core.i18n import LocalizedText
 from emf_core.induction import FluxSurface, InductionRequest
 from emf_core.lorentz import LorentzRequest, ParticleRequest, TestCharge
 from emf_core.scene.models import Scene, Vec3
+from emf_core.scene.passive import PassiveFilament
 from emf_core.scene.profiles import CurrentProfile
 from emf_core.solvers import SolverDescriptor, SolveRequest
 from emf_core.solvers.analytical.gauss import FluxRequest
@@ -35,6 +37,8 @@ class ProbeBody(BaseModel):
     point_m: Vec3
     # Phase 4A: simulation time for time-dependent source currents (magnetoquasistatic).
     time_s: float = Field(default=0.0, allow_inf_nan=False)
+    # Phase 4C: the passive circuits' solved state at time_s (from /circuits).
+    passive: list[PassiveFilament] = Field(default=[], max_length=256)
 
 
 class ProbeValue(BaseModel):
@@ -135,6 +139,31 @@ class ProbeComparison(BaseModel):
     note: LocalizedText
 
 
+class PassiveContribution(BaseModel):
+    """One passive circuit's induced-current field at the probe point (Phase 4C)."""
+
+    circuit_id: str
+    current_A: float  # solved induced current per turn
+    dI_dt_A_per_s: float
+    turns: int
+    distance_m: float  # to its filament
+    inside_conductor: bool  # within its finite wire radius: the filament model does not apply
+    B_T: list[float] | None
+    dB_dt_T_per_s: list[float] | None
+    E_ind_V_per_m: list[float] | None
+
+
+class PassiveProbe(BaseModel):
+    """Prescribed and induced-current fields separately (Phase 4C); B and H in ``values`` are
+    the totals."""
+
+    B_prescribed_T: list[float] | None
+    B_passive_T: list[float] | None
+    B_total_T: list[float] | None
+    rate_available: bool  # False if a moving passive circuit carries current
+    contributions: list[PassiveContribution]
+
+
 class ProbeMagnetic(BaseModel):
     """Magnetic part of the probe; present when the scene has magnetic sources."""
 
@@ -177,6 +206,8 @@ class ProbeMagnetic(BaseModel):
     time_values: list[ProbeValue] = []
     e_ind_available: bool = True
     derivative_unique: bool = True
+    # Phase 4C: fields of the solved induced currents of passive circuits (omitted: none).
+    passive: PassiveProbe | None = None
 
 
 class ProbeResponse(BaseModel):
@@ -206,6 +237,9 @@ class EquationsBody(BaseModel):
     flux_surfaces: list[FluxSurface] = Field(default=[], max_length=8)
     # Phase 4B: a test charge is defined (Lorentz-force equations), and its trajectory is on.
     test_charge: TestCharge | None = None
+    # Phase 4C: passive circuits and eddy-current disks.
+    circuits: list[PassiveCircuit] = Field(default=[], max_length=8)
+    eddy_disks: list[EddyDisk] = Field(default=[], max_length=2)
 
 
 class ProfileSampleBody(BaseModel):
@@ -227,6 +261,11 @@ class ProfileSamples(BaseModel):
 class InductionBody(BaseModel):
     scene: Scene
     induction: InductionRequest
+
+
+class CircuitBody(BaseModel):
+    scene: Scene
+    circuits: CircuitRequest
 
 
 class LorentzBody(BaseModel):
@@ -293,6 +332,10 @@ class ProjectIn(BaseModel):
     flux_surfaces: list[FluxSurface] = Field(default=[], max_length=8)
     # Test charge and trajectory settings (Phase 4B), stored under "test_charge".
     test_charge: TestCharge | None = None
+    # Passive circuits and eddy-current disks (Phase 4C), stored under "circuits" and
+    # "eddy_disks".
+    circuits: list[PassiveCircuit] = Field(default=[], max_length=8)
+    eddy_disks: list[EddyDisk] = Field(default=[], max_length=2)
 
 
 class ProjectSummary(BaseModel):
@@ -309,3 +352,5 @@ class ProjectOut(ProjectSummary):
     paths: list[AmperePath] = []
     flux_surfaces: list[FluxSurface] = []
     test_charge: TestCharge | None = None
+    circuits: list[PassiveCircuit] = []
+    eddy_disks: list[EddyDisk] = []
