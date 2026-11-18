@@ -4,21 +4,28 @@ An interactive electromagnetic field laboratory in which every picture is backed
 calculation. Build a configuration, change a parameter, see the field respond, and read which
 equations govern it and under what assumptions.
 
-## Public source review and usage terms
+## Licence and community use
 
-EMF-Visu is intended for public source-code review, educational evaluation, testing and
-bug reports. The repository remains private until the owner completes the publication checks. **It is not released under an open-source licence.** The project is provided under
-the restricted terms in [LICENSE](LICENSE).
+EMF-Visu is source-available under the **PolyForm Noncommercial License 1.0.0**. It is intended
+to support educational, research, and other noncommercial public-interest development.
 
-You may inspect the source and run an unmodified copy for personal, non-commercial evaluation
-and testing. This does not grant permission to create or distribute derivative products, offer
-the software as a commercial service, sublicense it, or otherwise commercially exploit it.
-Written permission from the copyright holder is required for uses outside the permissions in
-[LICENSE](LICENSE).
+The licence permits use, modification, and distribution for permitted noncommercial purposes.
+It expressly includes use by educational institutions, charitable organizations, and public
+research organizations, regardless of their funding source, subject to the licence terms.
 
-GitHub may provide platform features such as public forks under its own Terms of Service. A
-GitHub fork does not by itself grant a separate licence to commercially use or redistribute the
-software. Please use [GitHub Issues](https://github.com/RandomAccessMonkey/EMF-Visu/issues) for reproducible bug reports and feedback.
+**Commercial use is not granted.** This includes selling the software, offering it as a paid
+service, or distributing a commercial product or service based on it without separate written
+permission from the copyright holder.
+
+PolyForm Noncommercial is not an OSI-approved Open Source licence because it restricts
+commercial use. EMF-Visu is therefore source-available under a noncommercial licence, not
+OSI-defined Open Source software. See [LICENSE](LICENSE) for the complete terms and
+[CONTRIBUTING.md](CONTRIBUTING.md) for community contributions.
+
+GitHub public repositories can be forked through GitHub's platform features. A GitHub fork does
+not itself grant commercial-use rights. Please use
+[GitHub Issues](https://github.com/RandomAccessMonkey/EMF-Visu/issues) for reproducible bug
+reports and feedback.
 
 **Status: Phase 1 (Foundation), Phase 2A (point-charge electrostatics), Phase 2B-1
 (divergence and curl), Phase 2B-2 (Gauss's law and the divergence theorem), Phase 3A
