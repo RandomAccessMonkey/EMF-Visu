@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from emf_core.ampere import AmperePath, AmpereRequest
 from emf_core.circuits import CircuitRequest, EddyDisk, PassiveCircuit
+from emf_core.coax import CoaxSpec
 from emf_core.equations import EquationView
 from emf_core.geometry.surfaces import GaussSurface
 from emf_core.i18n import LocalizedText
@@ -240,6 +241,9 @@ class EquationsBody(BaseModel):
     # Phase 4C: passive circuits and eddy-current disks.
     circuits: list[PassiveCircuit] = Field(default=[], max_length=8)
     eddy_disks: list[EddyDisk] = Field(default=[], max_length=2)
+    # Coaxial-cable TEM model: when given, the equations of that standalone analytical model
+    # are returned instead of the scene's.
+    coax: CoaxSpec | None = None
 
 
 class ProfileSampleBody(BaseModel):
@@ -336,6 +340,8 @@ class ProjectIn(BaseModel):
     # "eddy_disks".
     circuits: list[PassiveCircuit] = Field(default=[], max_length=8)
     eddy_disks: list[EddyDisk] = Field(default=[], max_length=2)
+    # Coaxial-cable TEM model, stored under "coax" (absent: none).
+    coax: CoaxSpec | None = None
 
 
 class ProjectSummary(BaseModel):
@@ -354,3 +360,4 @@ class ProjectOut(ProjectSummary):
     test_charge: TestCharge | None = None
     circuits: list[PassiveCircuit] = []
     eddy_disks: list[EddyDisk] = []
+    coax: CoaxSpec | None = None

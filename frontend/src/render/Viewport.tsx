@@ -15,6 +15,8 @@ import { AmpereLayer } from './AmpereLayer'
 import { FluxLayer } from './FluxLayer'
 import { LorentzLayer } from './LorentzLayer'
 import { CircuitLayer } from './CircuitLayer'
+import { CoaxLayer } from './CoaxLayer'
+import type { CoaxData } from '@/sim/coax'
 import type { CircuitsData } from '@/sim/useCircuits'
 import type { LorentzData } from '@/sim/useLorentz'
 import { GaussLayer } from './GaussLayer'
@@ -256,9 +258,11 @@ interface Props {
   lorentz?: LorentzData
   /** Passive circuits (Phase 4C). */
   circuits?: CircuitsData
+  /** Coaxial-cable TEM model: while active the viewport shows the cable instead of the scene. */
+  coax?: CoaxData
 }
 
-export function Viewport({ result, magnetic, image, arrowScale, magneticArrowScale, flux, ampere, induction, lorentz, circuits }: Props) {
+export function Viewport({ result, magnetic, image, arrowScale, magneticArrowScale, flux, ampere, induction, lorentz, circuits, coax }: Props) {
   const fluxSurfaces = useSceneStore((s) => s.fluxSurfaces)
   const testCharge = useSceneStore((s) => s.testCharge)
   const surfaces = useSceneStore((s) => s.surfaces)
@@ -297,6 +301,13 @@ export function Viewport({ result, magnetic, image, arrowScale, magneticArrowSca
       <color attach="background" args={['#070b14']} />
       <ambientLight intensity={1.4} />
       <directionalLight position={[3, -4, 6]} intensity={1.6} />
+      {coax?.active ? (
+        <>
+          <Invalidator deps={[coax.data, coax.spec, v.mode, v.probePoint, v.showArrows, v.showBArrows, v.showFieldLines, v.showBLines, v.coaxShowPoynting, v.arrowScale, v.cameraResetToken]} />
+          <CoaxLayer coax={coax} />
+        </>
+      ) : (
+      <>
       <Cameras domain={domain} />
       <Invalidator deps={[scene, selectedId, v.mode, v.plane, v.offset, v.probePoint, v.showGrid, v.tool, result, v.showFieldLines, v.lineDensity, v.showContours, v.showIsosurfaces, v.showCurl, v.curlField, v.showSources, v.showVolumeScalars, v.heatmap, flux, surfaces, selectedSurfaceId, patch, cell, magnetic, v.showBArrows, v.magneticField, v.showBLines, v.showCurrents, v.showCurrentDirection, v.contribution, paths, ampere, selectedPathId, fluxSurfaces, induction, lorentz?.probe, lorentz?.trajectory, lorentz?.current, v.showMotionVectors, testCharge, circuits?.data, circuits?.k]} />
       {v.mode === '3d' && <DomainFrame domain={domain} />}
@@ -328,6 +339,8 @@ export function Viewport({ result, magnetic, image, arrowScale, magneticArrowSca
       {circuits && <CircuitLayer data={circuits} marker={marker} />}
       <SceneObjects marker={marker} offSlice={offSlice} wireLength={diag} />
       <ProbeMarker size={marker} />
+      </>
+      )}
     </Canvas>
   )
 }

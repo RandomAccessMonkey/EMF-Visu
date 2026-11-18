@@ -527,3 +527,11 @@ RULES.update(_MOTION_RULES)
 from .circuits import RULES as _CIRCUIT_RULES  # noqa: E402
 
 RULES.update(_CIRCUIT_RULES)
+
+# Coaxial-cable TEM model (same registry). In that standalone model the other entries are
+# resolved by ``coax.guard`` (the shared Maxwell laws apply, everything else does not).
+from .coax import RULES as _COAX_RULES  # noqa: E402
+from .coax import guard as _coax_guard  # noqa: E402
+
+RULES.update({k: _coax_guard(k, r) for k, r in RULES.items()})
+RULES.update(_COAX_RULES)

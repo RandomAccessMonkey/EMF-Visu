@@ -19,7 +19,9 @@ interface Props {
   magnitudes: Float32Array // (N) |vector|
   scale: LogScale // colour (and optionally length) range
   cell: number // sample spacing, metres
-  lengthMode: 'uniform' | 'log'
+  /** 'linear': length and colour ∝ |vector| / scale.max (used where the amplitude itself is
+   *  the message, e.g. the coaxial TEM wave). */
+  lengthMode: 'uniform' | 'log' | 'linear'
   sizeFactor: number
   /** Colour scale: electric (default) or magnetic, or one solid colour (source contributions). */
   palette?: 'electric' | 'magnetic'
@@ -49,11 +51,11 @@ export function ArrowField({ points, vectors, magnitudes, scale, cell, lengthMod
     const rgb = [0, 0, 0]
     for (let i = 0; i < count; i++) {
       const mag = magnitudes[i]!
-      const t = Math.min(1, Math.max(0, logT(mag, scale)))
+      const t = Math.min(1, Math.max(0, lengthMode === 'linear' ? (scale.max > 0 ? mag / scale.max : 0) : logT(mag, scale)))
       // Undefined (singular) or exactly zero field: draw nothing rather than a fake direction.
       let len = 0
       if (Number.isFinite(mag) && mag > 0) {
-        len = cell * 0.85 * sizeFactor * (lengthMode === 'log' ? 0.25 + 0.75 * t : 1)
+        len = cell * 0.85 * sizeFactor * (lengthMode === 'log' ? 0.25 + 0.75 * t : lengthMode === 'linear' ? t : 1)
         dir.set(vectors[3 * i]! / mag, vectors[3 * i + 1]! / mag, vectors[3 * i + 2]! / mag)
         q.setFromUnitVectors(UP, dir)
       }

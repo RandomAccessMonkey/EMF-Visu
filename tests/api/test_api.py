@@ -99,8 +99,9 @@ def test_solvers_and_presets_do_not_overclaim(client):
     presets = client.get(f"{V1}/presets").json()
     # Phase 3A made presets 9-11 (magnetostatics) available, Phase 3B 12-14, Phase 4A 15, 16
     # and the new 21 (induction), Phase 4B the new 22-25 (moving conductors, particle), in
-    # addition to 1-4; Phase 4C the new 26-29 (passive circuits, braking, eddy disk).
-    assert len(presets) == 29 and sum(p["available"] for p in presets) == 21
+    # addition to 1-4; Phase 4C the new 26-29 (passive circuits, braking, eddy disk); the
+    # coaxial TEM module the new 30-31.
+    assert len(presets) == 31 and sum(p["available"] for p in presets) == 23
 
 
 def test_health_reports_unreachable_redis_as_degraded(client):

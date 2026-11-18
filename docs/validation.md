@@ -630,3 +630,41 @@ now reuse the source set at every step.
 | Frontend type-check, lint, unit tests, production build | clean; 80 passed (76 earlier, 4 new) |
 | End-to-end, native stack (`scripts/native.py`) with Redis and worker | 74 of 74 checks (69 earlier + 5 for Phase 4C: shorted loop with induced-current probe, braking rod, eddy disk, coupled loops with positive-definite matrix and induced-field display, persistence of circuits; plus the Hungarian Circuits tab) |
 | Windows, Docker | not executed in this phase |
+
+## Verification record for the coaxial-cable TEM module
+
+Development environment: Linux x86_64, Python 3.12, PostgreSQL 16 (native cluster), Node 22,
+Redis 7 with the solver worker.
+
+**Independent references:** closed-form L′, C′, Z₀, v_p and t_delay; Γ = (Z_L − Z₀)/(Z_L + Z₀);
+the excitation formulas evaluated directly in the tests; the load and source boundary conditions
+(I(L) = 0 open, V(L) = 0 short, V = Z₀I matched, V_f − f = Γ_S V_b at z = 0); the lossless
+telegrapher equations; E × H by NumPy's cross product; numerical ∫E_r dr = V; central finite
+differences of the Cartesian field for ∇·D, ∇·B and the curls.
+
+| Check | Reference | Tolerance | Result |
+|---|---|---|---|
+| Invalid geometry (a ≥ b, b ≥ c, a ≤ 0, L ≤ 0, inf/NaN), material (εr, μr ≤ 0), excitation (f ≤ 0, σ ≤ 0, inf amplitude, unknown type), z outside [0, L], empty time range, unknown load: rejected (engine and client); > 20 000 round trips refused | | | pass |
+| L′, C′, Z₀, v_p, t_delay vs closed form; preset values Z₀ = 49.897 Ω, v_p = c/√2.1, t_delay = 9.668 ns; L′C′ = με; v_p independent of the radii; c enters no parameter | closed form | 1e-13 | pass |
+| Γ for matched/open/short and Z_L = 3Z₀ | closed form | exact | pass |
+| Sinusoid switched on at t = 0 (and its derivative); Gaussian with σ the standard deviation | closed form | 1e-12 | pass |
+| Forward wave only with a matched load, I = V/Z₀; backward-wave signs for open/short (V⁻ = Γ_L V⁺, I⁻ = −V⁻/Z₀, V·I < 0); load boundary conditions over 0–25 ns, doubling of V (open) and I (short); source re-reflection; matched sinusoid in phase and zero ahead of the front | closed form | 1e-12 | pass |
+| Telegrapher equations on a 41 × 81 (z, t) grid for three termination pairs | analytic | 1e-12 | pass |
+| E, D, H, B in the dielectric (3 radii); E radial, H azimuthal; S = E × H; ∫E_r dr = V; all fields zero for r < a, b < r ≤ c and outside | closed form | 1e-13; 1e-6 | pass |
+| Regions and interfaces; D_r and H_φ jumps equal ρ_s and K_z on r = a, b; equal and opposite per unit length | closed form | 1e-12 | pass |
+| ∬S_z dA (Gauss–Legendre 48 × midpoint 64) = V·I for matched/open/short, 4 times × 3 positions; S direction for incident (+z) and reflected (−z) pulses; w_e = w_m and S = (w_e + w_m) v_p for one wave | | 1e-10; 1e-12 | pass |
+| ∇·D, ∇·B ≈ 0; (∇×E)_φ = −∂B_φ/∂t and (∇×H)_r = ∂D_r/∂t (nonzero), analytic vs finite difference; telegrapher checks; front of a switched sinusoid reported non-smooth | finite differences | residual 1e-12, FD 1e-6 | pass |
+| TE₁₁ warning; snapshot vs trace consistency; presets 30–31 match the specification; presets 1–29 unchanged | | | pass |
+| API (11 tests): presets 30–31 snapshot and trace, boundary and conductor probes, invalid specs 422, z > L and round-trip limit 422, equation statuses with and without the coax model, persistence and old projects | | | pass |
+| Frontend unit tests (8): client validation, 2D-only probe, diverging colour scale, radial magnification, saved z position | | | pass |
+
+**Changes to existing tests (intended, nothing weakened):** the preset catalog now has 31
+entries with 23 available (two assertions updated).
+
+| Item | Result |
+|---|---|
+| Python tests | 666 passed, 0 skipped (607 earlier; 59 new: 48 physics, 11 API), incl. 5 integration tests against PostgreSQL and Redis |
+| ruff, mypy (strict) | clean |
+| Frontend type-check, lint, unit tests, production build | clean; 88 passed (80 earlier, 8 new) |
+| End-to-end, native stack (`scripts/native.py`) with Redis and worker | 79 of 79 checks (74 earlier + 5 for the coaxial module: preset 30 parameters and power check, preset 31 open/short load signs, invalid geometry blocked, 2D probe and Maxwell checks, persistence and closing; plus the Hungarian Koax tab) |
+| Windows, Docker | not executed |

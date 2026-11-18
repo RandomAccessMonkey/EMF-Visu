@@ -4,6 +4,7 @@ from typing import Literal
 
 from ..i18n import L
 from ..solvers.base import EquationStatusEntry, ModelContext
+from .coax import CHECKED_NOTE as COAX_CHECKED_NOTE
 from .data import EQUATIONS, SYMBOLS
 from .models import Equation, EquationView, Rule, SymbolDef
 from .rules import RULES
@@ -36,7 +37,9 @@ class EquationRegistry:
             evaluated = e.id in ctx.evaluated_equation_ids
             usage: Literal["evaluated", "checked", "satisfied", "approximation", "not_used"]
             checked = e.id in ctx.checked_equation_ids
-            if checked and status in ("applicable", "applicable_under_assumptions"):
+            if checked and status in ("applicable", "applicable_under_assumptions") and ctx.coax:
+                usage, note = "checked", COAX_CHECKED_NOTE
+            elif checked and status in ("applicable", "applicable_under_assumptions"):
                 usage, note = "checked", L(
                     "Both sides are computed by independent methods (the surface integral from the "
                     "field over the oriented surface, the other side from the enclosed charges) "

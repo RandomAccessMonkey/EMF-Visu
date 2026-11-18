@@ -58,6 +58,11 @@ export interface ViewSettings {
   velocityConvention: 'undefined' | 'left' | 'right'
   /** Moving-conductor overlays: velocity arrows and u × B arrows along the conductor. */
   showMotionVectors: boolean
+  /** Coaxial TEM model: inspected cross-section as a fraction z/L of the cable length, and the
+   *  Poynting-vector layer (E arrows / H arrows / E lines / H lines reuse the layer switches
+   *  showArrows / showBArrows / showFieldLines / showBLines). */
+  coaxZFraction: number
+  coaxShowPoynting: boolean
 }
 
 export const DEFAULT_VIEW: ViewSettings = {
@@ -97,6 +102,8 @@ export const DEFAULT_VIEW: ViewSettings = {
   velocityConvention: 'undefined',
   showMotionVectors: true,
   playbackSpeed: 1,
+  coaxZFraction: 0.5,
+  coaxShowPoynting: true,
 }
 
 interface ViewState extends ViewSettings {
@@ -175,6 +182,7 @@ export function sanitizeView(raw: Record<string, unknown>): Partial<ViewSettings
     delete out.timeStart
   }
   if (out.velocityConvention !== undefined && !['undefined', 'left', 'right'].includes(out.velocityConvention as string)) delete out.velocityConvention
+  if (typeof out.coaxZFraction === 'number') out.coaxZFraction = Math.min(1, Math.max(0, out.coaxZFraction))
   if (out.heatmap !== undefined && !(SCALAR_MAPS as readonly string[]).includes(out.heatmap as string)) delete out.heatmap
   return out as Partial<ViewSettings>
 }

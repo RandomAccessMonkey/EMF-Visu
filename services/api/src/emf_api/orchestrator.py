@@ -10,7 +10,7 @@ from threading import Lock
 
 import numpy as np
 
-from emf_core import ampere, circuits, engine, induction, lorentz, wire
+from emf_core import ampere, circuits, coax, engine, induction, lorentz, wire
 from emf_core.ampere import AmperePath, AmpereRequest
 from emf_core.equations import EquationRegistry, EquationView, default_registry
 from emf_core.geometry.surfaces import GaussSurface
@@ -196,11 +196,16 @@ class Orchestrator:
                   flux_surfaces: list[FluxSurface] | None = None,
                   test_charge: lorentz.TestCharge | None = None,
                   passive: list[circuits.PassiveCircuit] | None = None,
-                  disks: list[circuits.EddyDisk] | None = None
+                  disks: list[circuits.EddyDisk] | None = None,
+                  coax_spec: coax.CoaxSpec | None = None
                   ) -> tuple[list[EquationView], list[LocalizedText], list[str]]:
         """Equation views for the model(s) that would be used for this scene: the electric
         and/or magnetic sub-model, merged (see EquationRegistry.evaluate_merged). If a needed
         solver does not support the scene, return no equations plus the reasons."""
+        if coax_spec is not None:
+            # The coaxial TEM model is standalone: its equations, not the scene's.
+            return (self.registry.evaluate(coax.model_context(coax_spec)), [],
+                    [coax.SOLVER_ID])
         contexts: list[ModelContext] = []
         solver_ids: list[str] = []
         for kind in engine.field_kinds(scene):

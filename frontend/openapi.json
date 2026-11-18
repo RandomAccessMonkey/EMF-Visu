@@ -458,6 +458,130 @@
         }
       }
     },
+    "/api/v1/coax/snapshot": {
+      "post": {
+        "tags": [
+          "simulation"
+        ],
+        "summary": "Coax Snapshot",
+        "description": "Ideal coaxial cable, TEM mode, at one simulation time: line parameters, V and I (with\ntheir forward/backward waves) at the selected cross-section and along the cable, the\ncross-section fields, the Poynting power check, the differential-law checks, the interface\n(surface) quantities and the probe. Closed form; no numerical solve.",
+        "operationId": "coax_snapshot_api_v1_coax_snapshot_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoaxSnapshotRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoaxSnapshot"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request Entity Too Large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/coax/trace": {
+      "post": {
+        "tags": [
+          "simulation"
+        ],
+        "summary": "Coax Trace",
+        "description": "V(t), I(t) and P(t) at one position, and V and I at the source and load ends, over the\nsimulation time range (closed form).",
+        "operationId": "coax_trace_api_v1_coax_trace_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoaxTraceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoaxTrace"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request Entity Too Large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/lorentz": {
       "post": {
         "tags": [
@@ -1495,6 +1619,45 @@
         "title": "ArrayStats",
         "description": "Statistics computed in float64 before the float32 transport cast. For vectors they\ndescribe the magnitude; for scalars the signed value."
       },
+      "Boundary": {
+        "properties": {
+          "rho_s_inner_C_per_m2": {
+            "type": "number",
+            "title": "Rho S Inner C Per M2"
+          },
+          "rho_s_shield_C_per_m2": {
+            "type": "number",
+            "title": "Rho S Shield C Per M2"
+          },
+          "K_z_inner_A_per_m": {
+            "type": "number",
+            "title": "K Z Inner A Per M"
+          },
+          "K_z_shield_A_per_m": {
+            "type": "number",
+            "title": "K Z Shield A Per M"
+          },
+          "Q_per_m_C": {
+            "type": "number",
+            "title": "Q Per M C"
+          },
+          "I_A": {
+            "type": "number",
+            "title": "I A"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rho_s_inner_C_per_m2",
+          "rho_s_shield_C_per_m2",
+          "K_z_inner_A_per_m",
+          "K_z_shield_A_per_m",
+          "Q_per_m_C",
+          "I_A"
+        ],
+        "title": "Boundary",
+        "description": "Surface (distributional) quantities on the conductor/dielectric interfaces at z."
+      },
       "BoundaryCondition": {
         "properties": {
           "id": {
@@ -1621,6 +1784,73 @@
         "type": "object",
         "title": "BoxShape",
         "description": "Width (local x), depth (local y), height (local z)."
+      },
+      "Calculus": {
+        "properties": {
+          "point_m": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Point M"
+          },
+          "r_m": {
+            "type": "number",
+            "title": "R M"
+          },
+          "div_D": {
+            "type": "number",
+            "title": "Div D"
+          },
+          "div_B": {
+            "type": "number",
+            "title": "Div B"
+          },
+          "div_scale": {
+            "type": "number",
+            "title": "Div Scale"
+          },
+          "div_B_scale": {
+            "type": "number",
+            "title": "Div B Scale"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/LawCheck"
+            },
+            "type": "array",
+            "title": "Checks"
+          },
+          "telegrapher": {
+            "items": {
+              "$ref": "#/components/schemas/LawCheck"
+            },
+            "type": "array",
+            "title": "Telegrapher"
+          }
+        },
+        "type": "object",
+        "required": [
+          "point_m",
+          "r_m",
+          "div_D",
+          "div_B",
+          "div_scale",
+          "div_B_scale",
+          "checks",
+          "telegrapher"
+        ],
+        "title": "Calculus"
       },
       "CirclePath": {
         "properties": {
@@ -2202,6 +2432,385 @@
         "title": "CircularLoopSource",
         "description": "Ideal thin circular filament carrying a steady current (Phase 3A).\n\nCarried by a ``ring`` primitive with role ``current_source``: centre = world position,\nradius = ``radius_m`` times the in-plane world scale, normal n = normalised (c_x x c_y) of the\nworld matrix. Positive ``current_A`` circulates counter-clockwise about +n (right-hand rule:\nB points along +n on the axis). Electrically neutral."
       },
+      "CoaxGeometry": {
+        "properties": {
+          "inner_radius_m": {
+            "type": "number",
+            "maximum": 10.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Inner Radius M"
+          },
+          "shield_inner_radius_m": {
+            "type": "number",
+            "maximum": 10.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Shield Inner Radius M"
+          },
+          "shield_outer_radius_m": {
+            "type": "number",
+            "maximum": 10.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Shield Outer Radius M"
+          },
+          "length_m": {
+            "type": "number",
+            "maximum": 100000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Length M"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "inner_radius_m",
+          "shield_inner_radius_m",
+          "shield_outer_radius_m",
+          "length_m"
+        ],
+        "title": "CoaxGeometry"
+      },
+      "CoaxMaterial": {
+        "properties": {
+          "relative_permittivity": {
+            "type": "number",
+            "maximum": 10000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Relative Permittivity"
+          },
+          "relative_permeability": {
+            "type": "number",
+            "maximum": 10000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Relative Permeability"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "relative_permittivity",
+          "relative_permeability"
+        ],
+        "title": "CoaxMaterial"
+      },
+      "CoaxSnapshot": {
+        "properties": {
+          "params": {
+            "$ref": "#/components/schemas/LineParameters"
+          },
+          "t_s": {
+            "type": "number",
+            "title": "T S"
+          },
+          "z_m": {
+            "type": "number",
+            "title": "Z M"
+          },
+          "V": {
+            "type": "number",
+            "title": "V"
+          },
+          "I": {
+            "type": "number",
+            "title": "I"
+          },
+          "Vf": {
+            "type": "number",
+            "title": "Vf"
+          },
+          "Vb": {
+            "type": "number",
+            "title": "Vb"
+          },
+          "If": {
+            "type": "number",
+            "title": "If"
+          },
+          "Ib": {
+            "type": "number",
+            "title": "Ib"
+          },
+          "scale_V": {
+            "type": "number",
+            "title": "Scale V"
+          },
+          "scale_I": {
+            "type": "number",
+            "title": "Scale I"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "line": {
+            "$ref": "#/components/schemas/LineProfile"
+          },
+          "cross_section": {
+            "$ref": "#/components/schemas/CrossSection"
+          },
+          "stations": {
+            "$ref": "#/components/schemas/Stations"
+          },
+          "power": {
+            "$ref": "#/components/schemas/Power"
+          },
+          "calculus": {
+            "$ref": "#/components/schemas/Calculus"
+          },
+          "boundary": {
+            "$ref": "#/components/schemas/Boundary"
+          },
+          "probe": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Probe"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "params",
+          "t_s",
+          "z_m",
+          "V",
+          "I",
+          "Vf",
+          "Vb",
+          "If",
+          "Ib",
+          "scale_V",
+          "scale_I",
+          "warnings",
+          "line",
+          "cross_section",
+          "stations",
+          "power",
+          "calculus",
+          "boundary",
+          "probe"
+        ],
+        "title": "CoaxSnapshot"
+      },
+      "CoaxSnapshotRequest": {
+        "properties": {
+          "spec": {
+            "$ref": "#/components/schemas/CoaxSpec"
+          },
+          "t_s": {
+            "type": "number",
+            "title": "T S"
+          },
+          "z_m": {
+            "type": "number",
+            "title": "Z M"
+          },
+          "range": {
+            "$ref": "#/components/schemas/TimeRange"
+          },
+          "probe_m": {
+            "anyOf": [
+              {
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array",
+                "maxItems": 2,
+                "minItems": 2
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Probe M"
+          },
+          "stations": {
+            "type": "integer",
+            "maximum": 129.0,
+            "minimum": 3.0,
+            "title": "Stations",
+            "default": 33
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "spec",
+          "t_s",
+          "z_m",
+          "range"
+        ],
+        "title": "CoaxSnapshotRequest"
+      },
+      "CoaxSpec": {
+        "properties": {
+          "geometry": {
+            "$ref": "#/components/schemas/CoaxGeometry"
+          },
+          "material": {
+            "$ref": "#/components/schemas/CoaxMaterial"
+          },
+          "excitation": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SinusoidalExcitation"
+              },
+              {
+                "$ref": "#/components/schemas/GaussianExcitation"
+              }
+            ],
+            "title": "Excitation",
+            "discriminator": {
+              "propertyName": "type",
+              "mapping": {
+                "gaussian": "#/components/schemas/GaussianExcitation",
+                "sinusoidal": "#/components/schemas/SinusoidalExcitation"
+              }
+            }
+          },
+          "load": {
+            "type": "string",
+            "enum": [
+              "matched",
+              "open",
+              "short"
+            ],
+            "title": "Load",
+            "default": "matched"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "matched",
+              "open",
+              "short"
+            ],
+            "title": "Source",
+            "default": "matched"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "geometry",
+          "material",
+          "excitation"
+        ],
+        "title": "CoaxSpec",
+        "description": "The complete physical definition of the cable model."
+      },
+      "CoaxTrace": {
+        "properties": {
+          "params": {
+            "$ref": "#/components/schemas/LineParameters"
+          },
+          "z_m": {
+            "type": "number",
+            "title": "Z M"
+          },
+          "t_s": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "T S"
+          },
+          "V": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "V"
+          },
+          "I": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "I"
+          },
+          "P_W": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "P W"
+          },
+          "V_source": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "V Source"
+          },
+          "V_load": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "V Load"
+          },
+          "I_load": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "I Load"
+          }
+        },
+        "type": "object",
+        "required": [
+          "params",
+          "z_m",
+          "t_s",
+          "V",
+          "I",
+          "P_W",
+          "V_source",
+          "V_load",
+          "I_load"
+        ],
+        "title": "CoaxTrace"
+      },
+      "CoaxTraceRequest": {
+        "properties": {
+          "spec": {
+            "$ref": "#/components/schemas/CoaxSpec"
+          },
+          "z_m": {
+            "type": "number",
+            "title": "Z M"
+          },
+          "range": {
+            "$ref": "#/components/schemas/TimeRange"
+          },
+          "count": {
+            "type": "integer",
+            "maximum": 4001.0,
+            "minimum": 2.0,
+            "title": "Count",
+            "default": 401
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "spec",
+          "z_m",
+          "range"
+        ],
+        "title": "CoaxTraceRequest"
+      },
       "CoilPrimitive": {
         "properties": {
           "type": {
@@ -2488,6 +3097,103 @@
         "additionalProperties": false,
         "type": "object",
         "title": "ConstantVelocity"
+      },
+      "CrossSection": {
+        "properties": {
+          "points_m": {
+            "items": {
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array",
+              "maxItems": 2,
+              "minItems": 2
+            },
+            "type": "array",
+            "title": "Points M"
+          },
+          "E": {
+            "items": {
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array",
+              "maxItems": 2,
+              "minItems": 2
+            },
+            "type": "array",
+            "title": "E"
+          },
+          "H": {
+            "items": {
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array",
+              "maxItems": 2,
+              "minItems": 2
+            },
+            "type": "array",
+            "title": "H"
+          },
+          "S_z": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "S Z"
+          },
+          "e_line_angles_rad": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "E Line Angles Rad"
+          },
+          "h_line_radii_m": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "H Line Radii M"
+          },
+          "e_sign": {
+            "type": "integer",
+            "title": "E Sign"
+          },
+          "h_sign": {
+            "type": "integer",
+            "title": "H Sign"
+          }
+        },
+        "type": "object",
+        "required": [
+          "points_m",
+          "E",
+          "H",
+          "S_z",
+          "e_line_angles_rad",
+          "h_line_radii_m",
+          "e_sign",
+          "h_sign"
+        ],
+        "title": "CrossSection",
+        "description": "Arrow samples in the cross-section at z (dielectric only), x-y Cartesian."
       },
       "Crossing": {
         "properties": {
@@ -3383,6 +4089,7 @@
               "induction",
               "motion",
               "circuits",
+              "coax",
               "constitutive",
               "additional"
             ],
@@ -3576,6 +4283,16 @@
             "maxItems": 2,
             "title": "Eddy Disks",
             "default": []
+          },
+          "coax": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CoaxSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -4327,6 +5044,42 @@
         ],
         "title": "GaussSurface"
       },
+      "GaussianExcitation": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "gaussian",
+            "title": "Type",
+            "default": "gaussian"
+          },
+          "amplitude_V": {
+            "type": "number",
+            "maximum": 1000000000.0,
+            "minimum": -1000000000.0,
+            "title": "Amplitude V"
+          },
+          "center_s": {
+            "type": "number",
+            "maximum": 1000.0,
+            "minimum": -1000.0,
+            "title": "Center S"
+          },
+          "width_s": {
+            "type": "number",
+            "maximum": 1000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Width S"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "amplitude_V",
+          "center_s",
+          "width_s"
+        ],
+        "title": "GaussianExcitation"
+      },
       "GroupPrimitive": {
         "properties": {
           "type": {
@@ -4920,6 +5673,57 @@
         "title": "LatticeSampling",
         "description": "Regular axis-aligned 3D lattice, inclusive of both ends. Shape (nz, ny, nx[, 3])."
       },
+      "LawCheck": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "component": {
+            "type": "string",
+            "title": "Component"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit"
+          },
+          "lhs": {
+            "$ref": "#/components/schemas/ScalarCheck"
+          },
+          "rhs": {
+            "$ref": "#/components/schemas/ScalarCheck"
+          },
+          "residual": {
+            "type": "number",
+            "title": "Residual"
+          },
+          "fd_rel_error": {
+            "type": "number",
+            "title": "Fd Rel Error"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "agree",
+              "nonsmooth",
+              "zero_field"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "component",
+          "unit",
+          "lhs",
+          "rhs",
+          "residual",
+          "fd_rel_error",
+          "status"
+        ],
+        "title": "LawCheck"
+      },
       "Lenz": {
         "properties": {
           "flux_trend": {
@@ -4981,6 +5785,74 @@
         ],
         "title": "LevelRange"
       },
+      "LineParameters": {
+        "properties": {
+          "epsilon_F_per_m": {
+            "type": "number",
+            "title": "Epsilon F Per M"
+          },
+          "mu_H_per_m": {
+            "type": "number",
+            "title": "Mu H Per M"
+          },
+          "ln_b_over_a": {
+            "type": "number",
+            "title": "Ln B Over A"
+          },
+          "L_per_m_H": {
+            "type": "number",
+            "title": "L Per M H"
+          },
+          "C_per_m_F": {
+            "type": "number",
+            "title": "C Per M F"
+          },
+          "Z0_ohm": {
+            "type": "number",
+            "title": "Z0 Ohm"
+          },
+          "vp_m_per_s": {
+            "type": "number",
+            "title": "Vp M Per S"
+          },
+          "vp_over_c": {
+            "type": "number",
+            "title": "Vp Over C"
+          },
+          "delay_s": {
+            "type": "number",
+            "title": "Delay S"
+          },
+          "gamma_load": {
+            "type": "number",
+            "title": "Gamma Load"
+          },
+          "gamma_source": {
+            "type": "number",
+            "title": "Gamma Source"
+          },
+          "te11_cutoff_Hz": {
+            "type": "number",
+            "title": "Te11 Cutoff Hz"
+          }
+        },
+        "type": "object",
+        "required": [
+          "epsilon_F_per_m",
+          "mu_H_per_m",
+          "ln_b_over_a",
+          "L_per_m_H",
+          "C_per_m_F",
+          "Z0_ohm",
+          "vp_m_per_s",
+          "vp_over_c",
+          "delay_s",
+          "gamma_load",
+          "gamma_source",
+          "te11_cutoff_Hz"
+        ],
+        "title": "LineParameters"
+      },
       "LinePrimitive": {
         "properties": {
           "type": {
@@ -5000,6 +5872,62 @@
         "type": "object",
         "title": "LinePrimitive",
         "description": "Straight segment along local z, centred on the local origin."
+      },
+      "LineProfile": {
+        "properties": {
+          "z_m": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Z M"
+          },
+          "V": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "V"
+          },
+          "I": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "I"
+          },
+          "Vf": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Vf"
+          },
+          "Vb": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Vb"
+          },
+          "P_W": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "P W"
+          }
+        },
+        "type": "object",
+        "required": [
+          "z_m",
+          "V",
+          "I",
+          "Vf",
+          "Vb",
+          "P_W"
+        ],
+        "title": "LineProfile"
       },
       "LocalizedText": {
         "properties": {
@@ -5953,6 +6881,11 @@
           "user_inductance": {
             "type": "boolean",
             "title": "User Inductance",
+            "default": false
+          },
+          "coax": {
+            "type": "boolean",
+            "title": "Coax",
             "default": false
           },
           "checked_equation_ids": {
@@ -7620,6 +8553,56 @@
         ],
         "title": "PolygonPath"
       },
+      "Power": {
+        "properties": {
+          "P_poynting_W": {
+            "type": "number",
+            "title": "P Poynting W"
+          },
+          "P_VI_W": {
+            "type": "number",
+            "title": "P Vi W"
+          },
+          "abs_error_W": {
+            "type": "number",
+            "title": "Abs Error W"
+          },
+          "rel_error": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rel Error"
+          },
+          "nodes": {
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Nodes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "P_poynting_W",
+          "P_VI_W",
+          "abs_error_W",
+          "rel_error",
+          "nodes"
+        ],
+        "title": "Power"
+      },
       "Preset": {
         "properties": {
           "id": {
@@ -7755,6 +8738,16 @@
             "type": "array",
             "title": "Eddy Disks",
             "default": []
+          },
+          "coax": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CoaxSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -7795,6 +8788,192 @@
         ],
         "title": "PresetVariant",
         "description": "An alternative configuration of the same preset (Phase 3A: preset 10)."
+      },
+      "Probe": {
+        "properties": {
+          "point_m": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Point M"
+          },
+          "r_m": {
+            "type": "number",
+            "title": "R M"
+          },
+          "phi_rad": {
+            "type": "number",
+            "title": "Phi Rad"
+          },
+          "region": {
+            "type": "string",
+            "enum": [
+              "inner_conductor",
+              "inner_surface",
+              "dielectric",
+              "shield_surface",
+              "shield",
+              "outside"
+            ],
+            "title": "Region"
+          },
+          "E": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "E"
+          },
+          "D": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "D"
+          },
+          "H": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "H"
+          },
+          "B": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "B"
+          },
+          "S": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "S"
+          },
+          "E_r": {
+            "type": "number",
+            "title": "E R"
+          },
+          "H_phi": {
+            "type": "number",
+            "title": "H Phi"
+          },
+          "S_z": {
+            "type": "number",
+            "title": "S Z"
+          },
+          "w_e_J_per_m3": {
+            "type": "number",
+            "title": "W E J Per M3"
+          },
+          "w_m_J_per_m3": {
+            "type": "number",
+            "title": "W M J Per M3"
+          },
+          "surface_charge_C_per_m2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Surface Charge C Per M2"
+          },
+          "surface_current_A_per_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Surface Current A Per M"
+          }
+        },
+        "type": "object",
+        "required": [
+          "point_m",
+          "r_m",
+          "phi_rad",
+          "region",
+          "E",
+          "D",
+          "H",
+          "B",
+          "S",
+          "E_r",
+          "H_phi",
+          "S_z",
+          "w_e_J_per_m3",
+          "w_m_J_per_m3"
+        ],
+        "title": "Probe"
       },
       "ProbeBody": {
         "properties": {
@@ -8742,6 +9921,16 @@
             "maxItems": 2,
             "title": "Eddy Disks",
             "default": []
+          },
+          "coax": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CoaxSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -8828,6 +10017,16 @@
             "type": "array",
             "title": "Eddy Disks",
             "default": []
+          },
+          "coax": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CoaxSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -9205,6 +10404,25 @@
         "title": "Role",
         "description": "Physical role of an object. ``geometry_only`` objects are inert: they are drawn but are\nexplicitly excluded from the physical model (and reported as such in every result)."
       },
+      "ScalarCheck": {
+        "properties": {
+          "analytic": {
+            "type": "number",
+            "title": "Analytic"
+          },
+          "numerical": {
+            "type": "number",
+            "title": "Numerical"
+          }
+        },
+        "type": "object",
+        "required": [
+          "analytic",
+          "numerical"
+        ],
+        "title": "ScalarCheck",
+        "description": "One side of a differential law: the analytic value (from the wave derivatives) and an\nindependent central finite difference of the field itself."
+      },
       "Scene": {
         "properties": {
           "schema_version": {
@@ -9479,6 +10697,35 @@
           "request"
         ],
         "title": "SimulationBody"
+      },
+      "SinusoidalExcitation": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "sinusoidal",
+            "title": "Type",
+            "default": "sinusoidal"
+          },
+          "amplitude_V": {
+            "type": "number",
+            "maximum": 1000000000.0,
+            "minimum": -1000000000.0,
+            "title": "Amplitude V"
+          },
+          "frequency_Hz": {
+            "type": "number",
+            "maximum": 1000000000000000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Frequency Hz"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "amplitude_V",
+          "frequency_Hz"
+        ],
+        "title": "SinusoidalExcitation"
       },
       "SinusoidalProfile": {
         "properties": {
@@ -10052,6 +11299,68 @@
         "additionalProperties": false,
         "type": "object",
         "title": "StationaryTranslation"
+      },
+      "Stations": {
+        "properties": {
+          "z_m": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Z M"
+          },
+          "V": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "V"
+          },
+          "I": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "I"
+          },
+          "r_m": {
+            "type": "number",
+            "title": "R M"
+          },
+          "E_r": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "E R"
+          },
+          "H_phi": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "H Phi"
+          },
+          "S_z": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "S Z"
+          }
+        },
+        "type": "object",
+        "required": [
+          "z_m",
+          "V",
+          "I",
+          "r_m",
+          "E_r",
+          "H_phi",
+          "S_z"
+        ],
+        "title": "Stations",
+        "description": "Cross-sections along the cable for the 3D view: per station V, I and sample vectors."
       },
       "SurfaceDisplay": {
         "properties": {
@@ -10634,6 +11943,25 @@
         ],
         "title": "TimeHint",
         "description": "Simulation-time range and step a time-dependent preset opens with (Phase 4A). The\nphysics at a time t does not depend on these; they only set the playback."
+      },
+      "TimeRange": {
+        "properties": {
+          "start_s": {
+            "type": "number",
+            "title": "Start S"
+          },
+          "end_s": {
+            "type": "number",
+            "title": "End S"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "start_s",
+          "end_s"
+        ],
+        "title": "TimeRange"
       },
       "TimeSourceInfo": {
         "properties": {

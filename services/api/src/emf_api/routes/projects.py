@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from emf_core.ampere import AmperePath
 from emf_core.circuits import EddyDisk, PassiveCircuit
+from emf_core.coax import CoaxSpec
 from emf_core.geometry.surfaces import GaussSurface
 from emf_core.induction import FluxSurface
 from emf_core.lorentz import TestCharge
@@ -36,6 +37,7 @@ FLUX_KEY = "flux_surfaces"
 CHARGE_KEY = "test_charge"
 CIRCUITS_KEY = "circuits"
 DISKS_KEY = "eddy_disks"
+COAX_KEY = "coax"
 
 
 def _out(row: ProjectRow) -> ProjectOut:
@@ -46,6 +48,7 @@ def _out(row: ProjectRow) -> ProjectOut:
     charge = view.pop(CHARGE_KEY, None)
     circuits = view.pop(CIRCUITS_KEY, [])
     disks = view.pop(DISKS_KEY, [])
+    coax_spec = view.pop(COAX_KEY, None)
     return ProjectOut(id=row.id, name=row.name, created_at=row.created_at,
                       updated_at=row.updated_at, scene=Scene.model_validate(row.scene), view=view,
                       surfaces=[GaussSurface.model_validate(s) for s in surfaces],
@@ -53,7 +56,8 @@ def _out(row: ProjectRow) -> ProjectOut:
                       flux_surfaces=[FluxSurface.model_validate(f) for f in flux],
                       test_charge=TestCharge.model_validate(charge) if charge else None,
                       circuits=[PassiveCircuit.model_validate(c) for c in circuits],
-                      eddy_disks=[EddyDisk.model_validate(d) for d in disks])
+                      eddy_disks=[EddyDisk.model_validate(d) for d in disks],
+                      coax=CoaxSpec.model_validate(coax_spec) if coax_spec else None)
 
 
 def _view(body: ProjectIn) -> dict[str, object]:
@@ -65,7 +69,8 @@ def _view(body: ProjectIn) -> dict[str, object]:
             **({CIRCUITS_KEY: [c.model_dump(mode="json") for c in body.circuits]}
                if body.circuits else {}),
             **({DISKS_KEY: [d.model_dump(mode="json") for d in body.eddy_disks]}
-               if body.eddy_disks else {})}
+               if body.eddy_disks else {}),
+            **({COAX_KEY: body.coax.model_dump(mode="json")} if body.coax is not None else {})}
 
 
 @router.get("", responses=_ERR)

@@ -1250,3 +1250,10 @@ from .circuits import SYMBOLS as _CIRCUIT_SYMBOLS  # noqa: E402
 
 SYMBOLS.update(_CIRCUIT_SYMBOLS)
 EQUATIONS += _CIRCUIT_EQUATIONS
+
+# Coaxial-cable TEM model: analytical fields, line parameters, waves, reflections, power.
+from .coax import EQUATIONS as _COAX_EQUATIONS  # noqa: E402
+from .coax import SYMBOLS as _COAX_SYMBOLS  # noqa: E402
+
+SYMBOLS.update(_COAX_SYMBOLS)
+EQUATIONS += _COAX_EQUATIONS

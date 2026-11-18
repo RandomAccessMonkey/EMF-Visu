@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { AmperePath, CurrentProfile, Domain, EddyDisk, Electrical, FluxSurface, GaussSurface, PassiveCircuit, PathDisplay, PrimitiveType, Scene, SceneObject, Source, SurfaceDisplay, TestCharge, Transform, Vec3 } from '@/api/types'
+import type { AmperePath, CoaxSpec, CurrentProfile, Domain, EddyDisk, Electrical, FluxSurface, GaussSurface, PassiveCircuit, PathDisplay, PrimitiveType, Scene, SceneObject, Source, SurfaceDisplay, TestCharge, Transform, Vec3 } from '@/api/types'
 
 export const EMPTY_SCENE: Scene = {
   schema_version: 1,
@@ -373,6 +373,10 @@ interface SceneState {
   updateDisk: (id: string, patch: Partial<EddyDisk>) => void
   removeDisk: (id: string) => void
   setDisks: (d: EddyDisk[]) => void
+  /** Coaxial-cable TEM model (standalone analytical model; null when not active). While it is
+   *  active the viewport shows the cable instead of the scene. */
+  coax: CoaxSpec | null
+  setCoax: (c: CoaxSpec | null) => void
   /** Set or clear a current source's time profile (Phase 4A). The engine derives the source's
    *  current at t = 0 from the profile; the client never evaluates it. */
   setProfile: (id: string, profile: CurrentProfile | null) => void
@@ -472,6 +476,8 @@ export const useSceneStore = create<SceneState>((set) => ({
   updateDisk: (id, patch) => set((s) => ({ eddyDisks: s.eddyDisks.map((d) => (d.id === id ? { ...d, ...patch } : d)) })),
   removeDisk: (id) => set((s) => ({ eddyDisks: s.eddyDisks.filter((d) => d.id !== id) })),
   setDisks: (eddyDisks) => set({ eddyDisks }),
+  coax: null,
+  setCoax: (coax) => set({ coax }),
   setProfile: (id, profile) =>
     set((s) => ({
       scene: mapObject(s.scene, id, (o) =>

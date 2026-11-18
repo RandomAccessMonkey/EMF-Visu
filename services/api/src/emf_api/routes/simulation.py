@@ -5,7 +5,7 @@ from typing import Annotated
 import numpy as np
 from fastapi import APIRouter, Depends, Response
 
-from emf_core import engine, lorentz
+from emf_core import coax, engine, lorentz
 from emf_core.ampere import AmpereHeader
 from emf_core.circuits import CircuitResult
 from emf_core.gauss_situations import SITUATIONS, GaussSituation
@@ -185,7 +185,7 @@ def evaluate_equations(body: EquationsBody, orch: Orch) -> EquationsResponse:
     """Equations with their applicability status for the model that this scene resolves to."""
     views, reasons, solver_ids = orch.equations(body.scene, body.surfaces, body.paths,
                                                 body.flux_surfaces, body.test_charge,
-                                                body.circuits, body.eddy_disks)
+                                                body.circuits, body.eddy_disks, body.coax)
     return EquationsResponse(supported=bool(solver_ids),
                              solver_id=solver_ids[0] if solver_ids else None,
                              solver_ids=solver_ids,
@@ -252,6 +252,28 @@ def circuits(body: CircuitBody, orch: Orch) -> Response:
     blob, hit = orch.solve_circuits(body.scene, body.circuits)
     return Response(blob, media_type="application/json",
                     headers={"X-EMF-Cache": "hit" if hit else "miss"})
+
+
+@router.post("/coax/snapshot", responses=_ERRORS)
+def coax_snapshot(body: coax.CoaxSnapshotRequest) -> coax.CoaxSnapshot:
+    """Ideal coaxial cable, TEM mode, at one simulation time: line parameters, V and I (with
+    their forward/backward waves) at the selected cross-section and along the cable, the
+    cross-section fields, the Poynting power check, the differential-law checks, the interface
+    (surface) quantities and the probe. Closed form; no numerical solve."""
+    try:
+        return coax.snapshot(body)
+    except coax.CoaxError as exc:
+        raise api_error(422, "too_large", str(exc)) from exc
+
+
+@router.post("/coax/trace", responses=_ERRORS)
+def coax_trace(body: coax.CoaxTraceRequest) -> coax.CoaxTrace:
+    """V(t), I(t) and P(t) at one position, and V and I at the source and load ends, over the
+    simulation time range (closed form)."""
+    try:
+        return coax.trace(body)
+    except coax.CoaxError as exc:
+        raise api_error(422, "too_large", str(exc)) from exc
 
 
 @router.post("/lorentz")

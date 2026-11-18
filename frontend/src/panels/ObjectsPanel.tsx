@@ -27,7 +27,7 @@ function loadPreset(p: Preset, scene: NonNullable<Preset['scene']>) {
   // the playback (identical initial parameters reproduce identical results).
   // Phase 4B/4C experiment presets (a test charge or passive circuits) define the complete
   // setup: their measurement surfaces replace the current ones even when they have none.
-  const experiment = !!p.test_charge || p.circuits.length > 0 || p.eddy_disks.length > 0
+  const experiment = !!p.test_charge || p.circuits.length > 0 || p.eddy_disks.length > 0 || !!p.coax
   if (p.flux_surfaces.length > 0 || experiment) useSceneStore.getState().setFluxSurfaces(p.flux_surfaces)
   // Phase 4B/4C: the test charge, passive circuits and eddy disks belong to the preset's
   // physical setup: they are replaced (and cleared when the preset has none), so a heavy
@@ -35,6 +35,8 @@ function loadPreset(p: Preset, scene: NonNullable<Preset['scene']>) {
   useSceneStore.getState().setTestCharge((p.test_charge as TestCharge | null | undefined) ?? null)
   useSceneStore.getState().setCircuits(p.circuits)
   useSceneStore.getState().setDisks(p.eddy_disks)
+  // The coaxial TEM model is standalone: a coax preset opens it, every other preset closes it.
+  useSceneStore.getState().setCoax(p.coax ?? null)
   const hint = p.view_hint
   const time = p.time
   useViewStore.getState().set({

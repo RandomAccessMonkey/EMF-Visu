@@ -209,6 +209,8 @@ class ModelContext(BaseModel):
     dynamic_circuits: int = 0
     eddy_disks: int = 0
     user_inductance: bool = False
+    # Coaxial-cable TEM model (standalone analytical model; see emf_core.coax).
+    coax: bool = False
     # Equations whose two sides the application computes independently and compares.
     checked_equation_ids: list[str] = []
     solver_id: str

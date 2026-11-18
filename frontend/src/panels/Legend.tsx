@@ -36,8 +36,18 @@ function Bar({ title, kind, ticks, note }: { title: string; kind: 'sequential' |
 export function ViewStatement() {
   const { t } = useT()
   const v = useViewStore()
+  const coax = useSceneStore((s) => s.coax !== null)
   const axis = 'xyz'[PLANE_BASIS[v.plane].nAxis]!
   const where = `${axis} = ${v.offset.toFixed(2)} m`
+  if (coax) {
+    return (
+      <div className="border-b border-border bg-panel/70 px-3 py-1.5 text-[11px] leading-snug text-muted">
+        <span className="font-semibold text-text">{t(v.mode === '2d' ? 'coax.view.title2d' : 'coax.view.title3d')}. </span>
+        {t(v.mode === '2d' ? 'coax.view.text2d' : 'coax.view.text3d')}{' '}
+        <span className="text-accent/80">{t(v.mode === '2d' ? 'coax.view.controls2d' : 'coax.view.controls3d')}</span>
+      </div>
+    )
+  }
   return (
     <div className="border-b border-border bg-panel/70 px-3 py-1.5 text-[11px] leading-snug text-muted">
       <span className="font-semibold text-text">{t(v.mode === '2d' ? 'view.crossSectionTitle' : 'view.3dTitle')}. </span>

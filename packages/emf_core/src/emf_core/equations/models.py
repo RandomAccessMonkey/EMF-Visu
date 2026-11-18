@@ -12,7 +12,7 @@ EquationStatus = Literal[
     "applicable", "applicable_under_assumptions", "not_applicable", "not_evaluated"
 ]
 Category = Literal["maxwell", "electrostatics", "magnetostatics", "induction", "motion",
-                   "circuits", "constitutive", "additional"]
+                   "circuits", "coax", "constitutive", "additional"]
 # A rule maps the model context to (status, reason). The reason is mandatory for every status
 # other than "applicable".
 Rule = Callable[[ModelContext], tuple[EquationStatus, LocalizedText | None]]

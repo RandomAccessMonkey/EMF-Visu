@@ -1035,6 +1035,66 @@ table, inductance matrix, I(t)/EMF/velocity/energy plots, per-band table and J(r
 circuits coloured by current sign with direction cones; B_prescribed / B_passive as vector
 fields and maps; probe sections. Equation category `circuits` (25 equations). Presets 26–29.
 
+## 9j. Coaxial cable: ideal TEM transmission line
+
+A standalone analytical module (`emf_core.coax`, routes `POST /coax/snapshot` and
+`POST /coax/trace`). It does not use the scene's charges or currents: while it is active the
+viewport shows the cable instead of the scene. Exactly what is implemented is an **ideal,
+lossless, single-mode TEM model**:
+
+- Geometry: inner conductor radius a, outer conductor inner radius b and outer radius c, length
+  L; validated 0 < a < b < c, b/a ≥ 1 + 10⁻⁶, L > 0, εr > 0, μr > 0, f > 0, σ > 0, finite
+  values, end > start (pydantic on the engine side, `sim/coax.ts` in the client, so an invalid
+  edit never reaches the engine or the renderer).
+- Assumptions: perfectly conducting conductors; homogeneous, linear, isotropic, non-dispersive,
+  lossless dielectric (ε = ε₀εr, μ = μ₀μr) filling a < r < b; TEM mode only. All fields are
+  zero inside the conductors and outside the shield (equal and opposite conductor currents and
+  charges). The approximate TE₁₁ cutoff f_c ≈ v_p/(π(a + b)/2) is reported, with a warning when
+  the excitation reaches it (Gaussian: 3/(2πσ), the 1 % point of its spectrum).
+- Fields (a < r < b): E_r = V/(r ln(b/a)), D = εE, H_φ = I/(2πr), B = μH, S = E × H = S_z ẑ
+  with S_z = VI/(2πr² ln(b/a)).
+- Line parameters: L′ = μ ln(b/a)/(2π), C′ = 2πε/ln(b/a), Z₀ = √(L′/C′), v_p = 1/√(L′C′),
+  t_delay = L/v_p (SI internally, engineering units in the UI). c enters no TEM parameter.
+- Conventions: z = 0 at the source, z = L at the load; V = inner minus outer potential;
+  I > 0 flows along +z on the inner conductor (−I on the shield); φ̂ = ẑ × r̂ (right-handed).
+- Excitation: f(t) is the forward wave the source launches at z = 0. Sinusoid
+  f = A sin(2πft) for t ≥ 0 and 0 before (switched on at t = 0, so a wave front travels down
+  the cable); Gaussian f = A exp(−(t − t₀)²/(2σ²)), σ the standard deviation.
+- Waves and reflections (closed form, no circuit solver): with T = t_delay,
+  V_f = Σₙ(Γ_LΓ_S)ⁿ f(t − 2nT − z/v_p), V_b = Γ_L Σₙ(Γ_LΓ_S)ⁿ f(t − 2(n + 1)T + z/v_p),
+  V = V_f + V_b, I = (V_f − V_b)/Z₀. Load: matched Γ_L = 0, open +1, short −1. Source end:
+  matched Γ_S = 0 (default), short −1 (ideal voltage source), open +1 (ideal current source).
+  The sum has one term unless both ends reflect; more than 20 000 round trips in the time range
+  are refused (422).
+- Snapshot (one simulation time, the playback grid point): parameters; V, I and their wave
+  components at the inspected z and along the cable (241 points); cross-section arrow samples
+  (4 log-spaced rings × 16 angles) and field lines (16 radial E lines; 8 H circles at
+  log-spaced radii, so line density ∝ |H| ∝ 1/r); 3D station samples; the Poynting check
+  (∬S_z dA by Gauss–Legendre in r (48) × midpoint in φ (64) of the pointwise E × H, against
+  V·I); the arrow scale (max |V|, |I| over the playback range); interface quantities; the probe.
+- Maxwell's laws, evaluated faithfully at a point of the dielectric (the probe point if it lies
+  there): ∇·D and ∇·B by central finite differences (zero to round-off); (∇×E)_φ = ∂E_r/∂z
+  against −∂B_φ/∂t and (∇×H)_r = −∂H_φ/∂z against ∂D_r/∂t (J_free = 0), each side both
+  analytic (from the exact wave derivatives) and as an independent central finite difference
+  of the field; the vanishing z components are reported, not assumed; the telegrapher
+  equations likewise. The curls are nonzero wherever the wave varies. At a switched-on
+  sinusoid's front the derivative jumps; the check is then reported as non-smooth.
+- Interfaces (distributional, never shown as volume values): ρ_s(a) = D_r(a⁺) = C′V/(2πa),
+  ρ_s(b) = −C′V/(2πb), K_z(a) = I/(2πa), K_z(b) = −I/(2πb), Q′ = C′V. A probe within 10⁻⁹ b of
+  r = a or r = b reports the dielectric-side limit with these surface densities.
+- Equations: category `coax` (16 entries, EN/HU) plus Gauss, Faraday, Ampère–Maxwell, the
+  linear constitutive laws, the Poynting vector and the energy density with coax-specific
+  statuses; every other registry entry is "not applicable" in this model (`equations/coax.py`
+  wraps the existing rules; they are unchanged without the coax model).
+- UI: Coax tab (geometry, dielectric, excitation, terminations, time range in ns,
+  cross-section position, layer switches, parameters, V/I with wave components, the power
+  check, waveforms V(z), Z₀I(z), V±(z) and V(t), Z₀I(t), V(L, t), P(t), probe, Maxwell checks,
+  interface quantities); 2D true-scale cross-section with dimensions, radial E and azimuthal H
+  arrows and lines, ⊙/⊗ for S; 3D cut-away cable (radial dimensions × 0.12 L/c, stated on
+  screen) with V(z, t) on the dielectric's cut faces and E, H and S arrows at 65 stations.
+  Arrow length ∝ |field| / its maximum over the playback range (linear `ArrowField` mode).
+  Presets 30 (100 MHz sine, matched) and 31 (Gaussian pulse, open). Projects store `coax`.
+
 ## 10. Implementation status and roadmap
 
 | Area | Phase 1 state |
@@ -1046,7 +1106,7 @@ fields and maps; probe sections. Equation category `circuits` (25 equations). Pr
 | Analytical solver | point charges in vacuum |
 | Probe | E, φ, D, ∇·E, ∇×E, ∇·D, ∇×D at a point, per-charge contributions, singular state with the distributional statement, finite-difference check (advanced). Energy density: later milestone |
 | Equation registry | all required equations plus superposition, with computed statuses and usage; derivations are empty |
-| Presets | 1–4, 9–16 and 21–29 available (22–25: moving conductors and a test particle, Phase 4B; 26–29: passive circuits, Phase 4C) (10 with three variants, 13 with two, view hints incl. a default probe point, 12–14 with default Ampère paths, 15, 16, 21 with measurement surfaces and a time range); 5–8 and 17–20 listed as unavailable |
+| Presets | 1–4, 9–16 and 21–31 available (22–25: moving conductors and a test particle, Phase 4B; 26–29: passive circuits, Phase 4C; 30–31: coaxial TEM cable) (10 with three variants, 13 with two, view hints incl. a default probe point, 12–14 with default Ampère paths, 15, 16, 21 with measurement surfaces and a time range); 5–8 and 17–20 listed as unavailable |
 | Persistence | projects (scene incl. current profiles + view settings incl. simulation time and range + Gaussian surfaces + Ampère paths + Faraday measurement surfaces) in PostgreSQL |
 | Job queue | analytical worker, progress, cancellation |
 | Time-dependent currents, timeline | implemented (Phase 4A): constant, sinusoidal, ramp and piecewise-linear profiles with analytical dI/dt, deterministic playback |
@@ -1061,6 +1121,7 @@ fields and maps; probe sections. Equation category `circuits` (25 equations). Pr
 | Induction (Phase 4A, magnetoquasistatic, stationary geometry) | B(t), ∂B/∂t, Coulomb-gauge vector potential of closed circular currents, E_ind = −∂A/∂t, magnetic flux through stationary surfaces, Faraday's law verified independently, Lenz signs, mutual inductance with reciprocity |
 | Moving conductors (Phase 4B) | rigid motion profiles, sliding-rod circuit, N-turn measurement coils, motional EMF ∮(u×B)·dl, generalized Faraday law verified against finite differences of the moving-surface flux, Lorentz force probe, Boris test-particle trajectories |
 | Passive circuits (Phase 4C) | induced currents of passive loops, coils and the sliding rod, coupled RL dynamics with mutual inductance, induced-current fields, forces, dynamic magnetic braking, axisymmetric annular-band eddy-current disk, energy accounting |
+| Coaxial cable (TEM) | ideal lossless coaxial transmission line: analytical E, D, H, B, S; L′, C′, Z₀, v_p, delay; sinusoidal and Gaussian excitation; matched/open/short load with optional source re-reflection; Poynting power vs V·I; Maxwell and telegrapher checks; interface charges and currents; 2D cross-section and 3D cut-away |
 | Induction (later) | not started: applied voltages and networks (Phase 5), moving sources, rotational dynamics, general 3D eddy currents (FEM), full-wave fields |
 | FEM (DOLFINx, Gmsh), FDTD (Meep) | not started (Phase 5); reported as unavailable |
 | Circuit subsystem (MNA) | not started; reported as unavailable |
@@ -1082,6 +1143,13 @@ Acceptance criteria per phase are unchanged from the approved plan:
 
 ## 11. Known limitations
 
+- Coaxial cable: ideal lossless single-mode TEM model only (perfect conductors, no conductor or
+  dielectric losses, no skin effect, no dispersion, no higher-order modes or radiation; the
+  TE₁₁ cutoff is only reported). Terminations are matched/open/short (no general load
+  impedance); the source is a launched forward wave with matched/short/open re-reflection, not
+  a Thevenin source with a voltage divider. Fields are only available in the module's own view
+  (they are not superposed with the scene's sources). The 3D view exaggerates radial
+  dimensions; the probe works in the 2D cross-section.
 - Phase 4C: passive circuits only (no applied voltage, networks or capacitors); constant
   conductivity; thin-conductor (uniform current, no skin effect) model; the thin-loop ℒ omits
   the internal inductance; rectangles/polygons/rods need a given ℒ (constant, also for the rod

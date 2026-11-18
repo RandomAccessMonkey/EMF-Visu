@@ -9,7 +9,8 @@ equations govern it and under what assumptions.
 (magnetostatic sources: wires and loops), Phase 3B (solenoids, toroids, permanent magnets and
 Ampère's law), Phase 4A (magnetoquasistatic induction: Faraday's and Lenz's laws) and Phase 4B
 (moving conductors, motional EMF and the Lorentz force) and Phase 4C (passive circuits,
-induced currents, magnetic braking and an axisymmetric eddy-current disk) are implemented.**
+induced currents, magnetic braking and an axisymmetric eddy-current disk) are implemented, plus
+an ideal coaxial-cable TEM module.**
 What works today:
 
 - Any number of positive and negative ideal point charges in vacuum, and dipoles made of two
@@ -61,7 +62,12 @@ What works today:
   induced currents' own field (prescribed and induced B shown separately), forces on the
   conductors, a dynamically braked sliding rod, an axisymmetric annular-band eddy-current disk,
   and Joule heat / magnetic / kinetic energy accounting (Circuits tab).
-- Presets 1–4, 9–16 and 21–29, saved projects, English and Hungarian, beginner and advanced levels.
+- Coaxial cable (ideal, lossless, TEM only): analytical radial E and azimuthal H between the
+  conductors, L′, C′, Z₀, v_p and delay, sinusoidal or Gaussian travelling waves with matched,
+  open or short loads (closed-form reflections), the Poynting vector integrated over the
+  cross-section against V·I, Maxwell and telegrapher checks, and a 2D cross-section and 3D
+  cut-away view (Coax tab, presets 30–31).
+- Presets 1–4, 9–16 and 21–31, saved projects, English and Hungarian, beginner and advanced levels.
 - High-resolution solves as cancellable jobs on a separate worker, with live progress.
 
 Field lines, contours and surfaces are numerical constructions on top of the exact field; the

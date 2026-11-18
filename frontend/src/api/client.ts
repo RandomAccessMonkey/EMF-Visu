@@ -3,6 +3,9 @@ import type {
   AmpereHeader,
   AmperePath,
   CircuitResult,
+  CoaxSnapshot,
+  CoaxSpec,
+  CoaxTrace,
   CurrentProfile,
   EddyDisk,
   EquationsResponse,
@@ -112,8 +115,8 @@ export const api = {
     return (await res.json()) as ProbeResponse
   },
 
-  async equations(scene: Scene, signal?: AbortSignal, surfaces: GaussSurface[] = [], paths: AmperePath[] = [], fluxSurfaces: FluxSurface[] = [], testCharge: TestCharge | null = null, circuits: PassiveCircuit[] = [], eddyDisks: EddyDisk[] = []): Promise<EquationsResponse> {
-    const res = await request('/equations/evaluate', json({ scene, surfaces, paths, flux_surfaces: fluxSurfaces, test_charge: testCharge, circuits, eddy_disks: eddyDisks }, 'POST', signal))
+  async equations(scene: Scene, signal?: AbortSignal, surfaces: GaussSurface[] = [], paths: AmperePath[] = [], fluxSurfaces: FluxSurface[] = [], testCharge: TestCharge | null = null, circuits: PassiveCircuit[] = [], eddyDisks: EddyDisk[] = [], coax: CoaxSpec | null = null): Promise<EquationsResponse> {
+    const res = await request('/equations/evaluate', json({ scene, surfaces, paths, flux_surfaces: fluxSurfaces, test_charge: testCharge, circuits, eddy_disks: eddyDisks, coax }, 'POST', signal))
     return (await res.json()) as EquationsResponse
   },
 
@@ -139,6 +142,16 @@ export const api = {
     const res = await request('/circuits', json({ scene, circuits: req }, 'POST', signal))
     const body = (await res.json()) as CircuitResult
     return { ...body, cache: res.headers.get('X-EMF-Cache') === 'hit' ? 'hit' : 'miss' }
+  },
+  /** Coaxial-cable TEM model at one simulation time (closed form). */
+  async coaxSnapshot(req: { spec: CoaxSpec; t_s: number; z_m: number; range: { start_s: number; end_s: number }; probe_m: [number, number] | null; stations?: number }, signal?: AbortSignal): Promise<CoaxSnapshot> {
+    const res = await request('/coax/snapshot', json(req, 'POST', signal))
+    return (await res.json()) as CoaxSnapshot
+  },
+  /** V(t), I(t), P(t) at one position and at both cable ends over the time range. */
+  async coaxTrace(req: { spec: CoaxSpec; z_m: number; range: { start_s: number; end_s: number }; count: number }, signal?: AbortSignal): Promise<CoaxTrace> {
+    const res = await request('/coax/trace', json(req, 'POST', signal))
+    return (await res.json()) as CoaxTrace
   },
   /** Lorentz force on a test charge at one point and time (Phase 4B). */
   async lorentz(scene: Scene, req: LorentzRequest, signal?: AbortSignal): Promise<LorentzResult> {
@@ -207,8 +220,9 @@ export const api = {
     testCharge: TestCharge | null = null,
     circuits: PassiveCircuit[] = [],
     eddyDisks: EddyDisk[] = [],
+    coax: CoaxSpec | null = null,
   ): Promise<ProjectOut> {
-    const init = json({ name, scene, view, surfaces, paths, flux_surfaces: fluxSurfaces, test_charge: testCharge, circuits, eddy_disks: eddyDisks }, id ? 'PUT' : 'POST')
+    const init = json({ name, scene, view, surfaces, paths, flux_surfaces: fluxSurfaces, test_charge: testCharge, circuits, eddy_disks: eddyDisks, coax }, id ? 'PUT' : 'POST')
     return (await (await request(id ? `/projects/${id}` : '/projects', init)).json()) as ProjectOut
   },
   async deleteProject(id: string): Promise<void> {

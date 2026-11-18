@@ -102,3 +102,12 @@ export type ElementInfo = S['ElementInfo']
 export type MatrixInfo = S['MatrixInfo']
 export type PassiveFilament = S['PassiveFilament']
 export type PassiveProbe = S['PassiveProbe']
+
+/** Coaxial-cable TEM model (standalone analytical model). */
+export type CoaxSpec = S['CoaxSpec']
+export type CoaxGeometry = S['CoaxGeometry']
+export type CoaxExcitation = CoaxSpec['excitation']
+export type CoaxTermination = NonNullable<CoaxSpec['load']>
+export type CoaxSnapshot = S['CoaxSnapshot']
+export type CoaxTrace = S['CoaxTrace']
+export type CoaxLawCheck = S['LawCheck']

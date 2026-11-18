@@ -22,6 +22,9 @@ import { useInduction } from '@/sim/useInduction'
 import { useLorentz } from '@/sim/useLorentz'
 import { useCircuits } from '@/sim/useCircuits'
 import { CircuitsPanel } from '@/panels/CircuitsPanel'
+import { CoaxPanel } from '@/panels/CoaxPanel'
+import { CoaxLegend } from '@/panels/CoaxLegend'
+import { useCoax } from '@/sim/coax'
 import { LorentzPanel } from '@/panels/LorentzPanel'
 import { isTimeDependent } from '@/sim/request'
 import { useFlux } from '@/sim/useFlux'
@@ -29,7 +32,10 @@ import { useSimulation } from '@/sim/useSimulation'
 import { useSceneStore } from '@/state/sceneStore'
 import { useViewStore } from '@/state/viewStore'
 
-const TABS = ['parameters', 'visualization', 'gauss', 'ampere', 'faraday', 'lorentz', 'circuits', 'equations', 'results'] as const
+/** The coaxial TEM model plays in nanoseconds (Δt down to 1 fs). */
+const COAX_TIME_UNIT = { factor: 1e-9, unit: 'ns', minStep: 1e-15 }
+
+const TABS = ['parameters', 'visualization', 'gauss', 'ampere', 'faraday', 'lorentz', 'circuits', 'coax', 'equations', 'results'] as const
 
 function useKeyboardShortcuts() {
   useEffect(() => {
@@ -68,6 +74,7 @@ export default function App() {
   const induction = useInduction()
   const lorentz = useLorentz()
   const circuits = useCircuits()
+  const coax = useCoax()
   const hasCircuits = useSceneStore((s) => s.circuits.length + s.eddyDisks.length > 0)
   const trajectoryOn = useSceneStore((s) => !!s.testCharge?.enabled && !!s.testCharge.trajectory.enabled)
   const timeDependent = useSceneStore((s) => isTimeDependent(s.scene))
@@ -110,7 +117,11 @@ export default function App() {
         </aside>
         <main className="order-1 flex min-h-[45vh] min-w-0 flex-1 flex-col lg:order-2">
           <ViewStatement />
-          {(timeDependent || hasFluxSurfaces || trajectoryOn || hasCircuits) && <TimeBar waiting={sim.magnetic.isFetching || sim.magnetic.isStale || induction.isFetching || lorentz.trajectoryFetching || circuits.isFetching} />}
+          {coax.active ? (
+            <TimeBar heading="coax.timeTitle" waiting={coax.isFetching} timeUnit={COAX_TIME_UNIT} />
+          ) : (
+            (timeDependent || hasFluxSurfaces || trajectoryOn || hasCircuits) && <TimeBar waiting={sim.magnetic.isFetching || sim.magnetic.isStale || induction.isFetching || lorentz.trajectoryFetching || circuits.isFetching} />
+          )}
           <div className="relative min-h-0 flex-1">
           <Viewport
             flux={sim.error ? undefined : flux.data}
@@ -123,7 +134,11 @@ export default function App() {
             induction={induction.data}
             lorentz={lorentz}
             circuits={circuits}
+            coax={coax}
           />
+          {coax.active ? (
+            <CoaxLegend coax={coax} />
+          ) : (
           <Legend
             heat={(isMagneticKind(heatKind) ? sim.magnetic.error : sim.error) ? null : (image?.legend ?? null)}
             arrows={sim.error ? null : arrowScale}
@@ -132,8 +147,9 @@ export default function App() {
             magnetic={sim.magnetic.error ? undefined : sim.magnetic.result}
             magneticArrows={sim.magnetic.error ? null : magneticArrowScale}
           />
+          )}
           <AnimatePresence>
-            {error && (
+            {error && !coax.active && (
               <motion.div
                 initial={{ opacity: 0, y: -8 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -166,6 +182,7 @@ export default function App() {
             <Tabs.Content value="faraday"><FaradayPanel induction={induction.data} stale={induction.isStale} error={induction.error} /></Tabs.Content>
             <Tabs.Content value="lorentz"><LorentzPanel data={lorentz} /></Tabs.Content>
             <Tabs.Content value="circuits"><CircuitsPanel data={circuits} /></Tabs.Content>
+            <Tabs.Content value="coax"><CoaxPanel coax={coax} /></Tabs.Content>
             <Tabs.Content value="equations"><EquationsPanel /></Tabs.Content>
             <Tabs.Content value="results"><ResultsPanel sim={sim} flux={flux.data} /></Tabs.Content>
           </div>

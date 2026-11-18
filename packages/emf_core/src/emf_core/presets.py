@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from .ampere import AmperePath
 from .circuits import EddyDisk, PassiveCircuit
+from .coax import CoaxSpec
 from .i18n import L, LocalizedText
 from .induction import FluxSurface
 from .lorentz import TestCharge
@@ -85,6 +86,8 @@ class Preset(BaseModel):
     # Phase 4C: passive circuits and eddy-current disks.
     circuits: list[PassiveCircuit] = []
     eddy_disks: list[EddyDisk] = []
+    # Coaxial-cable TEM model (standalone analytical model, shown instead of the scene).
+    coax: CoaxSpec | None = None
 
 
 def _charge(oid: str, name: str, q: float, pos: tuple[float, float, float],
@@ -906,8 +909,77 @@ _CIRCUITS = [
     ),
 ]
 
+# ------------------------------------------------------- coaxial cable, TEM transmission line
+
+_COAX_GEOMETRY = {"inner_radius_m": 0.5e-3, "shield_inner_radius_m": 1.67e-3,
+                  "shield_outer_radius_m": 2.0e-3, "length_m": 2.0}
+_COAX_MATERIAL = {"relative_permittivity": 2.1, "relative_permeability": 1.0}
+_EQ_COAX = ["coax_e_field", "coax_h_field", "coax_inductance", "coax_capacitance",
+            "coax_impedance", "coax_velocity", "coax_travelling_wave", "coax_reflection",
+            "coax_poynting", "coax_power", "coax_faraday", "coax_ampere_maxwell"]
+# An empty scene: the coaxial model is standalone (no point charges or current sources).
+_COAX_SCENE = Scene(objects=[], domain=Domain(min_m=(-0.01, -0.01, -0.01),
+                                              max_m=(0.01, 0.01, 0.01)))
+
+_COAX = [
+    Preset(
+        id="coax_tem_sinusoidal", number=30, available=True, equation_ids=_EQ_COAX,
+        name=L("Coaxial cable: TEM sinusoidal wave", "Koaxiális kábel: szinuszos TEM-hullám"),
+        description=L("Ideal lossless coaxial cable (a = 0.50 mm, b = 1.67 mm, c = 2.00 mm, "
+                      "L = 2.0 m, PTFE-like εr = 2.1) driven at z = 0 by a 1 V, 100 MHz sine "
+                      "switched on at t = 0, with a matched load.",
+                      "Ideális veszteségmentes koaxiális kábel (a = 0,50 mm, b = 1,67 mm, "
+                      "c = 2,00 mm, L = 2,0 m, PTFE-szerű εr = 2,1), a z = 0 végen 1 V-os, "
+                      "100 MHz-es, t = 0-kor bekapcsolt szinusszal gerjesztve, illesztett "
+                      "lezárással."),
+        expected_behavior=L("Z0 ≈ 50 Ω, vp ≈ 0.69 c, delay ≈ 9.7 ns. The wave front reaches the "
+                            "load after one delay and is absorbed: V and I stay in phase "
+                            "everywhere, E is radial, H azimuthal, and S = E × H points along "
+                            "+z; the cross-section integral of S equals V·I.",
+                            "Z0 ≈ 50 Ω, vp ≈ 0,69 c, késleltetés ≈ 9,7 ns. A hullámfront egy "
+                            "késleltetés után éri el a lezárást, és elnyelődik: V és I mindenhol "
+                            "fázisban van, E sugárirányú, H azimutális, S = E × H a +z irányba "
+                            "mutat; S keresztmetszeti integrálja egyenlő V·I-vel."),
+        scene=_COAX_SCENE, view_hint=ViewHint(mode="3d"),
+        coax=CoaxSpec.model_validate({
+            "geometry": _COAX_GEOMETRY, "material": _COAX_MATERIAL,
+            "excitation": {"type": "sinusoidal", "amplitude_V": 1.0, "frequency_Hz": 100e6},
+            "load": "matched", "source": "matched"}),
+        time=TimeHint(start_s=0.0, end_s=20e-9, step_s=0.1e-9, initial_s=12e-9),
+    ),
+    Preset(
+        id="coax_gaussian_reflection", number=31, available=True,
+        equation_ids=[*_EQ_COAX, "telegrapher_v", "telegrapher_i"],
+        name=L("Coaxial cable: Gaussian pulse and reflection",
+               "Koaxiális kábel: Gauss-impulzus és reflexió"),
+        description=L("Same cable as preset 30, driven by a Gaussian pulse (1 V, centre 2 ns, "
+                      "σ = 0.5 ns) and left open at z = L (Γ_L = +1); matched source.",
+                      "Ugyanaz a kábel, mint a 30. mintában, Gauss-impulzussal gerjesztve "
+                      "(1 V, középpont 2 ns, σ = 0,5 ns), z = L-ben szakadással (Γ_L = +1); "
+                      "illesztett forrás."),
+        expected_behavior=L("The pulse travels to the open end (≈ 9.7 ns), where the reflected "
+                            "voltage adds (V doubles at the load) and the current cancels; the "
+                            "reflected pulse returns with the same voltage sign but negative "
+                            "current, so S reverses to −z. Switch the load to short (Γ = −1) "
+                            "or matched (Γ = 0) to compare.",
+                            "Az impulzus a szakadt végig halad (≈ 9,7 ns), ahol a visszavert "
+                            "feszültség hozzáadódik (V a lezárásnál kétszereződik), az áram "
+                            "kioltódik; a visszavert impulzus azonos feszültség-, de negatív "
+                            "áramelőjellel tér vissza, így S −z irányba fordul. A lezárás "
+                            "rövidzárra (Γ = −1) vagy illesztettre (Γ = 0) állítható "
+                            "összehasonlításként."),
+        scene=_COAX_SCENE, view_hint=ViewHint(mode="3d"),
+        coax=CoaxSpec.model_validate({
+            "geometry": _COAX_GEOMETRY, "material": _COAX_MATERIAL,
+            "excitation": {"type": "gaussian", "amplitude_V": 1.0, "center_s": 2e-9,
+                           "width_s": 0.5e-9},
+            "load": "open", "source": "matched"}),
+        time=TimeHint(start_s=0.0, end_s=25e-9, step_s=0.1e-9, initial_s=7e-9),
+    ),
+]
+
 PRESETS: list[Preset] = sorted(_AVAILABLE + _MAGNETIC + _COILS_AND_MAGNETS + _INDUCTION + _MOTION
-                               + _CIRCUITS + [
+                               + _CIRCUITS + _COAX + [
     Preset(id=pid, number=n, name=L(en, hu), available=False, planned_phase=phase)
     for n, pid, en, hu, phase in _PLANNED
 ], key=lambda p: p.number)

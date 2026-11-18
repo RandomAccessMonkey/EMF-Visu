@@ -193,6 +193,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/coax/snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Coax Snapshot
+         * @description Ideal coaxial cable, TEM mode, at one simulation time: line parameters, V and I (with
+         *     their forward/backward waves) at the selected cross-section and along the cable, the
+         *     cross-section fields, the Poynting power check, the differential-law checks, the interface
+         *     (surface) quantities and the probe. Closed form; no numerical solve.
+         */
+        post: operations["coax_snapshot_api_v1_coax_snapshot_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/coax/trace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Coax Trace
+         * @description V(t), I(t) and P(t) at one position, and V and I at the source and load ends, over the
+         *     simulation time range (closed form).
+         */
+        post: operations["coax_trace_api_v1_coax_trace_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lorentz": {
         parameters: {
             query?: never;
@@ -517,6 +561,24 @@ export interface components {
             non_finite_count: number;
         };
         /**
+         * Boundary
+         * @description Surface (distributional) quantities on the conductor/dielectric interfaces at z.
+         */
+        Boundary: {
+            /** Rho S Inner C Per M2 */
+            rho_s_inner_C_per_m2: number;
+            /** Rho S Shield C Per M2 */
+            rho_s_shield_C_per_m2: number;
+            /** K Z Inner A Per M */
+            K_z_inner_A_per_m: number;
+            /** K Z Shield A Per M */
+            K_z_shield_A_per_m: number;
+            /** Q Per M C */
+            Q_per_m_C: number;
+            /** I A */
+            I_A: number;
+        };
+        /**
          * BoundaryCondition
          * @description Boundary condition attached to an object or to the domain boundary.
          *
@@ -579,6 +641,29 @@ export interface components {
                 number,
                 number
             ];
+        };
+        /** Calculus */
+        Calculus: {
+            /** Point M */
+            point_m: [
+                number,
+                number,
+                number
+            ];
+            /** R M */
+            r_m: number;
+            /** Div D */
+            div_D: number;
+            /** Div B */
+            div_B: number;
+            /** Div Scale */
+            div_scale: number;
+            /** Div B Scale */
+            div_B_scale: number;
+            /** Checks */
+            checks: components["schemas"]["LawCheck"][];
+            /** Telegrapher */
+            telegrapher: components["schemas"]["LawCheck"][];
         };
         /** CirclePath */
         CirclePath: {
@@ -764,6 +849,130 @@ export interface components {
              */
             type: "circular_loop";
         };
+        /** CoaxGeometry */
+        CoaxGeometry: {
+            /** Inner Radius M */
+            inner_radius_m: number;
+            /** Shield Inner Radius M */
+            shield_inner_radius_m: number;
+            /** Shield Outer Radius M */
+            shield_outer_radius_m: number;
+            /** Length M */
+            length_m: number;
+        };
+        /** CoaxMaterial */
+        CoaxMaterial: {
+            /** Relative Permittivity */
+            relative_permittivity: number;
+            /** Relative Permeability */
+            relative_permeability: number;
+        };
+        /** CoaxSnapshot */
+        CoaxSnapshot: {
+            params: components["schemas"]["LineParameters"];
+            /** T S */
+            t_s: number;
+            /** Z M */
+            z_m: number;
+            /** V */
+            V: number;
+            /** I */
+            I: number;
+            /** Vf */
+            Vf: number;
+            /** Vb */
+            Vb: number;
+            /** If */
+            If: number;
+            /** Ib */
+            Ib: number;
+            /** Scale V */
+            scale_V: number;
+            /** Scale I */
+            scale_I: number;
+            /** Warnings */
+            warnings: string[];
+            line: components["schemas"]["LineProfile"];
+            cross_section: components["schemas"]["CrossSection"];
+            stations: components["schemas"]["Stations"];
+            power: components["schemas"]["Power"];
+            calculus: components["schemas"]["Calculus"];
+            boundary: components["schemas"]["Boundary"];
+            probe: components["schemas"]["Probe"] | null;
+        };
+        /** CoaxSnapshotRequest */
+        CoaxSnapshotRequest: {
+            spec: components["schemas"]["CoaxSpec"];
+            /** T S */
+            t_s: number;
+            /** Z M */
+            z_m: number;
+            range: components["schemas"]["TimeRange"];
+            /** Probe M */
+            probe_m?: [
+                number,
+                number
+            ] | null;
+            /**
+             * Stations
+             * @default 33
+             */
+            stations: number;
+        };
+        /**
+         * CoaxSpec
+         * @description The complete physical definition of the cable model.
+         */
+        CoaxSpec: {
+            geometry: components["schemas"]["CoaxGeometry"];
+            material: components["schemas"]["CoaxMaterial"];
+            /** Excitation */
+            excitation: components["schemas"]["SinusoidalExcitation"] | components["schemas"]["GaussianExcitation"];
+            /**
+             * Load
+             * @default matched
+             * @enum {string}
+             */
+            load: "matched" | "open" | "short";
+            /**
+             * Source
+             * @default matched
+             * @enum {string}
+             */
+            source: "matched" | "open" | "short";
+        };
+        /** CoaxTrace */
+        CoaxTrace: {
+            params: components["schemas"]["LineParameters"];
+            /** Z M */
+            z_m: number;
+            /** T S */
+            t_s: number[];
+            /** V */
+            V: number[];
+            /** I */
+            I: number[];
+            /** P W */
+            P_W: number[];
+            /** V Source */
+            V_source: number[];
+            /** V Load */
+            V_load: number[];
+            /** I Load */
+            I_load: number[];
+        };
+        /** CoaxTraceRequest */
+        CoaxTraceRequest: {
+            spec: components["schemas"]["CoaxSpec"];
+            /** Z M */
+            z_m: number;
+            range: components["schemas"]["TimeRange"];
+            /**
+             * Count
+             * @default 401
+             */
+            count: number;
+        };
         /**
          * CoilPrimitive
          * @description Geometry of a finite solenoid (Phase 3B): N coaxial circular turns of radius ``radius_m``
@@ -920,6 +1129,37 @@ export interface components {
              * @default 0
              */
             t0_s: number;
+        };
+        /**
+         * CrossSection
+         * @description Arrow samples in the cross-section at z (dielectric only), x-y Cartesian.
+         */
+        CrossSection: {
+            /** Points M */
+            points_m: [
+                number,
+                number
+            ][];
+            /** E */
+            E: [
+                number,
+                number
+            ][];
+            /** H */
+            H: [
+                number,
+                number
+            ][];
+            /** S Z */
+            S_z: number[];
+            /** E Line Angles Rad */
+            e_line_angles_rad: number[];
+            /** H Line Radii M */
+            h_line_radii_m: number[];
+            /** E Sign */
+            e_sign: number;
+            /** H Sign */
+            h_sign: number;
         };
         /** Crossing */
         Crossing: {
@@ -1328,7 +1568,7 @@ export interface components {
              * Category
              * @enum {string}
              */
-            category: "maxwell" | "electrostatics" | "magnetostatics" | "induction" | "motion" | "circuits" | "constitutive" | "additional";
+            category: "maxwell" | "electrostatics" | "magnetostatics" | "induction" | "motion" | "circuits" | "coax" | "constitutive" | "additional";
             name: components["schemas"]["LocalizedText"];
             /** Latex */
             latex: string;
@@ -1392,6 +1632,7 @@ export interface components {
              * @default []
              */
             eddy_disks: components["schemas"]["EddyDisk"][];
+            coax?: components["schemas"]["CoaxSpec"] | null;
         };
         /** EquationsResponse */
         EquationsResponse: {
@@ -1698,6 +1939,20 @@ export interface components {
             ] | null;
             display?: components["schemas"]["SurfaceDisplay"] | null;
         };
+        /** GaussianExcitation */
+        GaussianExcitation: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "gaussian";
+            /** Amplitude V */
+            amplitude_V: number;
+            /** Center S */
+            center_s: number;
+            /** Width S */
+            width_s: number;
+        };
         /**
          * GroupPrimitive
          * @description A container with no geometry of its own: its transform applies to its children.
@@ -1966,6 +2221,26 @@ export interface components {
             /** Nz */
             nz: number;
         };
+        /** LawCheck */
+        LawCheck: {
+            /** Id */
+            id: string;
+            /** Component */
+            component: string;
+            /** Unit */
+            unit: string;
+            lhs: components["schemas"]["ScalarCheck"];
+            rhs: components["schemas"]["ScalarCheck"];
+            /** Residual */
+            residual: number;
+            /** Fd Rel Error */
+            fd_rel_error: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "agree" | "nonsmooth" | "zero_field";
+        };
         /** Lenz */
         Lenz: {
             /**
@@ -1993,6 +2268,33 @@ export interface components {
             /** Count */
             count: number;
         };
+        /** LineParameters */
+        LineParameters: {
+            /** Epsilon F Per M */
+            epsilon_F_per_m: number;
+            /** Mu H Per M */
+            mu_H_per_m: number;
+            /** Ln B Over A */
+            ln_b_over_a: number;
+            /** L Per M H */
+            L_per_m_H: number;
+            /** C Per M F */
+            C_per_m_F: number;
+            /** Z0 Ohm */
+            Z0_ohm: number;
+            /** Vp M Per S */
+            vp_m_per_s: number;
+            /** Vp Over C */
+            vp_over_c: number;
+            /** Delay S */
+            delay_s: number;
+            /** Gamma Load */
+            gamma_load: number;
+            /** Gamma Source */
+            gamma_source: number;
+            /** Te11 Cutoff Hz */
+            te11_cutoff_Hz: number;
+        };
         /**
          * LinePrimitive
          * @description Straight segment along local z, centred on the local origin.
@@ -2008,6 +2310,21 @@ export interface components {
              * @default 1
              */
             length_m: number;
+        };
+        /** LineProfile */
+        LineProfile: {
+            /** Z M */
+            z_m: number[];
+            /** V */
+            V: number[];
+            /** I */
+            I: number[];
+            /** Vf */
+            Vf: number[];
+            /** Vb */
+            Vb: number[];
+            /** P W */
+            P_W: number[];
         };
         /** LocalizedText */
         LocalizedText: {
@@ -2426,6 +2743,11 @@ export interface components {
              * @default false
              */
             user_inductance: boolean;
+            /**
+             * Coax
+             * @default false
+             */
+            coax: boolean;
             /**
              * Checked Equation Ids
              * @default []
@@ -3046,6 +3368,22 @@ export interface components {
              */
             closed: boolean;
         };
+        /** Power */
+        Power: {
+            /** P Poynting W */
+            P_poynting_W: number;
+            /** P Vi W */
+            P_VI_W: number;
+            /** Abs Error W */
+            abs_error_W: number;
+            /** Rel Error */
+            rel_error: number | null;
+            /** Nodes */
+            nodes: [
+                number,
+                number
+            ];
+        };
         /** Preset */
         Preset: {
             /** Id */
@@ -3093,6 +3431,7 @@ export interface components {
              * @default []
              */
             eddy_disks: components["schemas"]["EddyDisk"][];
+            coax?: components["schemas"]["CoaxSpec"] | null;
         };
         /**
          * PresetVariant
@@ -3105,6 +3444,68 @@ export interface components {
             description: components["schemas"]["LocalizedText"];
             expected_behavior: components["schemas"]["LocalizedText"];
             scene: components["schemas"]["Scene"];
+        };
+        /** Probe */
+        Probe: {
+            /** Point M */
+            point_m: [
+                number,
+                number,
+                number
+            ];
+            /** R M */
+            r_m: number;
+            /** Phi Rad */
+            phi_rad: number;
+            /**
+             * Region
+             * @enum {string}
+             */
+            region: "inner_conductor" | "inner_surface" | "dielectric" | "shield_surface" | "shield" | "outside";
+            /** E */
+            E: [
+                number,
+                number,
+                number
+            ];
+            /** D */
+            D: [
+                number,
+                number,
+                number
+            ];
+            /** H */
+            H: [
+                number,
+                number,
+                number
+            ];
+            /** B */
+            B: [
+                number,
+                number,
+                number
+            ];
+            /** S */
+            S: [
+                number,
+                number,
+                number
+            ];
+            /** E R */
+            E_r: number;
+            /** H Phi */
+            H_phi: number;
+            /** S Z */
+            S_z: number;
+            /** W E J Per M3 */
+            w_e_J_per_m3: number;
+            /** W M J Per M3 */
+            w_m_J_per_m3: number;
+            /** Surface Charge C Per M2 */
+            surface_charge_C_per_m2?: number | null;
+            /** Surface Current A Per M */
+            surface_current_A_per_m?: number | null;
         };
         /** ProbeBody */
         ProbeBody: {
@@ -3447,6 +3848,7 @@ export interface components {
              * @default []
              */
             eddy_disks: components["schemas"]["EddyDisk"][];
+            coax?: components["schemas"]["CoaxSpec"] | null;
         };
         /** ProjectOut */
         ProjectOut: {
@@ -3495,6 +3897,7 @@ export interface components {
              * @default []
              */
             eddy_disks: components["schemas"]["EddyDisk"][];
+            coax?: components["schemas"]["CoaxSpec"] | null;
         };
         /** ProjectSummary */
         ProjectSummary: {
@@ -3689,6 +4092,17 @@ export interface components {
          * @enum {string}
          */
         Role: "geometry_only" | "charge_source" | "current_source" | "conductor" | "dielectric" | "magnetic_material";
+        /**
+         * ScalarCheck
+         * @description One side of a differential law: the analytic value (from the wave derivatives) and an
+         *     independent central finite difference of the field itself.
+         */
+        ScalarCheck: {
+            /** Analytic */
+            analytic: number;
+            /** Numerical */
+            numerical: number;
+        };
         /** Scene */
         Scene: {
             /**
@@ -3797,6 +4211,18 @@ export interface components {
         SimulationBody: {
             scene: components["schemas"]["Scene"];
             request: components["schemas"]["SolveRequest"];
+        };
+        /** SinusoidalExcitation */
+        SinusoidalExcitation: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "sinusoidal";
+            /** Amplitude V */
+            amplitude_V: number;
+            /** Frequency Hz */
+            frequency_Hz: number;
         };
         /** SinusoidalProfile */
         SinusoidalProfile: {
@@ -4033,6 +4459,26 @@ export interface components {
             type: "stationary";
         };
         /**
+         * Stations
+         * @description Cross-sections along the cable for the 3D view: per station V, I and sample vectors.
+         */
+        Stations: {
+            /** Z M */
+            z_m: number[];
+            /** V */
+            V: number[];
+            /** I */
+            I: number[];
+            /** R M */
+            r_m: number;
+            /** E R */
+            E_r: number[];
+            /** H Phi */
+            H_phi: number[];
+            /** S Z */
+            S_z: number[];
+        };
+        /**
          * SurfaceDisplay
          * @description Visualization metadata. Ignored by the engine and excluded from every cache key.
          */
@@ -4249,6 +4695,13 @@ export interface components {
              * @default 0
              */
             initial_s: number;
+        };
+        /** TimeRange */
+        TimeRange: {
+            /** Start S */
+            start_s: number;
+            /** End S */
+            end_s: number;
         };
         /**
          * TimeSourceInfo
@@ -5211,6 +5664,108 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CircuitResult"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    coax_snapshot_api_v1_coax_snapshot_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoaxSnapshotRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoaxSnapshot"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    coax_trace_api_v1_coax_trace_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoaxTraceRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoaxTrace"];
                 };
             };
             /** @description Request Entity Too Large */
