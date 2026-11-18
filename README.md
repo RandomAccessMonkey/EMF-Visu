@@ -4,6 +4,22 @@ An interactive electromagnetic field laboratory in which every picture is backed
 calculation. Build a configuration, change a parameter, see the field respond, and read which
 equations govern it and under what assumptions.
 
+## Public source review and usage terms
+
+EMF-Visu is made publicly visible for source-code review, educational evaluation, testing and
+bug reports. **It is not released under an open-source licence.** The project is provided under
+the restricted terms in [LICENSE](LICENSE).
+
+You may inspect the source and run an unmodified copy for personal, non-commercial evaluation
+and testing. This does not grant permission to create or distribute derivative products, offer
+the software as a commercial service, sublicense it, or otherwise commercially exploit it.
+Written permission from the copyright holder is required for uses outside the permissions in
+[LICENSE](LICENSE).
+
+GitHub may provide platform features such as public forks under its own Terms of Service. A
+GitHub fork does not by itself grant a separate licence to commercially use or redistribute the
+software. Please use [GitHub Issues](../../issues) for reproducible bug reports and feedback.
+
 **Status: Phase 1 (Foundation), Phase 2A (point-charge electrostatics), Phase 2B-1
 (divergence and curl), Phase 2B-2 (Gauss's law and the divergence theorem), Phase 3A
 (magnetostatic sources: wires and loops), Phase 3B (solenoids, toroids, permanent magnets and
@@ -47,7 +63,7 @@ What works today:
   independently from where currents cross the path's surface; the result is reported as
   verified, not converged, ambiguous, unsupported or a mismatch.
 - Induction (Phase 4A, magnetoquasistatic): time-dependent source currents (constant,
-  sinusoidal, ramp, piecewise linear) with time controls and deterministic playback; B(t), ∂B/∂t
+  sinusoidal, ramp, piecewise linear) with time controls and continuous looping playback; B(t), ∂B/∂t
   and the induced electric field E_ind = −∂A/∂t (shown separately from the electrostatic E);
   magnetic flux through stationary measurement surfaces, the EMF ∮E_ind·dl compared with −dΦ/dt
   (Faraday tab), Lenz's-law signs, and mutual inductance with a reciprocity check. No moving
@@ -73,11 +89,9 @@ What works today:
 Field lines, contours and surfaces are numerical constructions on top of the exact field; the
 Results panel states the method and its limits for each.
 
-Everything else in the product definition (conductors, dielectrics, extended charge
-distributions, nonlinear or field-dependent magnetic materials, circuit networks with
-sources, FEM, FDTD,
-circuits, open-surface flux tools) is **not implemented
-yet**. Such features are disabled or refused with a reason; nothing is approximated silently.
+Other planned capabilities, including extended charge distributions, nonlinear or
+field-dependent magnetic materials, general circuit networks with independent sources,
+FEM, FDTD and open-surface flux tools, are **not implemented yet**. Such features are disabled or refused with a reason; nothing is approximated silently.
 See [docs/architecture.md](docs/architecture.md) for the full status table.
 
 ## Run with Docker (local preview)

@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Project documentation
+    url: https://github.com/RandomAccessMonkey/EMF-Visu#documentation
+    about: Check the current model coverage and known limitations before reporting an unsupported feature.

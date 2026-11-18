@@ -1,0 +1,73 @@
+name: Bug report
+description: Report a reproducible problem in a model, calculation, visualization, or workflow.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping test EMF-Visu. Please report one problem per issue.
+        Do not include passwords, API keys, tokens, private session links, or personal data.
+  - type: input
+    id: version
+    attributes:
+      label: EMF-Visu version or commit
+      description: For example, the commit shown in the repository or the version you downloaded.
+      placeholder: c43bcc0
+    validations:
+      required: true
+  - type: dropdown
+    id: model
+    attributes:
+      label: Model or module
+      options:
+        - Point charges / electrostatics
+        - Gauss
+        - Ampère / magnetostatics
+        - Faraday / induction
+        - Moving conductors / Lorentz
+        - Circuits
+        - Coaxial cable
+        - General UI / visualization
+        - Installation / startup
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: preset
+    attributes:
+      label: Preset and relevant parameter values
+      placeholder: Preset number, charge/current values, geometry, time, etc.
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: List the exact steps needed to see the problem.
+      placeholder: |
+        1. Open ...
+        2. Select ...
+        3. Change ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, browser, Docker or native run, screen resolution if relevant.
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Screenshots, recordings, or sanitized logs
+      description: Remove credentials, tokens, private URLs, and personal information before attaching.

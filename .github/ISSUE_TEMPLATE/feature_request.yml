@@ -1,0 +1,35 @@
+name: Feature request
+description: Suggest an improvement to the physics, workflow, or visualization.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please describe the problem this would solve. Keep one proposal per issue.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem or limitation should this address?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Explain what the application should do.
+    validations:
+      required: true
+  - type: textarea
+    id: physics
+    attributes:
+      label: Physical or mathematical context (if relevant)
+      description: Include equations, assumptions, units, or references where useful.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sketches or screenshots
